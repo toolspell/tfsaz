@@ -6,6 +6,29 @@
 tfsaz route redirect --cert FILE --key FILE [--port PORT]
 ```
 
+## Managed browser routing
+
+After setting up a checkout, run the following on the machine that runs your browser. For the T3 web client's Browser panel, use the account that runs the T3 server. Use a tfsaz binary at a permanent path. If an upgrade moves or removes the installed binary, rerun `tfsaz route setup` from the new installation to refresh the supervised service, then run `tfsaz route verify`.
+
+```sh
+tfsaz route setup
+tfsaz route verify
+```
+
+Setup creates one 90-day certificate for the current set of exact registered aliases. It stores the certificate, private key and installation identity beside the selected configuration in `<config-file>.browser-route`. It reuses that identity on retry. A second copy of the public certificate in `~/.tfsaz/route-recovery` lets restore identify OS settings if the config directory is deleted. Browser sign-in is handled by the native collection, which needs its own trusted certificate.
+
+| Platform | What setup installs | What the operator needs |
+| --- | --- | --- |
+| macOS | Two on-demand user LaunchAgents. Launchd owns the IPv4 and IPv6 loopback sockets on port 443 and passes each socket to tfsaz. Setup adds hostname-scoped SSL trust in the login keychain and the alias hosts entries. | A logged-in desktop session for the agents and Keychain approval, plus administrator access to edit hosts. |
+| Ubuntu | A systemd user service, trusted-peer entries in existing Chromium NSS databases, hosts entries and a dedicated nftables table with a boot-time unit. | A systemd user session, sudo access, nftables and `certutil` from `libnss3-tools`. Start Chromium once so its NSS database exists. |
+| Windows 11 | A per-user logon task on port 443, the exact leaf in the current user’s trust store and hosts entries. | A desktop session for certificate confirmation and elevation for the hosts edit. |
+
+Use a configuration file in your private user directory. The redirector needs both loopback addresses and available port 443. On Ubuntu the port-forwarding rule matches loopback HTTPS connections opened by the installing user. It can also affect that user’s other connections to local HTTPS servers on port 443. Restore the route before repurposing that port. The browser also needs to trust the native collection. Firefox profiles and clients with independent CA stores may require a separate trust entry.
+
+Use `tfsaz route verify 'AZURE_STYLE_PR_URL'` to check a particular link. The CLI checks local resolution, makes a HEAD request through each loopback address on port 443, verifies the exact managed certificate and compares the redirect with the configured destination. Open the printed URL in the browser you actually use and compare the address bar with the expected URL. This last step checks that browser's trust and proxy configuration.
+
+Stop opening alias links before running `tfsaz route restore`. Restore uses the saved identity and works after a checkout or collection profile has been removed. Rerun restore if the OS cleanup is interrupted. To renew the certificate or change the set of aliases, run restore followed by setup. Public DNS can resolve the synthetic names between those commands.
+
 ## What it does and refuses
 
 | Aspect | Behavior |
@@ -32,7 +55,7 @@ A new setup adds a new alias. Issue a new certificate for it and restart the ser
 | Chromium extension | Per profile and Chromium only, with no TLS involved. Covers in-browser clicks in that profile. |
 | PAC / SOCKS refusal | Blocks registered names for clients that consult the proxy setting but does not redirect them. |
 
-## Personal setup
+## Manual setup
 
 The steps below require an active `tfsaz repo setup`. They change only what you run yourself. Record each change so you can remove it later.
 
@@ -44,7 +67,7 @@ tfsaz route hosts | awk '$1 == "127.0.0.1" && $2 ~ /^tfsaz-[0-9a-f]{24}\.visuals
 
 ### 2. Create an exact leaf for those names
 
-Run this in a private directory, here `~/.config/tfsaz-redirect`. Repeat `DNS:` entries comma-separated for several aliases. The certificate is self-signed but marked `CA:FALSE`, so trusting it vouches for the listed names only and cannot sign anything else.
+Run this in a private directory, here `~/.config/tfsaz-redirect`. Repeat `DNS:` entries comma-separated for several aliases. Use a self-signed server leaf with exact DNS names, `CA:FALSE` and digital-signature usage. Keep its private key in the owner-only directory and out of shared backups. Windows installs the leaf as a trust anchor. Individual clients can apply different constraints to certificates in that store.
 
 ```sh
 dir="$HOME/.config/tfsaz-redirect"; mkdir -p "$dir"; chmod 700 "$dir"; cd "$dir"
@@ -143,3 +166,11 @@ The test used a scratch Chromium launcher to supply the hostname mapping and cer
 An earlier isolated web-client test on **Ubuntu ARM64 and Windows x64** reached the exact live PR authentication page in the server-hosted Browser panel, including the query and fragment. Stopping the redirector produced `ERR_CONNECTION_REFUSED` on both. These isolated tests used a Chromium launcher with a hostname override and certificate-error exceptions limited to the two fixture public keys. Windows ran sandboxed. The Ubuntu run disabled the server browser sandbox for that test.
 
 A subsequent Ubuntu test used the installed `t3 serve --mode web`, ordinary hostname resolution and Chromium's normal trust settings. The account running T3 trusted the exact alias and destination certificates as peers in its NSS database. The installed `t3 browser setup` command configured AppArmor. The renderer ran sandboxed with seccomp filtering. The Browser panel reached the real PR 118 authentication page with the expected query and fragment. With the redirector stopped and both hosts entries and NAT rules still in place, the browser reported `ERR_CONNECTION_REFUSED`. The test removed its AppArmor profile, hosts entries, NAT rules, private key and scratch browser profile.
+
+On Windows, the installed `t3 serve` also reached PR 118 in its stock server-hosted browser with machine routing. With only the hosts entries present, the connection was refused. With the listener running and the alias certificate untrusted, the browser reported `ERR_CERT_AUTHORITY_INVALID`. After the exact alias leaf was trusted in Local Machine Root and the native server leaf in Local Machine Trusted People, the running browser reached the authentication page with the expected query and fragment. Stopping the service produced `ERR_CONNECTION_REFUSED`. The test restored the original hosts file and removed both test trust entries.
+
+## Managed installer verification
+
+On Ubuntu 26.04 ARM64, setup installed the systemd units, two hosts entries, trusted-peer certificate and IPv4/IPv6 nftables rules scoped to the installing UID. The verifier received the expected 302 on both addresses. Repeating setup kept one installation. Verification failed after stopping the service and passed after rerunning setup. A separate run confirmed that systemd restarted a killed service. Restore also succeeded after moving the installation directory aside and changing `XDG_DATA_HOME`. It removed the original NSS entry, hosts lines, units, nftables table, port reservation and recovery certificate. The hosts file matched its original bytes. This installer check used a fixture URL. The live T3 browser and sign-in-page results above were obtained separately.
+
+On macOS, a live test loaded the generated LaunchAgents in the GUI session on port 443. Each served the expected HTTPS redirect and exact certificate on its own loopback address. Unloading the agents released the port. The test used temporary plists and pinned the leaf for the probe. The managed Keychain approval and a browser navigation using that approval still need an interactive test. The earlier machine-wide browser proof used the manual PF setup.

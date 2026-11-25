@@ -78,8 +78,7 @@ func parseRedirectOptions(args []string) (certFile, keyFile string, port int, er
 }
 
 // loadRedirectCertificate accepts only an unexpired server leaf whose every
-// name is an exact registered alias. Trusting it locally then vouches for those
-// aliases alone and cannot sign certificates for other hosts.
+// name is an exact registered alias. Client trust is configured separately.
 func loadRedirectCertificate(certFile, keyFile string, allowed map[string]bool, now time.Time) (tls.Certificate, map[string]bool, error) {
 	if runtime.GOOS != "windows" {
 		info, err := os.Stat(keyFile)
@@ -104,33 +103,65 @@ func loadRedirectCertificate(certFile, keyFile string, allowed map[string]bool, 
 		}
 		cert.Leaf = leaf
 	}
+	names, err := validateRedirectLeaf(leaf, allowed, now)
+	if err != nil {
+		return tls.Certificate{}, nil, err
+	}
+	return cert, names, nil
+}
+
+func validateRedirectLeaf(leaf *x509.Certificate, allowed map[string]bool, now time.Time) (map[string]bool, error) {
 	switch {
 	case !leaf.BasicConstraintsValid || leaf.IsCA || leaf.KeyUsage&(x509.KeyUsageCertSign|x509.KeyUsageCRLSign) != 0:
-		return tls.Certificate{}, nil, errors.New("the redirect certificate must be a leaf with basicConstraints CA:FALSE, not a CA")
+		return nil, errors.New("the redirect certificate must be a leaf with basicConstraints CA:FALSE, not a CA")
 	case len(leaf.IPAddresses) > 0 || len(leaf.EmailAddresses) > 0 || len(leaf.URIs) > 0:
-		return tls.Certificate{}, nil, errors.New("the redirect certificate may contain only DNS names")
+		return nil, errors.New("the redirect certificate may contain only DNS names")
 	case len(leaf.DNSNames) == 0:
-		return tls.Certificate{}, nil, errors.New("the redirect certificate needs a subjectAltName DNS entry for a registered alias")
+		return nil, errors.New("the redirect certificate needs a subjectAltName DNS entry for a registered alias")
 	case !slices.Contains(leaf.ExtKeyUsage, x509.ExtKeyUsageServerAuth) || slices.Contains(leaf.ExtKeyUsage, x509.ExtKeyUsageAny):
-		return tls.Certificate{}, nil, errors.New("the redirect certificate must have extendedKeyUsage serverAuth and no anyExtendedKeyUsage")
+		return nil, errors.New("the redirect certificate must have extendedKeyUsage serverAuth and no anyExtendedKeyUsage")
 	case now.Before(leaf.NotBefore) || now.After(leaf.NotAfter):
-		return tls.Certificate{}, nil, errors.New("the redirect certificate is expired or not yet valid")
+		return nil, errors.New("the redirect certificate is expired or not yet valid")
 	}
 	names := make(map[string]bool, len(leaf.DNSNames))
 	for _, name := range leaf.DNSNames {
 		lower := strings.ToLower(name)
 		if strings.Contains(name, "*") {
-			return tls.Certificate{}, nil, errors.New("the redirect certificate must not contain wildcard names")
+			return nil, errors.New("the redirect certificate must not contain wildcard names")
 		}
 		if !allowed[lower] {
-			return tls.Certificate{}, nil, fmt.Errorf("certificate name %s is not a registered dedicated tfsaz alias", name)
+			return nil, fmt.Errorf("certificate name %s is not a registered dedicated tfsaz alias", name)
 		}
 		names[lower] = true
 	}
-	return cert, names, nil
+	return names, nil
 }
 
 func serveRouteRedirect(ctx context.Context, certFile, keyFile string, port int, status io.Writer) error {
+	return serveRouteRedirectOn(ctx, certFile, keyFile, port, status, listenRedirectLoopback)
+}
+
+func listenRedirectLoopback(port int) ([]net.Listener, error) {
+	var listeners []net.Listener
+	for _, addr := range []string{"127.0.0.1", "::1"} {
+		ln, err := net.Listen("tcp", net.JoinHostPort(addr, strconv.Itoa(port)))
+		if err != nil {
+			for _, l := range listeners {
+				l.Close()
+			}
+			if errors.Is(err, os.ErrPermission) {
+				return nil, fmt.Errorf("could not bind loopback port %d: %w; this OS reserves low ports, so use --port with a loopback port redirect as the README describes", port, err)
+			}
+			return nil, fmt.Errorf("could not bind loopback port %d: %w", port, err)
+		}
+		listeners = append(listeners, ln)
+	}
+	return listeners, nil
+}
+
+// serveRouteRedirectOn validates the configuration and certificate before it
+// obtains listeners, so a misconfigured service never accepts a connection.
+func serveRouteRedirectOn(ctx context.Context, certFile, keyFile string, port int, status io.Writer, listen func(int) ([]net.Listener, error)) error {
 	configFile, err := configPath()
 	if err != nil {
 		return err
@@ -151,19 +182,9 @@ func serveRouteRedirect(ctx context.Context, certFile, keyFile string, port int,
 	if err != nil {
 		return err
 	}
-	var listeners []net.Listener
-	for _, addr := range []string{"127.0.0.1", "::1"} {
-		ln, err := net.Listen("tcp", net.JoinHostPort(addr, strconv.Itoa(port)))
-		if err != nil {
-			for _, l := range listeners {
-				l.Close()
-			}
-			if errors.Is(err, os.ErrPermission) {
-				return fmt.Errorf("could not bind loopback port %d: %w; this OS reserves low ports, so use --port with a loopback port redirect as the README describes", port, err)
-			}
-			return fmt.Errorf("could not bind loopback port %d: %w", port, err)
-		}
-		listeners = append(listeners, ln)
+	listeners, err := listen(port)
+	if err != nil {
+		return err
 	}
 	return serveRedirectListeners(ctx, listeners, cert, names, configFile, port, status)
 }
@@ -204,7 +225,7 @@ func serveRedirectListeners(ctx context.Context, listeners []net.Listener, cert 
 		srv.Close()
 		workers.Wait()
 	}()
-	if _, err := fmt.Fprintf(status, "tfsaz: redirecting %d registered alias(es) on IPv4 and IPv6 loopback port %d; other names, methods and paths are refused\n", len(names), port); err != nil {
+	if _, err := fmt.Fprintf(status, "tfsaz: redirecting %d registered alias(es) on loopback port %d; other names, methods and paths are refused\n", len(names), port); err != nil {
 		return err
 	}
 	select {

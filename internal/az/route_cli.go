@@ -20,6 +20,8 @@ func (a app) runRoute(ctx context.Context, args []string) error {
 		return writeHelp(a.stdout, "route")
 	}
 	switch args[0] {
+	case "setup", "verify", "restore":
+		return runManagedRoute(ctx, args, a.stdout, manageRouteSystem)
 	case "handler-export":
 		if len(args) != 3 {
 			return usageError{errors.New("expected route handler-export DESTINATION BROWSER")}
@@ -68,9 +70,19 @@ func (a app) runRoute(ctx context.Context, args []string) error {
 		return usageError{errors.New("expected route sink [--port PORT]")}
 	}
 	if args[0] == "redirect" {
-		certFile, keyFile, port, err := parseRedirectOptions(args[1:])
+		// Managed macOS services append an internal flag to serve the socket
+		// that launchd passes on standard input.
+		opts := args[1:]
+		inherited := len(opts) > 0 && opts[len(opts)-1] == routeInheritedSocketFlag
+		if inherited {
+			opts = opts[:len(opts)-1]
+		}
+		certFile, keyFile, port, err := parseRedirectOptions(opts)
 		if err != nil {
 			return err
+		}
+		if inherited {
+			return serveRouteRedirectInherited(ctx, certFile, keyFile, port, a.stderr)
 		}
 		return serveRouteRedirect(ctx, certFile, keyFile, port, a.stderr)
 	}

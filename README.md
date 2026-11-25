@@ -9,8 +9,7 @@
 | Connect an installed T3 app | Use `tfsaz shim install --dir DIR`, put DIR on the backend’s PATH, and run `tfsaz init --collection URL`. |
 | Use an existing clone | Run `tfsaz repo setup PATH`. New setups keep the original SSH or HTTPS transport. Use `tfsaz repo verify PATH` to check it and `tfsaz repo restore PATH` to recover the original URL offline. |
 | Clone a synthetic HTTPS URL in a shell or job | Start Git under `tfsaz route run --` and configure Git credentials for the native collection. This also works when no checkout exists yet. |
-| Open links from T3 Desktop | Export the native link handler on the Windows, Ubuntu or macOS desktop where links open, and select a browser to receive them. |
-| Open typed or in-browser alias links | Optional: run `tfsaz route redirect` on loopback with a locally trusted leaf for the exact generated aliases. See [the redirect guide](docs/route-redirect.md). |
+| Open managed links in a browser | Run `tfsaz route setup` and `tfsaz route verify` on the host running the browser. See [the redirect guide](docs/route-redirect.md). |
 
 ## Build and configure
 
@@ -92,59 +91,16 @@ Offline help works for groups and individual commands, including `tfsaz repo set
 
 ## Route synthetic HTTPS URLs
 
-### Open links from the installed T3 Code desktop app
-
-Run `tfsaz route handler-export DESTINATION BROWSER` on the desktop where links open. The handler starts on demand, translates registered Azure web links, and passes ordinary HTTP and HTTPS links through to your chosen browser. Unsupported paths on registered aliases are refused. Browser sign-in takes place at the real collection. This works with the installed T3 app and requires no browser extension, background service or administrator access.
-
-Export using a permanent tfsaz installation. The handler captures the paths to tfsaz and its config file and reads that config and the repo registry on each click. Restore your usual default browser before removing the handler. If you move tfsaz or its config, or choose a different target browser, export a new handler.
-
-#### Windows 11
-
-From PowerShell, export a package for your installed browser and run its per-user installer. This example uses Edge. Windows expands percent signs in protocol commands, so choose tfsaz, browser and config paths without a literal `%`.
-
-```powershell
-$handler = Join-Path $env:LOCALAPPDATA 'tfsaz Links'
-$browser = Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'
-tfsaz route handler-export $handler $browser
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$handler\Install.ps1"
-```
-
-In **Settings → Apps → Default apps**, select **tfsaz Links** for **HTTP** and **HTTPS**. Windows requires the user to choose the defaults. To remove the handler, first select your usual browser for both protocols, then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$handler\Uninstall.ps1"` and delete the exported directory. Uninstall the old registration before installing a replacement package. [Windows default apps](https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/default-apps-platform)
-
-#### Ubuntu desktop
-
-Install the desktop entry under your user's applications directory. Supply the absolute path to a browser executable or launcher such as Firefox.
+For browser links from a managed checkout, configure the machine **where the browser runs**. For T3 Desktop and an external browser this is the workstation. For the web client’s server-hosted Browser panel it is the T3 server, under the account that launches Chromium.
 
 ```sh
-apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-mkdir -p "$apps"
-tfsaz route handler-export "$apps/com.toolspell.tfsaz.links.desktop" "$(command -v firefox)"
-update-desktop-database "$apps"
+tfsaz route setup
+tfsaz route verify
 ```
 
-Try it first with `gio launch "$apps/com.toolspell.tfsaz.links.desktop" 'YOUR_AZURE_PR_URL'`. Record the current HTTP and HTTPS defaults, then select **tfsaz Links** for both.
+To check a particular PR, run `tfsaz route verify 'AZURE_STYLE_PR_URL'` and open that link in the intended browser. The address bar should show the real collection, including the query and fragment. Browser sign-in takes place there. Use `tfsaz route restore` to remove the managed installation. The machine needs administrator access for hosts and port configuration. [Browser routing and trust by platform](docs/route-redirect.md)
 
-```sh
-xdg-mime query default x-scheme-handler/http
-xdg-mime query default x-scheme-handler/https
-gio mime x-scheme-handler/http com.toolspell.tfsaz.links.desktop
-gio mime x-scheme-handler/https com.toolspell.tfsaz.links.desktop
-```
-
-To remove it, restore each recorded desktop ID with `gio mime x-scheme-handler/SCHEME PREVIOUS_ID`, or choose your browser in GNOME's **Default Apps**. Then remove the exported desktop file. [freedesktop default application associations](https://specifications.freedesktop.org/mime-apps/latest/default)
-
-#### macOS
-
-```sh
-mkdir -p "$HOME/Applications"
-tfsaz route handler-export "$HOME/Applications/tfsaz Links.app" com.apple.Safari
-```
-
-For Firefox, use `org.mozilla.firefox` as the browser bundle ID. Try the handler with `open -a "$HOME/Applications/tfsaz Links.app" 'YOUR_AZURE_PR_URL'`. Select **tfsaz Links** in **System Settings → Desktop & Dock → Default web browser**. To remove it, select your usual browser and delete the exported app. The earlier `route mac-handler-export` command remains supported.
-
-The OS hands off links from applications such as T3 Desktop. Typing a URL into a browser or clicking a link in the browser version of T3 usually keeps navigation inside that browser. For these cases use `tfsaz route resolve URL` or the optional Chromium integration below. Scripts can also consume `route resolve` directly. Exact hostname entries can separately catch traffic from programs that resolve names locally.
-
-**Where to configure browser routing.** The installed T3 app can open a desktop browser tab on the workstation. The Browser panel in the T3 web client can instead stream a tab running on the T3 server. Configure alias resolution and certificate trust on the host running the tab. An ordinary link opened in the user's external browser uses that browser's host and profile. Without automatic routing, run `tfsaz route resolve 'AZURE_STYLE_URL'` and open its output. A raw alias can otherwise reach Azure cloud. [Loopback redirect setup](docs/route-redirect.md)
+For a one-off link, `tfsaz route resolve URL` prints the destination. For desktop handoffs on machines where you cannot change the hosts file, the per-user link handler can open links using the selected system browser. [Desktop link handler](docs/desktop-link-handler.md)
 
 | Caller | How to use it |
 | --- | --- |
@@ -152,6 +108,9 @@ The OS hands off links from applications such as T3 Desktop. Typing a URL into a
 | Optional in-browser routing for Chromium | Run `tfsaz route browser-export NEW_DIRECTORY`. In the intended Chromium profile, enable developer mode and load the unpacked directory. Supported repository, PR, commit, work-item and build links navigate to the real origin, where browser sign-in applies. The extension blocks other requests to the registered alias spellings it recognizes. Use `tfsaz route browser-verify DIRECTORY` to compare the files with the current configuration. After a profile change or repo restore, remove the old extension and load a fresh export. Removing the extension disables browser routing for that profile. |
 | Git or stock T3 server | Use `tfsaz route run -- git clone URL`, `tfsaz route run -- t3 serve`, or launch an entire shell with `tfsaz route run -- zsh`. Processes in that tree inherit a private Git HTTPS helper. The original Git helper contacts the real collection and uses Git's TLS and credential settings. Git retains the synthetic origin for T3 detection. A process that discards the inherited Git environment can bypass the helper. Closing the launched process ends the override. A separately started service needs its own launch configuration. |
 | Unattended job | Run the job under `tfsaz route run --` with Git credentials configured for the real collection under the job's OS account. The launcher disables Git terminal and Git Credential Manager interaction when stdin is not a terminal. Choose a non-interactive credential helper for the job. Git does not automatically receive the CLI's Keychain PAT. |
+
+<details>
+<summary>Optional hosts-file, connection refusal and proxy settings</summary>
 
 **Local hostname catch-all.** `tfsaz route hosts` prints IPv4 and IPv6 loopback entries for the registered dedicated aliases. Review the output, then add those lines as a distinct block in the system hosts file if you want machine-wide resolution. On macOS and Ubuntu this is `/etc/hosts`. On Windows it is `%SystemRoot%\System32\drivers\etc\hosts`. Editing the file requires the appropriate OS privileges. Remove that block to undo it. Regenerate it when the aliases change. `tfsaz route verify-hosts` checks the current system resolver for each name. `tfsaz route sink` explicitly closes TCP connections arriving on port 443 on both loopback addresses, without reading or recording the payload. An unused loopback port already refuses connections when the listener is stopped. The listener needs both addresses and an available port. Use `--port N` for a different listener port.
 
@@ -163,11 +122,11 @@ An OS proxy setting applies to clients that consult it. For example, curl can ex
 
 The hostname and PAC commands omit the shared `dev.azure.com` hostname by default. Use `--include-dev-azure` only on a machine or network service where catching **every** organization on that hostname is intended. DNS and SOCKS cannot select an organization by HTTPS path. The Chromium rules can match the configured organization path before TLS. The extension and Git helper translate supported traffic without TLS interception. SSH still needs its separate repository-path translation. Raw REST clients can use `az rest` with an explicit collection.
 
-**Optional loopback redirect service.** `tfsaz route redirect --cert FILE --key FILE [--port PORT]` answers HTTPS browser requests for the generated `tfsaz-*.visualstudio.com` aliases on `127.0.0.1` and `::1` with a `302` to the real collection page. It needs the hosts entries above, a leaf certificate naming only those aliases and trusted only for them, and port 443 (macOS and Linux need a port redirect or capability). It refuses shared hosts, other names, unsafe methods, Git and API paths, and never proxies, logs or uses a PAT. Setup, the routing compared with proxy tradeoffs, removal and verification are in [docs/route-redirect.md](docs/route-redirect.md).
+</details>
 
 **Verify a standalone Node client.** Run `tfsaz route verify-node` under the account and environment that launch the client. It runs the `node` on that PATH, checks the certificate chain and hostname for every configured real collection, and exits nonzero if any handshake fails. It sends no HTTP request or PAT. The profile’s `caFile` configures the Go CLI. To trust the same PEM in Node, set `NODE_EXTRA_CA_CERTS` to its absolute path in the client’s launch environment. The check applies to that Node runtime. An installed desktop app can bundle a different runtime, and GUI launches and background jobs can inherit different settings from a terminal. Ordinary T3 Azure CLI calls through tfsaz need neither this check nor a separate Node installation.
 
-**TLS for Node processes.** Browser and Git routing select the native hostname before the client opens TLS. A DNS override or a SOCKS tunnel alone leaves the synthetic hostname as the TLS identity. A server certificate must match the hostname in the URL (or the IP address for an IP-literal URL) and chain to a trusted certificate. On the test Mac, Node 26.13.1 rejected the LAN listener with `DEPTH_ZERO_SELF_SIGNED_CERT` using its bundled roots. Launching Node with `NODE_USE_SYSTEM_CA=1` completed TLS and received the server’s expected unauthenticated HTTP 401. On supported Node versions this setting adds the system roots. Alternatively, set `NODE_EXTRA_CA_CERTS=/absolute/path/to/approved-ca.pem` before launching the Node app. Apply this to the process making the HTTPS request. T3’s Azure CLI calls launch the Go binary, which has its own system and per-profile CA support. [Node TLS environment options](https://nodejs.org/api/cli.html#node_use_system_ca1) · [TLS service identity](https://www.rfc-editor.org/rfc/rfc9525.html)
+**TLS for Node processes.** The loopback redirect uses TLS for the alias first. Following its redirect opens a second TLS connection to the collection. The Git helper connects directly to the collection. A DNS override or a SOCKS tunnel alone leaves the synthetic hostname as the TLS identity. A server certificate must match the hostname in the URL (or the IP address for an IP-literal URL) and chain to a trusted certificate. On the test Mac, Node 26.13.1 rejected the LAN listener with `DEPTH_ZERO_SELF_SIGNED_CERT` using its bundled roots. Launching Node with `NODE_USE_SYSTEM_CA=1` completed TLS and received the server’s expected unauthenticated HTTP 401. On supported Node versions this setting adds the system roots. Alternatively, set `NODE_EXTRA_CA_CERTS=/absolute/path/to/approved-ca.pem` before launching the Node app. Apply this to the process making the HTTPS request. T3’s Azure CLI calls launch the Go binary, which has its own system and per-profile CA support. [Node TLS environment options](https://nodejs.org/api/cli.html#node_use_system_ca1) · [TLS service identity](https://www.rfc-editor.org/rfc/rfc9525.html)
 
 **Long-running processes.** The hosts-file block and installed browser rules persist while tfsaz is stopped. Git starts its transport helper per operation. For a Mac that uses the local PAC service continuously, run `tfsaz route proxy` as a per-user launchd LaunchAgent with an absolute executable path, an explicit `TFSAZ_CONFIG`, and `KeepAlive`. On Ubuntu a systemd user service can run the same command with `Restart=on-failure`. On Windows use a Task Scheduler logon trigger for the current user with the restart-on-failure setting, a permanent executable path and a user configuration accessible to the task. Restarting the process restores PAC availability. The hostname mapping provides a separate fallback during the restart for clients resolving locally. A service launched before user login needs its own account, environment and supervision. [Apple launchd jobs](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html) · [systemd restart settings](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html) · [Windows Task Scheduler restarts](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-restartonfailure-settingstype-element)
 
@@ -267,7 +226,7 @@ On macOS, linked worktrees created before and after setup passed Git fetch, push
 
 The macOS HTTPS routing run exercised fresh clone, fetch and push against both real collections. Stock T3 retried two rejected SSH clones over HTTPS and retained recognized Azure-style origins. The Git test supplied preemptive Basic authentication scoped to each real collection. In a disposable Chromium profile, a stock T3 “Open on Azure DevOps” click reached the native PR path, and links from both collections reached the corresponding server URLs. The browser had no on-prem login session. The same stock T3 instance linked a live work item in each project, displayed the attachments and returned the correct thread in the reverse lookup. Both test links were removed.
 
-**Built-in browser on all three platforms.** The installed T3 Nightly desktop browser on macOS, Windows and Ubuntu opened the exact PR 118 URL produced by `route resolve`, including its query and fragment. Azure DevOps Server returned its authentication-required page in each tab. The test stopped before sign-in. Windows used T3’s certificate prompt after an independent check of the testbed certificate and hostname. Ubuntu used a disposable Chromium trust database that trusted the testbed’s self-signed leaf certificate. On all three platforms a synthetic fixture PR path on the raw alias stayed on the alias hostname and returned a 404. The test used no browser rewrite rules.
+**Built-in browsers.** The stock T3 server-hosted Browser panel on macOS, Windows and Ubuntu followed a managed alias to the native PR 118 authentication page through machine routing. Each browser preserved the query and fragment. The installed desktop apps also reached the native page. The Windows and Ubuntu desktop checks used isolated resolver and trust settings. [Verification details](docs/route-redirect.md#machine-wide-installation-results)
 
 ### Windows 11 x64 and Ubuntu 26.04 ARM64
 
@@ -285,7 +244,7 @@ The command table above lists implemented commands. The table below shows how th
 
 | Feature | What works or is missing |
 | --- | --- |
-| Discovery, project recognition and link matching | Version and account probes work. PR web URLs preserve the recognized checkout identity. The native desktop handlers and the optional Chromium extension open supported HTTPS links on the real collection. |
+| Discovery, project recognition and link matching | Version and account probes work. PR web URLs preserve the recognized checkout identity. The loopback redirect opens supported pages at the real collection in a browser. Native desktop handlers and the Chromium extension are also available. |
 | Clone, branch and checkout | `repos show` supplies clone URLs and default branch. T3 finds a branch's PR with `repos pr list`. For same-repo PR checkout it reads `repos pr show` and uses Git fetch/switch. PR templates also use local Git. Clone transports were exercised live. Template and checkout paths were checked in upstream code/tests. T3 rejects fork checkout. The displayed shell command `az repos pr checkout` also works for same-repository PRs. |
 | Create or publish | Supports `repos create` and `repos pr create`, including draft PR creation. |
 | PR board, preview, detail, linked thread and checks | List/show and paginated policy reads work. T3 can show authors, reviewers, body, state, policy checks and the labels included in the PR response. Linked summaries use those same reads for refresh. Watch notifications, mobile surfaces and agent tools were not independently exercised end to end. |
