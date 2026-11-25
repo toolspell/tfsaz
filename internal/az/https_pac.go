@@ -41,7 +41,8 @@ func writeRoutePAC(out io.Writer, hosts []string, port int) error {
 		for _, name := range names {
 			fmt.Fprintf(&script, "    case %q:\n", name)
 		}
-		fmt.Fprintf(&script, "      return \"SOCKS5 127.0.0.1:%d\";\n  }\n", port)
+		// WinHTTP ignores SOCKS5 entries. Give it the same local refusal via HTTP.
+		fmt.Fprintf(&script, "      return \"SOCKS5 127.0.0.1:%[1]d; PROXY 127.0.0.1:%[1]d\";\n  }\n", port)
 	}
 	script.WriteString("  return \"DIRECT\";\n}\n")
 	_, err := io.WriteString(out, script.String())

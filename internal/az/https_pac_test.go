@@ -16,7 +16,7 @@ func TestWriteRoutePAC(t *testing.T) {
   switch (host.toLowerCase().replace(/\.$/, "")) {
     case "a.example.invalid":
     case "z.example.invalid":
-      return "SOCKS5 127.0.0.1:18181";
+      return "SOCKS5 127.0.0.1:18181; PROXY 127.0.0.1:18181";
   }
   return "DIRECT";
 }

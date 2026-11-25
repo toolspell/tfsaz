@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Serve the PAC document and deny SOCKS5 connections on the same loopback
+// Serve the PAC document and refuse SOCKS5 and HTTP proxy requests on the same loopback
 // port. There is no outbound dial, TLS termination, or authentication method.
 func serveRouteProxy(ctx context.Context, hosts []string, port int, status io.Writer) error {
 	var pac bytes.Buffer
@@ -23,12 +23,12 @@ func serveRouteProxy(ctx context.Context, hosts []string, port int, status io.Wr
 	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	ln, err := net.Listen("tcp4", address)
 	if err != nil {
-		return fmt.Errorf("could not open local PAC/SOCKS port: %w", err)
+		return fmt.Errorf("could not open local PAC/proxy port: %w", err)
 	}
 	defer ln.Close()
 	stop := context.AfterFunc(ctx, func() { ln.Close() })
 	defer stop()
-	if _, err := fmt.Fprintf(status, "tfsaz: local PAC http://%s/proxy.pac; SOCKS5 connections are refused\n", address); err != nil {
+	if _, err := fmt.Fprintf(status, "tfsaz: local PAC http://%s/proxy.pac; SOCKS5 and HTTP proxy requests are refused\n", address); err != nil {
 		return err
 	}
 	slots := make(chan struct{}, 32)
@@ -67,11 +67,12 @@ func handleRouteProxy(c net.Conn, address string, pac []byte) {
 		c.Write([]byte{5, 255})
 		return
 	}
-	if lead[0] != 'G' {
-		return
-	}
 	req, err := http.ReadRequest(r)
 	if err != nil {
+		return
+	}
+	if req.Method == http.MethodConnect || req.URL.IsAbs() {
+		io.WriteString(c, "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
 		return
 	}
 	if req.Method != "GET" || req.RequestURI != "/proxy.pac" || req.Host != address {

@@ -30,7 +30,9 @@ func TestDenyProxy(t *testing.T) {
 		{"\x05\x02\x00\x02", "\x05\xff"},
 		{"GET /proxy.pac HTTP/1.1\r\nHost: 127.0.0.1:1080\r\n\r\n", string(pac)},
 		{"GET /proxy.pac HTTP/1.1\r\nHost: other.test\r\n\r\n", "404 Not Found"},
-		{"GET http://outside.test/ HTTP/1.1\r\nHost: outside.test\r\n\r\n", "404 Not Found"},
+		{"POST /proxy.pac HTTP/1.1\r\nHost: 127.0.0.1:1080\r\n\r\n", "404 Not Found"},
+		{"CONNECT outside.test:443 HTTP/1.1\r\nHost: outside.test:443\r\n\r\n", "403 Forbidden"},
+		{"GET http://outside.test/ HTTP/1.1\r\nHost: outside.test\r\n\r\n", "403 Forbidden"},
 	} {
 		client, server := net.Pipe()
 		done := make(chan struct{})

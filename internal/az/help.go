@@ -257,7 +257,7 @@ var nativeCommands = map[string]nativeCommand{
 		"route sink --port 8443",
 	},
 	"route proxy": {
-		"Serve a PAC file and refuse SOCKS connections for routed hosts.",
+		"Serve a PAC file and refuse SOCKS5 and HTTP proxy requests for routed hosts.",
 		"[--port PORT] [--include-dev-azure]",
 		"route proxy --port 1080",
 	},
