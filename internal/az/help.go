@@ -11,104 +11,124 @@ type azureCommand struct {
 	description string
 	options     string
 	example     string
+	notes       string
 }
 
 // The Azure-compatible parser and offline help use the same option sets.
 var azureCommands = map[string]azureCommand{
 	"account show": {
-		"Read the authenticated user. The user.name TSV probe without an organization checks profiles in configuration order.",
+		"Read the authenticated user.",
 		"query output organization only-show-errors",
 		"account show --query user.name -o tsv",
+		"Use --query user for the JSON identity of the selected collection, or --query user.name -o tsv for a login on one line. Without --organization the JSON query uses the checkout and the TSV query checks configured profiles in order.",
 	},
 	"repos show": {
 		"Read an Azure DevOps Git repository.",
 		"organization project repository detect only-show-errors output",
 		"repos show --project Project --repository Repo",
+		"Requires a project and repository. Both can come from the checkout.",
 	},
 	"repos create": {
 		"Create a Git repository in an Azure DevOps project.",
 		"organization project detect name only-show-errors output",
 		"repos create --project Project --name Repo",
+		"Requires --name and a project. The project can come from the checkout.",
 	},
 	"repos pr list": {
 		"List pull requests for a project or repository.",
 		"organization project repository detect only-show-errors output top skip source-branch target-branch status include-links creator reviewer",
-		"repos pr list --status active --top 10",
+		"repos pr list --status active --reviewer me --include-links --top 20",
+		"Requires a project. For a project-wide list, supply --organization and --project with --detect false. Use --include-links for PR web links. --creator and --reviewer accept me, a login or an identity GUID.",
 	},
 	"repos pr show": {
 		"Read a pull request by ID.",
 		"organization id detect only-show-errors output",
 		"repos pr show --id 42",
+		"Requires --id. Resolves the ID within the selected collection.",
 	},
 	"repos pr policy list": {
 		"Read one page of policy evaluations for a pull request.",
 		"organization id detect only-show-errors output top skip",
 		"repos pr policy list --id 42 --top 100 --skip 0",
+		"Requires --id. Use --top and --skip to read successive pages.",
 	},
 	"repos pr checkout": {
 		"Fetch and switch to a pull request branch in the current repository.",
 		"organization id remote-name detect only-show-errors output",
 		"repos pr checkout --id 42 --remote-name origin",
+		"Requires --id and a local checkout. The Git remote defaults to origin and must belong to the PR's repository. --organization must match that remote's collection if supplied.",
 	},
 	"repos pr create": {
 		"Create a pull request.",
 		"organization project repository detect only-show-errors output source-branch target-branch title description draft squash auto-complete delete-source-branch merge-commit-message transition-work-items",
-		"repos pr create --source-branch feature --target-branch main --title \"Add feature\"",
+		"repos pr create --source-branch feature --target-branch main --title \"Add feature\" --description=@notes.md --draft true",
+		"Requires both branches, a project and a repository. The checkout can supply the project and repository. Text options accept @FILE or @- for stdin.",
 	},
 	"repos pr update": {
 		"Update a pull request by ID.",
 		"organization id detect only-show-errors output title description status squash auto-complete draft delete-source-branch merge-commit-message transition-work-items",
 		"repos pr update --id 42 --title \"Updated title\"",
+		"Requires --id. Use --status completed to complete a pull request and --squash true to select a squash merge. Text options accept @FILE or @- for stdin.",
 	},
 	"repos pr reviewer add": {
 		"Add reviewers to a pull request.",
 		"organization id detect only-show-errors output reviewers required",
 		"repos pr reviewer add --id 42 --reviewers reviewer@example.invalid",
+		"Requires --id and at least one reviewer login or identity GUID.",
 	},
 	"repos pr reviewer remove": {
 		"Remove reviewers from a pull request.",
 		"organization id detect only-show-errors output reviewers",
 		"repos pr reviewer remove --id 42 --reviewers reviewer@example.invalid",
+		"Requires --id and at least one reviewer login or identity GUID.",
 	},
 	"boards work-item create": {
 		"Create an Azure Boards work item.",
 		"organization project detect only-show-errors output type title description fields",
-		"boards work-item create --type Bug --title \"Fix issue\"",
+		"boards work-item create --type Bug --title \"Fix issue\" --fields \"System.Tags=triage; cli\"",
+		"Requires --type, --title and a project. The project can come from the checkout. Text and field values accept @FILE or @- for stdin.",
 	},
 	"boards work-item update": {
 		"Update an Azure Boards work item by ID.",
 		"organization id detect only-show-errors output title description state fields",
 		"boards work-item update --id 42 --title \"Updated title\"",
+		"Requires --id. Text and field values accept @FILE or @- for stdin.",
 	},
 	"boards work-item show": {
 		"Read an Azure Boards work item by ID.",
 		"organization id detect only-show-errors output expand",
 		"boards work-item show --id 42 --expand relations",
+		"Requires --id. Use --expand relations to include linked work items and pull requests.",
 	},
 	"devops login": {
 		"Verify a PAT for a configured organization and save it in the OS keyring. Reads the PAT from a hidden prompt or stdin.",
 		"organization",
 		"devops login --organization https://engineering-example.visualstudio.com",
+		"Requires --organization with a configured alias or collection URL.",
 	},
 	"devops invoke": {
 		"List the selected collection's REST resources or call a resource by area and name.",
 		"organization detect only-show-errors output area resource api-version route-parameters query-parameters http-method in-file media-type accept-media-type out-file query encoding",
 		"devops invoke --area core --resource projects --query 'value[].name' -o tsv",
+		"Run without --resource to list the catalog, optionally filtered by --area. To call a resource, specify its area and name and supply route parameters as KEY=VALUE. Use --in-file for a JSON request body or --out-file for a raw response.",
 	},
 	"devops team list": {
 		"List teams in an Azure DevOps project.",
 		"organization project detect only-show-errors output top skip",
 		"devops team list --project Project",
+		"Requires a project. The project can come from the checkout.",
 	},
 	"devops team list-member": {
 		"List members of a team in an Azure DevOps project.",
 		"organization project detect only-show-errors output team top skip",
-		"devops team list-member --project Project --team Team",
+		"devops team list-member --project Project --team \"Project Team\" --top 20",
+		"Requires --team and a project. The project can come from the checkout.",
 	},
 	"rest": {
 		"Call an API using a configured collection URL or a collection-relative path in a recognized checkout.",
 		"url method body headers uri-parameters output-file output query only-show-errors",
 		"rest --url '/_apis/projects?api-version=7.1' --query 'value[].name' -o tsv",
+		"Requires --url. Full URLs can use a configured collection or organization alias. Use --body @FILE to read a request body and --output-file to save a raw response.",
 	},
 }
 
@@ -133,6 +153,43 @@ func azureOptionKind(name string) optionKind {
 		return listOption
 	default:
 		return valueOption
+	}
+}
+
+func azureOptionValue(topic, name string) string {
+	switch name {
+	case "detect", "draft", "squash", "auto-complete", "delete-source-branch", "transition-work-items", "required":
+		return "true|false"
+	case "output":
+		switch topic {
+		case "account show":
+			return "json|tsv"
+		case "devops invoke", "rest":
+			return "json|tsv|table|none"
+		default:
+			return "json"
+		}
+	case "status":
+		if topic == "repos pr update" {
+			return "active|abandoned|completed"
+		}
+		return "active|abandoned|completed|all"
+	case "expand":
+		return "none|relations|fields|links|all"
+	case "method", "http-method":
+		return "GET|HEAD|OPTIONS|POST|PUT|PATCH|DELETE"
+	case "organization", "url":
+		return "URL"
+	case "id", "top", "skip":
+		return "NUMBER"
+	case "route-parameters", "query-parameters", "fields":
+		return "KEY=VALUE"
+	case "reviewers", "creator", "reviewer":
+		return "IDENTITY"
+	case "in-file", "out-file", "output-file":
+		return "PATH"
+	default:
+		return "VALUE"
 	}
 }
 
@@ -168,18 +225,18 @@ var nativeCommands = map[string]nativeCommand{
 	},
 	"doctor": {
 		"Check the CLI, collection profiles, credentials and current or specified checkout.",
-		"[--json] [PATH]",
+		"[PATH] [--json]",
 		"doctor --json",
 	},
 	"shim install": {
-		"Install the az and git-remote-tfsaz launchers in a directory on T3's PATH.",
+		"Install az and git-remote-tfsaz in a directory on T3's PATH. Windows installs executable copies when symbolic links are unavailable.",
 		"--dir DIR",
 		"shim install --dir ./bin",
 	},
 	"repo setup": {
-		"Set up a checkout for T3. New setups preserve the original HTTPS or SSH transport. Use --managed-ssh to select the SSH wrapper.",
-		"[PATH] [--profile ID] [--preserve-transport | --managed-ssh [--ssh-url URL]]",
-		"repo setup ./checkout --preserve-transport",
+		"Set up a checkout for T3. New setups preserve the original HTTPS or SSH transport. Use --managed-ssh for the SSH wrapper, and --ssh-url to override its native endpoint. --ssh-url also selects that mode on its own.",
+		"[PATH] [--profile ID] [--preserve-transport | --managed-ssh] [--ssh-url URL]",
+		"repo setup ./checkout",
 	},
 	"repo show": {
 		"Show the saved repository binding and transport without contacting the collection.",
@@ -322,13 +379,18 @@ func helpTopic(args []string) (string, bool) {
 		// Native leaf commands can take a path or URL before their help option.
 		for n := len(words) - 1; n > 0; n-- {
 			topic := strings.Join(words[:n], " ")
-			if _, ok := nativeCommands[topic]; ok {
+			if command, ok := nativeCommands[topic]; ok && command.acceptsPositionals() {
 				return topic, true
 			}
 		}
 		break
 	}
 	return "", false
+}
+
+func (c nativeCommand) acceptsPositionals() bool {
+	// Native usage puts any leading positional arguments before options.
+	return c.arguments != "" && !strings.HasPrefix(strings.TrimPrefix(c.arguments, "["), "--")
 }
 
 func helpDescription(topic string) string {
@@ -345,7 +407,11 @@ func writeHelp(w io.Writer, topic string) error {
 	var b strings.Builder
 	fmt.Fprintln(&b, helpDescription(topic))
 	if command, ok := azureCommands[topic]; ok {
-		fmt.Fprintf(&b, "\nUsage: tfsaz %s [OPTIONS]\n\nOptions:\n", topic)
+		fmt.Fprintf(&b, "\nUsage: tfsaz %s [OPTIONS]\n\n%s\n", topic, command.notes)
+		if topic != "devops login" && topic != "rest" && topic != "account show" && topic != "repos pr checkout" {
+			fmt.Fprintln(&b, "Use --organization to select a collection explicitly, or run from a recognized checkout.")
+		}
+		fmt.Fprintln(&b, "\nOptions:")
 		for _, name := range strings.Fields(command.options) {
 			aliases := []string{"--" + name}
 			for alias, target := range optionNames {
@@ -354,18 +420,21 @@ func writeHelp(w io.Writer, topic string) error {
 				}
 			}
 			slices.Sort(aliases[1:])
-			value := " VALUE"
+			var value string
 			switch azureOptionKind(name) {
-			case flagOption:
-				value = ""
+			case valueOption:
+				value = " " + azureOptionValue(topic, name)
 			case listOption:
-				value = " VALUE [VALUE ...]"
+				label := azureOptionValue(topic, name)
+				value = " " + label + " [" + label + " ...]"
 			}
 			fmt.Fprintf(&b, "  %s%s\n", strings.Join(aliases, ", "), value)
 		}
 		fmt.Fprintf(&b, "\nExamples:\n  tfsaz %s\n", command.example)
 		if topic == "account show" {
-			fmt.Fprintln(&b, "  tfsaz account show --query user -o json")
+			fmt.Fprintln(&b, "  tfsaz account show --query user -o json --organization https://engineering-example.visualstudio.com")
+		} else if topic == "devops invoke" {
+			fmt.Fprintln(&b, "  tfsaz devops invoke --area build --query '[].[resourceName,routeTemplate]' -o tsv")
 		}
 	} else if command, ok := nativeCommands[topic]; ok {
 		fmt.Fprintf(&b, "\nUsage: tfsaz %s\n\nExample:\n  tfsaz %s\n", strings.TrimSpace(topic+" "+command.arguments), command.example)

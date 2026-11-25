@@ -119,6 +119,10 @@ func TestGitHTTPSHelperKeepsAzureRemoteAndUsesNativeTransport(t *testing.T) {
 		t.Fatalf("clone through route run: %v\n%s", err, out)
 	}
 	expectDiscovery()
+	const sourceGitLibrary = `alias.tfsaz-library=!f() { . "$(git --exec-path)/git-sh-setup" && test -f "$(git --exec-path)/mergetools/vimdiff"; }; f`
+	if out, err := wrappedGit(checkout, "-c", sourceGitLibrary, "tfsaz-library"); err != nil {
+		t.Fatalf("Git could not load its shell library and mergetools from the routed exec path: %v\n%s", err, out)
+	}
 	if out, err := wrappedGit(root, "ls-remote", strings.TrimSuffix(alias, "Tool%20Kit")+"RequiresAuth"); err == nil || !strings.Contains(out, "terminal prompts disabled") {
 		t.Fatalf("expected a non-interactive authentication failure: %v\n%s", err, out)
 	}
@@ -186,6 +190,12 @@ func TestGitHTTPSHelperKeepsAzureRemoteAndUsesNativeTransport(t *testing.T) {
 	t.Setenv("TFSAZ_GIT_CORE", helperDir)
 	if _, out := runHelper(helper); !strings.Contains(out, "points to tfsaz itself") {
 		t.Fatalf("expected recursion guard: %s", out)
+	}
+	copiedCore := t.TempDir()
+	copyTestExecutable(t, binary, filepath.Join(copiedCore, gitHTTPSHelperName()))
+	t.Setenv("TFSAZ_GIT_CORE", copiedCore)
+	if _, out := runHelper(helper); !strings.Contains(out, "points to tfsaz itself") {
+		t.Fatalf("expected copied helper recursion guard: %s", out)
 	}
 	t.Setenv("TFSAZ_GIT_CORE", "relative")
 	if _, out := runHelper(helper); !strings.Contains(out, "must be the absolute path") {

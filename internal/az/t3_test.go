@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -44,6 +43,7 @@ func TestStockT3Adapter(t *testing.T) {
 	firstPage := bytes.ReplaceAll(policies.Value[0], []byte(`"isEnabled": true`), []byte(`"isEnabled": false`))
 	var first, second atomic.Int32
 	var blobBatches, escapedItemReads, extraItemReads atomic.Int32
+	var prUpdates atomic.Int32
 	invoke := newInvokeFixture(t)
 	boards := newT3BoardsFixture(t)
 	const prefix = "/tfs/Fixture Collection"
@@ -67,6 +67,18 @@ func TestStockT3Adapter(t *testing.T) {
 			}
 			fmt.Fprintf(w, `{"value":[{"id":%q,"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid","properties":{"Account":{"$value":"author@example.invalid"}}}]}`, clientTestOtherID)
 		case "/_apis/git/pullrequests/42":
+			io.WriteString(w, pr)
+		case "/" + repoTestProjectID + "/_apis/git/repositories/10101010-1111-4111-8111-101010101010/pullrequests/42":
+			if r.Method != http.MethodPatch || r.Header.Get("Content-Type") != "application/json" || r.URL.Query().Get("api-version") != "7.1" {
+				t.Error("unexpected PR update request")
+			}
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			} else if len(body) != 1 || body["description"] != "@fixture body — Grüße\n第二行" {
+				t.Errorf("unexpected PR update payload: %#v", body)
+			}
+			prUpdates.Add(1)
 			io.WriteString(w, pr)
 		case "/Shared Project/_apis/git/repositories/Tool Kit":
 			var details map[string]any
@@ -131,11 +143,7 @@ func TestStockT3Adapter(t *testing.T) {
 	p.Organization = "https://fixture.visualstudio.com"
 	setConfig(t, p)
 	bin := t.TempDir()
-	exe := "az"
-	if runtime.GOOS == "windows" {
-		exe += ".exe"
-	}
-	exe = filepath.Join(bin, exe)
+	exe := testExecutable(filepath.Join(bin, "az"))
 	build := exec.Command("go", "build", "-o", exe, "../..")
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v: %s", err, output)
@@ -153,39 +161,28 @@ func TestStockT3Adapter(t *testing.T) {
 	}
 	cwd := t.TempDir()
 	gitAt(t, cwd, "init", "-q")
-	gitAt(t, cwd, "remote", "add", "origin", p.Organization+"/DefaultCollection/Shared%20Project/_git/Tool%20Kit")
 	probe := exec.Command(exe, "account", "show", "--query", "user.name", "-o", "tsv")
 	if out, err := probe.Output(); err != nil || string(out) != "author@example.invalid\n" {
 		t.Fatalf("discovery probe: %v, %q", err, out)
 	}
-	web := p.Organization + "/DefaultCollection/Shared%20Project/_git/Tool%20Kit"
-	if runtime.GOOS != "windows" {
-		// A read-only empty repository speaks the Git packet protocol. This
-		// keeps the production Git/SSH helper and stock T3 entry points in the test.
-		if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte("#!/bin/sh\nprintf '0000'\n"), 0700); err != nil {
-			t.Fatal(err)
-		}
-		native := p.CollectionURL + "/Shared%20Project/_git/Tool%20Kit"
-		u, err := url.Parse(native)
-		if err != nil {
-			t.Fatal(err)
-		}
-		gitAt(t, cwd, "remote", "set-url", "origin", u.String())
-		setup := exec.CommandContext(t.Context(), exe, "repo", "setup", cwd, "--managed-ssh")
-		if out, err := setup.CombinedOutput(); err != nil {
-			t.Fatalf("managed setup: %v: %s", err, out)
-		}
-		t.Cleanup(func() {
-			if out, err := exec.Command(exe, "repo", "restore", cwd).CombinedOutput(); err != nil {
-				t.Errorf("restore: %v: %s", err, out)
-			}
-		})
-		records, err := readSetupRecords()
-		if err != nil || len(records) != 1 {
-			t.Fatalf("setup records: count %d, error %v", len(records), err)
-		}
-		web = "https://" + records[0].Host + "/Shared%20Project/_git/Tool%20Kit"
+	// A read-only empty repository speaks the Git packet protocol. This
+	// keeps the production Git/SSH helper and stock T3 entry points in the test.
+	setupTestSSH(t, bin, "#!/bin/sh\nprintf '0000'\n")
+	gitAt(t, cwd, "remote", "add", "origin", p.CollectionURL+"/Shared%20Project/_git/Tool%20Kit")
+	setup := exec.CommandContext(t.Context(), exe, "repo", "setup", cwd, "--managed-ssh")
+	if out, err := setup.CombinedOutput(); err != nil {
+		t.Fatalf("managed setup: %v: %s", err, out)
 	}
+	t.Cleanup(func() {
+		if out, err := exec.Command(exe, "repo", "restore", cwd).CombinedOutput(); err != nil {
+			t.Errorf("restore: %v: %s", err, out)
+		}
+	})
+	records, err := readSetupRecords()
+	if err != nil || len(records) != 1 {
+		t.Fatalf("setup records: count %d, error %v", len(records), err)
+	}
+	web := "https://" + records[0].Host + "/Shared%20Project/_git/Tool%20Kit"
 	run := exec.CommandContext(t.Context(), "node", "--experimental-import-meta-resolve", "testdata/t3-adapter.mjs", root, cwd, web, t.TempDir(), p.Organization)
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("T3 adapter: %v: %s", err, out)
@@ -200,6 +197,9 @@ func TestStockT3Adapter(t *testing.T) {
 	if got := boards.batchReads.Load(); got != 2 {
 		t.Errorf("want batches for both search pages and none for an empty result, got %d", got)
 	}
+	if prUpdates.Load() != 1 || boards.commentWrites.Load() != 1 {
+		t.Errorf("want one PR update and one work-item comment, got %d and %d", prUpdates.Load(), boards.commentWrites.Load())
+	}
 }
 
 const (
@@ -208,8 +208,9 @@ const (
 )
 
 type t3BoardsFixture struct {
-	responses  map[string]json.RawMessage
-	batchReads atomic.Int32
+	responses     map[string]json.RawMessage
+	batchReads    atomic.Int32
+	commentWrites atomic.Int32
 }
 
 func newT3BoardsFixture(t *testing.T) *t3BoardsFixture {
@@ -260,6 +261,12 @@ func (f *t3BoardsFixture) serve(t *testing.T, w http.ResponseWriter, r *http.Req
 	method := http.MethodGet
 	var answer any
 	switch path {
+	case "/_apis":
+		method = http.MethodOptions
+		if query.Get("allHostTypes") != "true" {
+			t.Error("catalog request did not select all host types")
+		}
+		answer = json.RawMessage(`{"value":[{"area":"wit","resourceName":"comments","routeTemplate":"{project}/_apis/wit/workItems/{workItemId}/comments","minVersion":"1.0","maxVersion":"7.1","releasedVersion":"7.0","resourceVersion":4}]}`)
 	case projectWIT + "workitemtypes":
 		answer = f.responses["types"]
 	case projectWIT + "wiql":
@@ -329,6 +336,21 @@ func (f *t3BoardsFixture) serve(t *testing.T, w http.ResponseWriter, r *http.Req
 		}
 		answer = f.workItem(t, r, collection, 7, true)
 	case projectWIT + "workItems/7/comments", projectWIT + "workitems/7/comments":
+		if r.Method == http.MethodPost {
+			method = http.MethodPost
+			if query.Get("format") != "markdown" || query.Get("api-version") != "7.1-preview.4" {
+				t.Errorf("unexpected comment write query parameters %v", query)
+			}
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			} else if len(body) != 1 || body["text"] != "@fixture comment — café\n再現手順" {
+				t.Errorf("unexpected comment payload: %#v", body)
+			}
+			f.commentWrites.Add(1)
+			answer = map[string]int{"id": 12}
+			break
+		}
 		if !slices.Equal(query["api-version"], []string{"7.1-preview.4"}) ||
 			query.Get("$top") != "100" || query.Get("order") != "desc" || query.Get("$expand") != "reactions" {
 			t.Errorf("unexpected comments query parameters %v", query)

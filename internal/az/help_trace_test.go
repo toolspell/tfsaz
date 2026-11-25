@@ -38,12 +38,24 @@ func TestOfflineCommandHelp(t *testing.T) {
 	for topic := range nativeCommands {
 		check(topic)
 	}
-	out.Reset()
-	if err := a.run(t.Context(), strings.Fields("repo setup ./checkout -h")); err != nil ||
-		!strings.Contains(out.String(), "--preserve-transport") {
-		t.Fatalf("native help after positional argument: output = %q, err = %v", out.String(), err)
+	for _, invocation := range []struct{ args, want string }{
+		{"repo setup ./checkout -h", "--ssh-url URL"},
+		{"doctor ./checkout --help", "doctor [PATH] [--json]"},
+		{"account show -h", "--query user.name -o tsv"},
+		{"account show -h", "--query user -o json --organization"},
+		{"repos pr list --help", "--include-links\n"},
+		{"repos pr create --help", "--draft true|false"},
+		{"boards work-item update --help", "--fields KEY=VALUE [KEY=VALUE ...]"},
+		{"devops invoke --area build --help", "--output, -o json|tsv|table|none"},
+		{"rest -h", "--url, --uri, -u URL"},
+	} {
+		out.Reset()
+		if err := a.run(t.Context(), strings.Fields(invocation.args)); err != nil ||
+			!strings.Contains(out.String(), invocation.want) {
+			t.Errorf("%s: stdout = %q, want %q, err = %v", invocation.args, out.String(), invocation.want, err)
+		}
 	}
-	for _, args := range []string{"route run -- git --help", "route run -- git -h", "repo setup -- --help"} {
+	for _, args := range []string{"route run -- git --help", "route run -- git -h", "repo setup -- --help", "profile list unexpected --help", "route verify-node unexpected --help"} {
 		if topic, ok := helpTopic(strings.Fields(args)); ok {
 			t.Errorf("%q intercepted by tfsaz help for %q", args, topic)
 		}

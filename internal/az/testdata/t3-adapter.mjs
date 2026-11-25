@@ -58,6 +58,8 @@ const program = Effect.gen(function* () {
   });
   assert.equal(contents.oldContents, "original line\n");
   assert.equal(contents.newContents, "updated line\n");
+  // A leading @ makes the stock adapter send the text through stdin.
+  yield* pullCli.updatePullRequest({ ...pr, body: "@fixture body — Grüße\n第二行" });
 });
 const support = Layer.mergeAll(NodeServices.layer, host.layerWithRealGit());
 const deps = pulls.layer.pipe(Layer.provideMerge(az.layer), Layer.provide(support));
@@ -121,5 +123,7 @@ const boardsProgram = Effect.gen(function* () {
     ["reviewer@example.invalid", "Fixture Reviewer"],
   ]);
   assert.equal(candidates.truncated, true);
+  // Stock T3 stages the comment as JSON in a temporary request file.
+  yield* tracker.comment({ ...target, body: "@fixture comment — café\n再現手順" });
 });
 await Effect.runPromise(boardsProgram.pipe(Effect.provide(az.layer.pipe(Layer.provideMerge(support)))));

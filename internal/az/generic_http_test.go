@@ -100,6 +100,9 @@ func TestGenericRequestOutputFile(t *testing.T) {
 		{"raced", "raced", "already exists"},
 		{"truncated", "", "could not write"},
 		{"no-content", "", ""},
+		{"head", "", ""},
+		{"invoke-head", "", ""},
+		{"invoke-no-content", "", ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -119,7 +122,7 @@ func TestGenericRequestOutputFile(t *testing.T) {
 					}
 				case "truncated":
 					w.Header().Set("Content-Length", "1024")
-				case "no-content":
+				case "no-content", "invoke-no-content":
 					w.WriteHeader(http.StatusNoContent)
 					return
 				}
@@ -128,14 +131,18 @@ func TestGenericRequestOutputFile(t *testing.T) {
 			})
 			request := genericRequest{outFile: out, accept: "application/octet-stream"}
 			var stdout bytes.Buffer
-			err := request.run(t.Context(), client, []string{"_apis", "fixture"}, nil, &stdout, false)
+			if strings.HasSuffix(test.name, "head") {
+				request.method = http.MethodHead
+			}
+			err := request.run(t.Context(), client, []string{"_apis", "fixture"}, nil, &stdout, strings.HasPrefix(test.name, "invoke-"))
 			if test.wantError == "" && err != nil || test.wantError != "" && (err == nil || !strings.Contains(err.Error(), test.wantError)) {
 				t.Fatalf("error %v, want %q", err, test.wantError)
 			}
 			if stdout.Len() != 0 {
 				t.Error("wrote to stdout with --out-file")
 			}
-			if test.want != "" {
+			wantFile := test.wantError == "" && test.name != "invoke-no-content" || test.want != ""
+			if wantFile {
 				data, err := os.ReadFile(out)
 				if err != nil || string(data) != test.want {
 					t.Errorf("output file %q, error %v, want %q", data, err, test.want)
@@ -145,7 +152,7 @@ func TestGenericRequestOutputFile(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if test.want == "" && len(entries) != 0 || test.want != "" && (len(entries) != 1 || entries[0].Name() != "result.bin") {
+			if !wantFile && len(entries) != 0 || wantFile && (len(entries) != 1 || entries[0].Name() != "result.bin") {
 				t.Errorf("unexpected output directory entries %v", entries)
 			}
 		})

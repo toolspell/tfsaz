@@ -66,11 +66,11 @@ func (a app) runShim(args []string) error {
 	if err := installShimLinks(dir, executable); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(a.stdout, "Installed CLI and Git helper links in %s. Include this directory on the calling process's PATH.\n", dir)
+	_, err = fmt.Fprintf(a.stdout, "Installed CLI and Git helper launchers in %s. Include this directory on the calling process's PATH.\n", dir)
 	return err
 }
 
-func installShimLinks(dir, executable string) error {
+func installShimLinks(dir, executable string) (err error) {
 	var missing []string
 	for _, name := range []string{"az", "git-remote-tfsaz"} {
 		if runtime.GOOS == "windows" {
@@ -90,15 +90,26 @@ func installShimLinks(dir, executable string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	for i, path := range missing {
-		if err := os.Symlink(executable, path); err != nil {
-			for _, created := range missing[:i] {
-				if target, readErr := os.Readlink(created); readErr == nil && target == executable {
-					err = errors.Join(err, os.Remove(created))
-				}
-			}
-			return fmt.Errorf("create tfsaz link (on Windows enable symbolic links or install executable copies): %w", err)
+	created := make(map[string]os.FileInfo, len(missing))
+	defer func() {
+		if err == nil {
+			return
 		}
+		for name, info := range created {
+			if current, statErr := os.Lstat(name); statErr == nil && os.SameFile(current, info) && sameBinary(name, executable) {
+				err = errors.Join(err, os.Remove(name))
+			}
+		}
+	}()
+	for _, path := range missing {
+		if err := installShim(executable, path); err != nil {
+			return fmt.Errorf("install tfsaz launcher: %w", err)
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		created[path] = info
 	}
 	return nil
 }

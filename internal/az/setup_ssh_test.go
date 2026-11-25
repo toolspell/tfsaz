@@ -125,16 +125,13 @@ func TestSetupSSHCheckDiagnostics(t *testing.T) {
 }
 
 func TestSetupSSHGitLSRemote(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake ssh executable uses a POSIX shell script")
-	}
 	git, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("Git is unavailable")
 	}
 	record := sshTestRecord(t)
 	dir := t.TempDir()
-	bin := filepath.Join(dir, "tfsaz with ' spaces!")
+	bin := testExecutable(filepath.Join(dir, "tfsaz with ' spaces!"))
 	build := exec.Command("go", "build", "-o", bin, "../..")
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build tfsaz: %v\n%s", err, output)
@@ -150,15 +147,13 @@ func TestSetupSSHGitLSRemote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command = setupSSHQuote(bin) + strings.TrimPrefix(command, setupSSHQuote(exe))
+	command = strings.Replace(command, setupSSHQuote(filepath.ToSlash(exe)), setupSSHQuote(filepath.ToSlash(bin)), 1)
 
 	script := `#!/bin/sh
 printf '%s\n' "$GIT_PROTOCOL" "$@" > "$TFSAZ_TEST_TRACE"
 printf '0000'
 `
-	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
+	writeShellFixture(t, filepath.Join(dir, "ssh"), script)
 	trace := filepath.Join(dir, "trace")
 	var envs []string
 	for _, env := range os.Environ() {
@@ -170,6 +165,9 @@ printf '0000'
 	envs = append(envs, "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "TFSAZ_TEST_TRACE="+trace,
 		"TFSAZ_CONFIG="+filepath.Join(dir, "unavailable.json"))
+	if runtime.GOOS == "windows" {
+		envs = append(envs, "GIT_EXEC_PATH="+dir)
+	}
 	lsRemote := func(remote string) ([]byte, error) {
 		cmd := exec.Command(git, "-c", "protocol.version=2", "-c", "core.sshCommand="+command, "ls-remote", remote)
 		cmd.Dir, cmd.Env = dir, envs

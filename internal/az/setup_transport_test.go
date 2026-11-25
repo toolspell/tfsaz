@@ -3,8 +3,10 @@ package az
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,29 +15,24 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func preserveTestRepo(t *testing.T) (managerTestCLI, setupCheckout, string, string) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("transport fixtures use POSIX shell scripts")
-	}
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git unavailable")
 	}
 	root := t.TempDir()
-	bin := filepath.Join(root, "tfsaz")
+	bin := testExecutable(filepath.Join(root, "tfsaz"))
 	if output, err := exec.Command("go", "build", "-o", bin, "../..").CombinedOutput(); err != nil {
 		t.Fatalf("build tfsaz: %v\n%s", err, output)
 	}
-	if err := os.Symlink(bin, filepath.Join(root, "git-remote-tfsaz")); err != nil {
-		t.Fatal(err)
-	}
+	copyTestExecutable(t, bin, testExecutable(filepath.Join(root, "git-remote-tfsaz")))
 	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(root, "global.gitconfig"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
@@ -78,8 +75,7 @@ func TestRepoPreserveSSHFetchPushAndRestore(t *testing.T) {
 	trace := filepath.Join(root, "ssh.trace")
 	t.Setenv("TFSAZ_TEST_SSH_TRACE", trace)
 	t.Setenv("TFSAZ_TEST_REPO", server)
-	ssh := filepath.Join(root, "custom ssh")
-	if err := os.WriteFile(ssh, []byte(`#!/bin/sh
+	ssh := writeShellFixture(t, filepath.Join(root, "custom ssh"), `#!/bin/sh
 if [ "$1" != --record ]; then exit 90; fi
 shift
 if [ "$1" = "-G" ]; then
@@ -107,10 +103,8 @@ case "$4" in
     "git-receive-pack '/Collection Space/Project Space/_git/Repository'") exec git receive-pack "$TFSAZ_TEST_REPO" ;;
     *) exit 93 ;;
 esac
-`), 0700); err != nil {
-		t.Fatal(err)
-	}
-	sshCommand := setupSSHQuote(ssh) + " --record"
+`)
+	sshCommand := setupSSHQuote(filepath.ToSlash(ssh)) + " --record"
 	managerTestGit(t, c.repo, "config", "--local", "core.sshCommand", sshCommand)
 	managerTestGit(t, c.repo, "config", "--local", "ssh.variant", "ssh")
 	linked := filepath.Join(root, "linked")
@@ -206,14 +200,11 @@ func TestRepoPreserveDefaultRequiresHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(git, filepath.Join(root, "git")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(filepath.Join(root, "git-remote-tfsaz")); err != nil {
+	if err := os.Remove(testExecutable(filepath.Join(root, "git-remote-tfsaz"))); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("GIT_EXEC_PATH", root)
-	t.Setenv("PATH", root)
+	t.Setenv("PATH", filepath.Dir(git))
 	if err := a.runRepo(t.Context(), []string{"setup"}); err == nil || !strings.Contains(err.Error(), "tfsaz shim install --dir DIR") {
 		t.Fatalf("default setup without helper returned %v", err)
 	}
@@ -255,18 +246,15 @@ func TestRepoPreserveHTTPSFetchPushAndRestore(t *testing.T) {
 	origin := server.URL + strings.ReplaceAll(path, " ", "%20")
 	managerTestGit(t, c.repo, "remote", "add", "origin", origin)
 	managerTestGit(t, c.repo, "config", "http.sslCAInfo", cert)
-	credentials := filepath.Join(root, "credentials")
 	credentialTrace := filepath.Join(root, "credential.trace")
 	t.Setenv("TFSAZ_TEST_CREDENTIAL_TRACE", credentialTrace)
-	if err := os.WriteFile(credentials, []byte(`#!/bin/sh
+	credentials := writeShellFixture(t, filepath.Join(root, "credentials"), `#!/bin/sh
 if [ "$1" = "get" ]; then
     cat >> "$TFSAZ_TEST_CREDENTIAL_TRACE"
     printf 'username=%s\npassword=%s\n' '`+username+`' '`+password+`'
 fi
-`), 0700); err != nil {
-		t.Fatal(err)
-	}
-	managerTestGit(t, c.repo, "config", "credential.helper", credentials)
+`)
+	managerTestGit(t, c.repo, "config", "credential.helper", "!"+setupSSHQuote(filepath.ToSlash(credentials)))
 	managerTestGit(t, c.repo, "config", "credential.useHttpPath", "true")
 
 	managerTestRun(t, a, "setup")
@@ -344,5 +332,14 @@ func runPreserveTestHTTPBackend(t *testing.T, w http.ResponseWriter, r *http.Req
 	w.WriteHeader(status)
 	if _, err := io.Copy(w, reader); err != nil {
 		t.Error(fmt.Errorf("write fixture repository reply: %w", err))
+	}
+}
+
+func TestPreserveHelperProbeDeadline(t *testing.T) {
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancel()
+	err := checkPreserveHelper(ctx, setupCheckout{repo: t.TempDir()})
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("expired helper probe returned %v", err)
 	}
 }

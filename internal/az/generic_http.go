@@ -71,11 +71,16 @@ func (r genericRequest) run(ctx context.Context, c *Client, path []string, query
 			}
 		}()
 	}
+	if staged != nil {
+		// az rest creates the requested file even for HEAD and 204. The
+		// DevOps extension only saves responses that declare a content type.
+		if invoke && resp.Header.Get("Content-Type") == "" {
+			return nil
+		}
+		return publishGenericOutput(staged, r.outFile, resp.Body)
+	}
 	if r.method == http.MethodHead || resp.StatusCode == http.StatusNoContent {
 		return nil
-	}
-	if staged != nil {
-		return publishGenericOutput(staged, r.outFile, resp.Body)
 	}
 
 	if r.discard {

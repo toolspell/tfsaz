@@ -75,6 +75,15 @@ func (a app) runRoute(ctx context.Context, args []string) error {
 	if !hosts && !proxy && (len(args) != 2 || (args[0] != "resolve" && args[0] != "explain" && args[0] != "browser-export" && args[0] != "browser-verify")) {
 		return usageError{errors.New("expected a route subcommand; see tfsaz route --help")}
 	}
+	var port int
+	var shared bool
+	var err error
+	if proxy {
+		port, shared, err = parseProxyOptions(args[1:])
+		if err != nil {
+			return err
+		}
+	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
@@ -84,10 +93,6 @@ func (a app) runRoute(ctx context.Context, args []string) error {
 		return err
 	}
 	if proxy {
-		port, shared, err := parseProxyOptions(args[1:])
-		if err != nil {
-			return err
-		}
 		names, err := routeHostnames(cfg, records, shared)
 		if err != nil {
 			return err
@@ -157,35 +162,12 @@ func (a app) runWithHTTPSGit(ctx context.Context, args []string) error {
 	shim := filepath.Join(overlay, helper)
 	if err := os.Link(binary, shim); err != nil {
 		// Hard links can cross neither volumes nor filesystem boundaries.
-		src, err := os.Open(binary)
-		if err != nil {
-			return err
-		}
-		defer src.Close()
-		dst, err := os.OpenFile(shim, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
-		if err != nil {
-			return err
-		}
-		_, writeErr := io.Copy(dst, src)
-		if err := errors.Join(writeErr, dst.Close()); err != nil {
+		if err := copyGitSupportFile(binary, shim); err != nil {
 			return err
 		}
 	}
-	// Git shell tools also source files relative to git --exec-path. Preserve
-	// the vendor tree on systems with ordinary unprivileged symlinks.
-	if runtime.GOOS != "windows" {
-		entries, err := os.ReadDir(core)
-		if err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			if entry.Name() == helper {
-				continue
-			}
-			if err := os.Symlink(filepath.Join(core, entry.Name()), filepath.Join(overlay, entry.Name())); err != nil {
-				return err
-			}
-		}
+	if err := populateGitExecPath(core, overlay, helper); err != nil {
+		return err
 	}
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = a.cwd
@@ -196,4 +178,55 @@ func (a app) runWithHTTPSGit(ctx context.Context, args []string) error {
 		cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never")
 	}
 	return cmd.Run()
+}
+
+// Git scripts source libraries relative to git --exec-path. PATH alone cannot
+// supply them. Keep Windows binaries with their DLLs in the original directory.
+func populateGitExecPath(core, overlay, helper string) error {
+	entries, err := os.ReadDir(core)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == helper {
+			continue
+		}
+		from, to := filepath.Join(core, name), filepath.Join(overlay, name)
+		if runtime.GOOS != "windows" {
+			if err := os.Symlink(from, to); err != nil {
+				return err
+			}
+			continue
+		}
+		// A non-admin installation can copy the small scripts and data
+		// directories even when symbolic links are unavailable.
+		switch strings.ToLower(filepath.Ext(name)) {
+		case ".exe", ".dll":
+			continue
+		}
+		if entry.IsDir() {
+			err = os.CopyFS(to, os.DirFS(from))
+		} else {
+			err = copyGitSupportFile(from, to)
+		}
+		if err != nil {
+			return fmt.Errorf("prepare Git support file %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func copyGitSupportFile(from, to string) error {
+	src, err := os.Open(from)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	dst, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(dst, src)
+	return errors.Join(err, dst.Close())
 }

@@ -36,13 +36,7 @@ func TestDoctorChecksOnlyCheckoutCredential(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := "az"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	if err := os.Link(exe, filepath.Join(bin, name)); err != nil {
-		t.Skipf("test requires executable link: %v", err)
-	}
+	copyTestExecutable(t, exe, testExecutable(filepath.Join(bin, "az")))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	gitAt(t, dir, "init", "--quiet")
 	gitAt(t, dir, "remote", "add", "origin", second.Organization+"/Example/_git/Repo")

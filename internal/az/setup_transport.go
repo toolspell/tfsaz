@@ -71,6 +71,12 @@ func checkPreserveHelper(ctx context.Context, c setupCheckout) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	output, err := c.git(ctx, "remote-tfsaz", "--version")
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("Git transport helper version check timed out: %w", ctx.Err())
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if err != nil || strings.TrimSpace(string(output)) != preserveHelperVersion {
 		return errors.New("Git could not find git-remote-tfsaz; run tfsaz shim install --dir DIR and put DIR on Git's PATH")
 	}

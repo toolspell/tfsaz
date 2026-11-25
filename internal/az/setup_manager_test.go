@@ -49,14 +49,11 @@ func (a managerTestCLI) runRepo(ctx context.Context, args []string) error {
 
 func managerTestRepo(t *testing.T) (managerTestCLI, *bytes.Buffer, setupCheckout) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("SSH fixture uses a POSIX shell script")
-	}
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git unavailable")
 	}
 	root := t.TempDir()
-	bin := filepath.Join(root, "tfsaz")
+	bin := testExecutable(filepath.Join(root, "tfsaz"))
 	if output, err := exec.Command("go", "build", "-o", bin, "../..").CombinedOutput(); err != nil {
 		t.Fatalf("build tfsaz: %v\n%s", err, output)
 	}
@@ -77,7 +74,7 @@ if [ -n "$TFSAZ_TEST_GIT_WRITE" ]; then
     git config --local tfsaz.writtenduringprobe yes || exit 93
 fi
 if [ -n "$TFSAZ_TEST_PUBLIC_KEY" ]; then
-    if ! ssh-add -T "$TFSAZ_TEST_PUBLIC_KEY" 2>/dev/null; then
+    if ! "$TFSAZ_TEST_SSH_ADD" -T "$TFSAZ_TEST_PUBLIC_KEY" 2>/dev/null; then
         printf '%s\n' 'fixture-private-detail: Permission denied (publickey).' >&2
         exit 255
     fi
@@ -88,9 +85,7 @@ if [ -n "$TFSAZ_TEST_SSH_FAILURE" ]; then
 fi
 printf '0000'
 `
-	if err := os.WriteFile(filepath.Join(root, "ssh"), []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
+	setupTestSSH(t, root, script)
 	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("TFSAZ_TEST_SSH_TRACE", filepath.Join(root, "ssh.trace"))
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(root, "global.gitconfig"))
@@ -264,34 +259,63 @@ func TestRepoSetupResolvesCheckoutWithSeparateGitDirectory(t *testing.T) {
 }
 
 func TestRepoSetupSSHKeyCheckAndOfflineRestore(t *testing.T) {
+	var toolsDir string
+	if runtime.GOOS == "windows" {
+		if _, err := exec.LookPath("git"); err != nil {
+			t.Skip("git unavailable")
+		}
+		// Use the Git for Windows tools together. Windows OpenSSH uses the
+		// system agent service, while Git's agent creates a disposable socket.
+		toolsDir = testWindowsGitTools(t)
+	}
+	tools := make(map[string]string)
 	for _, name := range []string{"ssh-agent", "ssh-add", "ssh-keygen"} {
-		if _, err := exec.LookPath(name); err != nil {
+		path := name
+		if toolsDir != "" {
+			path = testExecutable(filepath.Join(toolsDir, name))
+		}
+		executable, err := exec.LookPath(path)
+		if err != nil {
 			t.Skipf("%s unavailable", name)
 		}
+		tools[name] = executable
 	}
 	a, _, c := managerTestRepo(t)
 	key := filepath.Join(filepath.Dir(c.repo), "fixture-key")
-	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key).CombinedOutput(); err != nil {
+	if out, err := exec.Command(tools["ssh-keygen"], "-q", "-t", "ed25519", "-N", "", "-f", key).CombinedOutput(); err != nil {
 		t.Fatalf("generate fixture key: %v\n%s", err, out)
 	}
-	agentDir, err := os.MkdirTemp("/tmp", "tfsaz-agent-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(agentDir)
-	socket := filepath.Join(agentDir, "sock")
-	if out, err := exec.Command("ssh-agent", "-s", "-a", socket).CombinedOutput(); err != nil {
-		t.Fatalf("start fixture agent: %v\n%s", err, out)
-	} else {
-		_, tail, _ := strings.Cut(string(out), "SSH_AGENT_PID=")
-		pid, _, _ := strings.Cut(tail, ";")
-		if pid == "" {
-			t.Fatalf("fixture agent did not report its PID: %s", out)
+	agentArgs := []string{"-s"}
+	if runtime.GOOS != "windows" {
+		agentDir, err := os.MkdirTemp("/tmp", "tfsaz-agent-")
+		if err != nil {
+			t.Fatal(err)
 		}
-		t.Setenv("SSH_AGENT_PID", pid)
-		defer exec.Command("ssh-agent", "-k").Run()
+		defer os.RemoveAll(agentDir)
+		agentArgs = append(agentArgs, "-a", filepath.Join(agentDir, "sock"))
+	}
+	out, err := exec.Command(tools["ssh-agent"], agentArgs...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("start fixture agent: %v\n%s", err, out)
+	}
+	_, tail, _ := strings.Cut(string(out), "SSH_AGENT_PID=")
+	pid, _, _ := strings.Cut(tail, ";")
+	if pid == "" {
+		t.Fatalf("fixture agent did not report its PID: %s", out)
+	}
+	t.Setenv("SSH_AGENT_PID", pid)
+	defer func() {
+		if out, err := exec.Command(tools["ssh-agent"], "-k").CombinedOutput(); err != nil {
+			t.Errorf("stop fixture agent: %v\n%s", err, out)
+		}
+	}()
+	_, tail, _ = strings.Cut(string(out), "SSH_AUTH_SOCK=")
+	socket, _, _ := strings.Cut(tail, ";")
+	if socket == "" {
+		t.Fatalf("fixture agent did not report its socket: %s", out)
 	}
 	t.Setenv("SSH_AUTH_SOCK", socket)
+	t.Setenv("TFSAZ_TEST_SSH_ADD", tools["ssh-add"])
 	t.Setenv("TFSAZ_TEST_PUBLIC_KEY", key+".pub")
 	configPath := filepath.Join(c.gitDir, "config")
 	before, err := os.ReadFile(configPath)
@@ -325,7 +349,7 @@ func TestRepoSetupSSHKeyCheckAndOfflineRestore(t *testing.T) {
 	if records := managerTestRecords(t); len(records) != 0 {
 		t.Fatalf("failed setup left registry records: %+v", records)
 	}
-	if out, err := exec.Command("ssh-add", key).CombinedOutput(); err != nil {
+	if out, err := exec.Command(tools["ssh-add"], key).CombinedOutput(); err != nil {
 		t.Fatalf("load fixture key: %v\n%s", err, out)
 	}
 	managerTestRun(t, a, "setup", "--managed-ssh")

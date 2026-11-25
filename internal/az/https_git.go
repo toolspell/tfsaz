@@ -41,11 +41,8 @@ func RunHTTPSGitHelper(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("identify the running Git HTTPS helper: %w", err)
 	}
-	self, err := os.Stat(executable)
-	if err != nil {
-		return fmt.Errorf("identify the running Git HTTPS helper: %w", err)
-	}
-	if os.SameFile(info, self) {
+	// The route launcher can install a copy when it crosses volumes.
+	if sameBinary(helper, executable) {
 		return errors.New("TFSAZ_GIT_CORE points to tfsaz itself; specify Git's original exec directory")
 	}
 	destination, err := gitHTTPSDestination(args[1])

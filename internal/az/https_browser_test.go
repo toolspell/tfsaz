@@ -71,6 +71,12 @@ func TestWriteHTTPSBrowserExtension(t *testing.T) {
 	if err := writeHTTPSBrowserExtension(dir, cfg, records); err == nil {
 		t.Fatal("export accepted an existing destination")
 	}
+	if err := verifyHTTPSBrowserExtension(dir, cfg, records); err != nil {
+		t.Fatalf("verify current export: %v", err)
+	}
+	if err := verifyHTTPSBrowserExtension(dir, cfg, nil); err == nil {
+		t.Fatal("verification accepted an export with retired repository routes")
+	}
 	var after []browserRule
 	readBrowserFixtureJSON(t, filepath.Join(dir, browserRulesFile), &after)
 	if len(after) != len(rules) {
