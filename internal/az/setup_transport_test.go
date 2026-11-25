@@ -287,7 +287,10 @@ fi
 
 	t.Setenv("TFSAZ_CONFIG", "not-an-absolute-path")
 	managerTestGit(t, c.repo, "fetch", "origin")
-	managerTestGit(t, c.repo, "push", "origin", "HEAD:refs/heads/routed")
+	linked := filepath.Join(root, "worktree after setup")
+	managerTestGit(t, c.repo, "worktree", "add", "--detach", linked, "HEAD")
+	managerTestGit(t, linked, "fetch", "origin")
+	managerTestGit(t, linked, "push", "origin", "HEAD:refs/heads/routed")
 	managerTestGit(t, repo, "show-ref", "--verify", "refs/heads/routed")
 	credentialsUsed, err := os.ReadFile(credentialTrace)
 	if err != nil || !bytes.Contains(credentialsUsed, []byte("host="+strings.TrimPrefix(server.URL, "https://"))) ||
@@ -302,7 +305,7 @@ fi
 	}
 	t.Setenv("TFSAZ_CONFIG", cfgPath)
 	server.Close()
-	managerTestRun(t, a, "restore")
+	managerTestRun(t, a, "restore", linked)
 	managerTestState(t, c, setupGitState{url: origin})
 }
 

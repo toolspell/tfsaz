@@ -176,6 +176,93 @@ func TestRepoSetupRoundTripSharedWorktrees(t *testing.T) {
 	}
 }
 
+func TestRepoSetupResolvesSurvivingCheckout(t *testing.T) {
+	a, out, c := managerTestRepo(t)
+	managerTestGit(t, c.repo, "-c", "user.name=Tester", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "Initial")
+	linked := filepath.Join(filepath.Dir(c.repo), "temporary worktree")
+	managerTestGit(t, c.repo, "worktree", "add", "-b", "linked", linked)
+	managerTestRun(t, a, "setup", "--managed-ssh", linked)
+	r := managerTestRecords(t)[0]
+	// Leave the registration behind so Git can list a reused path.
+	if err := os.RemoveAll(linked); err != nil {
+		t.Fatal(err)
+	}
+	managerTestRun(t, a, "verify")
+	if err := os.Mkdir(linked, 0700); err != nil {
+		t.Fatal(err)
+	}
+	managerTestRun(t, a, "verify")
+	managerTestGit(t, filepath.Dir(linked), "init", linked)
+
+	out.Reset()
+	managerTestRun(t, a, "verify")
+	if got := out.String(); got != fmt.Sprintf("verified %s\n", c.repo) {
+		t.Fatalf("verify output = %q", got)
+	}
+	out.Reset()
+	managerTestRun(t, a, "list")
+	if got := out.String(); !strings.Contains(got, "\t"+c.repo+"\t") {
+		t.Fatalf("list output = %q", got)
+	}
+	if err := a.runRepo(t.Context(), []string{"verify", linked}); err == nil || !strings.Contains(err.Error(), "no setup recorded") {
+		t.Fatalf("verifying unrelated replacement: %v", err)
+	}
+	if got := managerTestRecords(t)[0]; got != r {
+		t.Fatalf("registry record changed: %+v", got)
+	}
+}
+
+func TestRepoSetupResolvesMovedWorktreeWithBarePrimary(t *testing.T) {
+	a, out, c := managerTestRepo(t)
+	managerTestGit(t, c.repo, "-c", "user.name=Tester", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "Initial")
+	root := filepath.Dir(c.repo)
+	bare := filepath.Join(root, "common.git")
+	managerTestGit(t, root, "clone", "--bare", c.repo, bare)
+	managerTestGit(t, bare, "remote", "set-url", "origin", managerTestOrigin)
+	linked := filepath.Join(root, "temporary worktree")
+	moved := filepath.Join(root, "moved worktree")
+	managerTestGit(t, bare, "worktree", "add", "-b", "linked", linked)
+	managerTestRun(t, a, "setup", "--managed-ssh", linked)
+	managerTestGit(t, bare, "worktree", "move", linked, moved)
+	resolved, err := filepath.EvalSymlinks(moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	managerTestRun(t, a, "verify")
+	if got := out.String(); got != fmt.Sprintf("verified %s\n", resolved) {
+		t.Fatalf("verify output = %q", got)
+	}
+	out.Reset()
+	managerTestRun(t, a, "list")
+	if got := out.String(); !strings.Contains(got, "\t"+resolved+"\t") {
+		t.Fatalf("list output = %q", got)
+	}
+	managerTestRun(t, a, "restore", moved)
+}
+
+func TestRepoSetupResolvesCheckoutWithSeparateGitDirectory(t *testing.T) {
+	a, out, c := managerTestRepo(t)
+	root := filepath.Dir(c.repo)
+	primary := filepath.Join(root, "separate checkout")
+	common := filepath.Join(root, "separate metadata")
+	managerTestGit(t, root, "init", "--separate-git-dir", common, primary)
+	managerTestGit(t, primary, "remote", "add", "origin", managerTestOrigin)
+	managerTestGit(t, primary, "-c", "user.name=Tester", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "Initial")
+	linked := filepath.Join(root, "temporary worktree")
+	surviving := filepath.Join(root, "surviving worktree")
+	managerTestGit(t, primary, "worktree", "add", "-b", "linked", linked)
+	managerTestGit(t, primary, "worktree", "add", "-b", "surviving", surviving)
+	managerTestRun(t, a, "setup", "--managed-ssh", linked)
+	managerTestGit(t, primary, "worktree", "remove", linked)
+
+	out.Reset()
+	managerTestRun(t, a, "verify")
+	if got := out.String(); got != fmt.Sprintf("verified %s\n", surviving) {
+		t.Fatalf("verify output = %q", got)
+	}
+}
+
 func TestRepoSetupSSHKeyCheckAndOfflineRestore(t *testing.T) {
 	for _, name := range []string{"ssh-agent", "ssh-add", "ssh-keygen"} {
 		if _, err := exec.LookPath(name); err != nil {

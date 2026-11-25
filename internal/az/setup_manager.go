@@ -240,27 +240,57 @@ func (c setupCheckout) gitCommand(ctx context.Context, args ...string) *exec.Cmd
 	return cmd
 }
 
+func (c setupCheckout) gitPath(ctx context.Context, flag string) (string, error) {
+	out, err := c.git(ctx, "rev-parse", "--path-format=absolute", flag)
+	if err != nil {
+		return "", err
+	}
+	path := strings.TrimSuffix(strings.TrimSuffix(string(out), "\n"), "\r")
+	return filepath.EvalSymlinks(path)
+}
+
 func findSetupCheckout(ctx context.Context, path string) (setupCheckout, error) {
 	c := setupCheckout{repo: path}
 	for _, target := range []struct {
 		flag string
 		dest *string
 	}{{"--show-toplevel", &c.repo}, {"--git-common-dir", &c.gitDir}} {
-		out, err := c.git(ctx, "rev-parse", "--path-format=absolute", target.flag)
+		resolved, err := c.gitPath(ctx, target.flag)
 		if errors.Is(err, exec.ErrNotFound) {
 			return setupCheckout{}, errors.New("Git executable not found; install Git and ensure git is on PATH")
 		}
 		if err != nil {
 			return setupCheckout{}, fmt.Errorf("find Git checkout at %q: %w", path, err)
 		}
-		p := strings.TrimSuffix(strings.TrimSuffix(string(out), "\n"), "\r")
-		resolved, err := filepath.EvalSymlinks(p)
-		if err != nil {
-			return setupCheckout{}, err
-		}
 		*target.dest = resolved
 	}
 	return c, nil
+}
+
+func resolveSetupCheckout(ctx context.Context, r setupRecord) (setupCheckout, error) {
+	c, err := findSetupCheckout(ctx, r.Repo)
+	if err == nil {
+		if sameSetupPath(c.gitDir, r.GitDir) {
+			return c, nil
+		}
+		err = errors.New("checkout Git directory has changed")
+	}
+
+	common := setupCheckout{repo: r.GitDir, gitDir: r.GitDir}
+	worktrees, listErr := common.listWorktrees(ctx, "--git-dir="+r.GitDir)
+	if listErr != nil {
+		return setupCheckout{}, errors.Join(err, listErr)
+	}
+	for _, worktree := range worktrees {
+		if worktree.bare {
+			continue
+		}
+		c, checkoutErr := findSetupCheckout(ctx, worktree.path)
+		if checkoutErr == nil && sameSetupPath(c.gitDir, r.GitDir) {
+			return c, nil
+		}
+	}
+	return setupCheckout{}, err
 }
 
 func (c setupCheckout) configValues(ctx context.Context, file, key string) ([]string, error) {
@@ -386,37 +416,65 @@ func nilIfEmptySetupValue(s string) []string {
 	return []string{s}
 }
 
-// Linked worktrees share the configuration being edited. Validate effective
-// settings in each worktree because includes can depend on the worktree or branch.
-func (c setupCheckout) verifyWorktrees(ctx context.Context, state setupGitState) error {
-	out, err := c.git(ctx, "worktree", "list", "--porcelain", "-z")
+type setupWorktree struct {
+	path             string
+	bare             bool
+	prunableOrLocked bool
+}
+
+func (c setupCheckout) listWorktrees(ctx context.Context, gitOptions ...string) ([]setupWorktree, error) {
+	out, err := c.git(ctx, append(gitOptions, "worktree", "list", "--porcelain", "-z")...)
 	if err != nil {
-		return fmt.Errorf("list linked Git worktrees: %w", err)
+		return nil, fmt.Errorf("list linked Git worktrees: %w", err)
 	}
+	var worktrees []setupWorktree
 	for record := range strings.SplitSeq(string(out), "\x00\x00") {
 		line, attributes, _ := strings.Cut(record, "\x00")
 		path, ok := strings.CutPrefix(line, "worktree ")
 		if !ok {
 			continue
 		}
+		worktree := setupWorktree{path: path}
+		for field := range strings.SplitSeq(attributes, "\x00") {
+			name, _, _ := strings.Cut(field, " ")
+			switch name {
+			case "bare":
+				worktree.bare = true
+			case "prunable", "locked":
+				worktree.prunableOrLocked = true
+			}
+		}
+		worktrees = append(worktrees, worktree)
+	}
+	return worktrees, nil
+}
+
+// Linked worktrees share the configuration being edited. Validate effective
+// settings in each worktree because includes can depend on the worktree or branch.
+func (c setupCheckout) verifyWorktrees(ctx context.Context, state setupGitState) error {
+	worktrees, err := c.listWorktrees(ctx)
+	if err != nil {
+		return err
+	}
+	for _, entry := range worktrees {
 		// A prunable record (or an offline locked worktree) has no active
 		// local Git process whose effective configuration we can inspect.
-		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-			inactive := false
-			for field := range strings.SplitSeq(attributes, "\x00") {
-				name, _, _ := strings.Cut(field, " ")
-				if name == "prunable" || name == "locked" {
-					inactive = true
-					break
-				}
-			}
-			if inactive {
+		if entry.prunableOrLocked {
+			if _, err := os.Lstat(filepath.Join(entry.path, ".git")); errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 		}
-		worktree := setupCheckout{repo: path, gitDir: c.gitDir}
+		worktree := setupCheckout{repo: entry.path, gitDir: c.gitDir}
+		gitDir, err := worktree.gitPath(ctx, "--git-common-dir")
+		if err != nil {
+			return fmt.Errorf("%s: find Git common directory: %w", entry.path, err)
+		}
+		// Git can still list a stale worktree whose path was reused.
+		if !sameSetupPath(gitDir, c.gitDir) {
+			continue
+		}
 		if err := worktree.verifyEffective(ctx, state); err != nil {
-			return fmt.Errorf("%s: %w", path, err)
+			return fmt.Errorf("%s: %w", entry.path, err)
 		}
 	}
 	return nil
@@ -1119,7 +1177,13 @@ func (a app) runRepo(ctx context.Context, args []string) (err error) {
 			return err
 		}
 		for _, r := range records {
-			if _, err := fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", r.Phase, r.Repo, r.ProfileID, r.Host); err != nil {
+			repo := r.Repo
+			if op.path != "" {
+				repo = checkout.repo
+			} else if c, err := resolveSetupCheckout(ctx, r); err == nil {
+				repo = c.repo
+			}
+			if _, err := fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", r.Phase, repo, r.ProfileID, r.Host); err != nil {
 				return err
 			}
 		}
@@ -1137,7 +1201,7 @@ func (a app) runRepo(ctx context.Context, args []string) (err error) {
 	for _, r := range records {
 		c := checkout
 		if op.path == "" {
-			c, err = findSetupCheckout(ctx, r.Repo)
+			c, err = resolveSetupCheckout(ctx, r)
 		}
 		if err == nil && !sameSetupPath(c.gitDir, r.GitDir) {
 			err = errors.New("checkout Git directory has changed")
@@ -1146,8 +1210,12 @@ func (a app) runRepo(ctx context.Context, args []string) (err error) {
 			err = verifySetup(ctx, c, r, cfg)
 		}
 		if err != nil {
-			failures = append(failures, fmt.Errorf("%s: %w", r.Repo, err))
-		} else if _, err := fmt.Fprintf(a.stdout, "verified %s\n", r.Repo); err != nil {
+			repo := r.Repo
+			if c.repo != "" {
+				repo = c.repo
+			}
+			failures = append(failures, fmt.Errorf("%s: %w", repo, err))
+		} else if _, err := fmt.Fprintf(a.stdout, "verified %s\n", c.repo); err != nil {
 			return err
 		}
 	}
