@@ -1,4 +1,4 @@
-// Package az implements the subset of the Azure CLI used by T3's read-only PR flow.
+// Package az implements the subset of the Azure CLI used by T3's read-only flows.
 package az
 
 import (
@@ -22,7 +22,9 @@ const usage = `tfsaz — Azure DevOps Server for T3 Code
   az account show --query user.name -o tsv
   az account show --query user --output json
   az repos show | repos pr list | repos pr show | repos pr policy list
-  az devops invoke --area git --resource RESOURCE ...
+  az boards work-item show --id ID [--expand relations]
+  az devops team list | devops team list-member
+  az devops invoke --area git|wit --resource RESOURCE ...
 
 Configure collection profiles in tfsaz/config.json in your OS user configuration
 directory, or select an absolute config file with TFSAZ_CONFIG. Login reads a PAT
@@ -31,13 +33,16 @@ from a hidden prompt or stdin and stores it in the OS keyring.`
 // These are the option sets emitted by the adapter, including its joined
 // --repository=-name and --project=-name forms.
 var commandOptions = map[string]string{
-	"devops login":         "organization",
-	"devops invoke":        "organization detect only-show-errors output area resource api-version route-parameters query-parameters http-method in-file accept-media-type out-file",
-	"account show":         "query output organization only-show-errors",
-	"repos show":           "organization project repository detect only-show-errors output",
-	"repos pr show":        "organization id detect only-show-errors output",
-	"repos pr list":        "organization project repository detect only-show-errors output top skip source-branch target-branch status include-links creator reviewer",
-	"repos pr policy list": "organization id detect only-show-errors output top skip",
+	"devops login":            "organization",
+	"devops invoke":           "organization detect only-show-errors output area resource api-version route-parameters query-parameters http-method in-file media-type accept-media-type out-file query",
+	"devops team list":        "organization project detect only-show-errors output top skip",
+	"devops team list-member": "organization project detect only-show-errors output team top skip",
+	"boards work-item show":   "organization id detect only-show-errors output expand",
+	"account show":            "query output organization only-show-errors",
+	"repos show":              "organization project repository detect only-show-errors output",
+	"repos pr show":           "organization id detect only-show-errors output",
+	"repos pr list":           "organization project repository detect only-show-errors output top skip source-branch target-branch status include-links creator reviewer",
+	"repos pr policy list":    "organization id detect only-show-errors output top skip",
 }
 var optionNames = map[string]string{"--org": "organization", "-o": "output", "-p": "project", "-r": "repository", "-i": "id"}
 
@@ -117,7 +122,7 @@ func parse(args []string) (string, map[string]string, error) {
 			return "", nil, errors.New("supported account queries are --query user -o json and --query user.name -o tsv")
 		}
 	} else if output != "" && output != "json" {
-		return "", nil, errors.New("repository reads require JSON output")
+		return "", nil, errors.New("Azure DevOps reads require JSON output")
 	}
 	return command, opts, nil
 }
@@ -179,11 +184,18 @@ func (a app) run(ctx context.Context, args []string) error {
 		return usageError{err}
 	}
 	var invoke invokeRead
-	if command == "devops invoke" {
-		invoke, err = parseInvoke(opts)
-		if err != nil {
-			return usageError{err}
-		}
+	var item workItemRead
+	var teams teamRead
+	switch command {
+	case "devops invoke":
+		invoke, err = parseInvoke(opts, a.cwd)
+	case "boards work-item show":
+		item, err = parseWorkItemShow(opts)
+	case "devops team list", "devops team list-member":
+		teams, err = parseTeamRead(command, opts)
+	}
+	if err != nil {
+		return usageError{err}
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -235,9 +247,23 @@ func (a app) run(ctx context.Context, args []string) error {
 		return json.NewEncoder(a.stdout).Encode(map[string]string{"name": id.Login, "type": "user"})
 	}
 	if command == "devops invoke" {
-		return invoke.run(ctx, client, a.cwd, a.stdout)
+		err = invoke.run(ctx, client, scope, a.cwd, a.stdout)
+		if invoke.witResource != "" {
+			return client.boardsReadError(ctx, err)
+		}
+		return err
 	}
-	result, err := runRepos(ctx, client, scope, command, opts)
+	var result any
+	switch command {
+	case "boards work-item show":
+		result, err = item.run(ctx, client, scope)
+		err = client.boardsReadError(ctx, err)
+	case "devops team list", "devops team list-member":
+		result, err = teams.run(ctx, client, scope)
+		err = client.boardsReadError(ctx, err)
+	default:
+		result, err = runRepos(ctx, client, scope, command, opts)
+	}
 	if err != nil {
 		return err
 	}

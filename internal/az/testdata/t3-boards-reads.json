@@ -1,0 +1,69 @@
+{
+  "workItem": {
+    "id": 7,
+    "fields": {
+      "System.Title": "Reader's focus",
+      "System.State": "Shipped",
+      "System.CreatedDate": "2026-07-01T00:00:00Z",
+      "System.ChangedDate": "2026-07-03T00:00:00Z",
+      "System.CreatedBy": { "uniqueName": "reader@example.invalid", "displayName": "Fixture Reader" },
+      "System.AssignedTo": "Fixture Author <author@example.invalid>",
+      "System.CommentCount": 3,
+      "System.Tags": "bug; interface; bug",
+      "System.TeamProject": "Shared Project",
+      "System.WorkItemType": "Bug",
+      "System.Description": "<p>Moving the cursor drops focus.</p>"
+    },
+    "relations": [
+      { "rel": "ArtifactLink", "url": "vstfs:///Git/PullRequestId/20202020-2222-4222-8222-202020202020%2F10101010-1111-4111-8111-101010101010%2F42" },
+      { "rel": "System.LinkTypes.Related", "url": "https://server.example.invalid/tfs/Fixture%20Collection/_apis/wit/workItems/8" }
+    ]
+  },
+  "types": {
+    "value": [
+      { "name": "Epic" },
+      { "name": "Bug", "isDisabled": false, "states": [
+        { "name": "Active", "category": "InProgress" },
+        { "name": "Shipped", "category": "Completed" }
+      ] }
+    ]
+  },
+  "comments": {
+    "continuationToken": "next +/&=%2F",
+    "comments": [
+      { "id": 4, "text": "Still happening.", "createdDate": "2026-07-04T00:00:00Z" },
+      { "id": 3, "text": "Deleted fixture comment.", "isDeleted": true, "createdDate": "2026-07-03T00:00:00Z" },
+      { "id": 2, "text": "Repro attached.", "createdDate": "2026-07-02T00:00:00Z",
+        "reactions": [{ "type": "like", "count": 2, "isCurrentUserEngaged": true }] }
+    ]
+  },
+  "olderComments": {
+    "comments": [{ "id": 1, "text": "First report.", "createdDate": "2026-07-01T00:00:00Z" }]
+  },
+  "updates": {
+    "count": 1,
+    "value": [{
+      "id": 101,
+      "revisedDate": "9999-01-01T00:00:00Z",
+      "revisedBy": { "uniqueName": "author@example.invalid", "displayName": "Fixture Author" },
+      "fields": {
+        "System.ChangedDate": { "newValue": "2026-07-03T00:00:00Z" },
+        "System.State": { "oldValue": "Active", "newValue": "Shipped" },
+        "System.Tags": { "oldValue": "interface", "newValue": "bug; interface" }
+      }
+    }]
+  },
+  "tags": { "value": [{ "name": "bug" }, { "name": "interface" }] },
+  "teams": { "count": 2, "value": [
+    { "id": "30303030-3333-4333-8333-303030303030", "name": "Fixture Team" },
+    { "id": "40404040-4444-4444-8444-404040404040", "name": "Fixture Other Team" }
+  ] },
+  "members30303030-3333-4333-8333-303030303030": { "count": 2, "value": [
+    { "identity": { "uniqueName": "author@example.invalid", "displayName": "Fixture Author" } },
+    { "identity": { "uniqueName": "fixture-group", "isContainer": true } }
+  ] },
+  "members40404040-4444-4444-8444-404040404040": { "count": 2, "value": [
+    { "identity": { "uniqueName": "AUTHOR@example.invalid", "displayName": "Duplicate Fixture Author" } },
+    { "identity": { "uniqueName": "reviewer@example.invalid", "displayName": "Fixture Reviewer" } }
+  ] }
+}

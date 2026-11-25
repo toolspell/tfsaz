@@ -177,6 +177,9 @@ func collectionResponseError(resp *http.Response, path []string) error {
 	if status == http.StatusForbidden {
 		return errors.New("Azure DevOps denied access (HTTP 403 Forbidden)")
 	}
+	if status == http.StatusNotFound && len(path) == 4 && path[0] == "_apis" && path[1] == "wit" && path[2] == "workItems" {
+		return errors.New("work item not found or not readable (HTTP 404)")
+	}
 	prByID := len(path) >= 2 && strings.EqualFold(path[len(path)-2], "pullRequests")
 	if strings.Contains(message, "tf401180") || strings.Contains(message, "gitpullrequestnotfoundexception") ||
 		(strings.Contains(message, "pull request") && (strings.Contains(message, "not found") || strings.Contains(message, "does not exist"))) ||
@@ -213,17 +216,25 @@ func (user collectionIdentity) isUser() bool {
 		user.ID != "00000000-0000-0000-0000-000000000000"
 }
 
-// Identity verifies the credential against the configured collection itself.
-func (c *Client) Identity(ctx context.Context) (Identity, error) {
+func (c *Client) authenticatedUser(ctx context.Context) (collectionIdentity, error) {
 	var connection struct {
 		AuthenticatedUser collectionIdentity `json:"authenticatedUser"`
 	}
 	if err := c.Get(ctx, []string{"_apis", "connectionData"}, url.Values{"api-version": {"5.0-preview.1"}}, &connection); err != nil {
-		return Identity{}, err
+		return collectionIdentity{}, err
 	}
 	user := connection.AuthenticatedUser
 	if !user.isUser() {
-		return Identity{}, fmt.Errorf("Azure DevOps did not authenticate a PAT user. %s", loginHint)
+		return collectionIdentity{}, fmt.Errorf("Azure DevOps did not authenticate a PAT user. %s", loginHint)
+	}
+	return user, nil
+}
+
+// Identity verifies the credential against the configured collection itself.
+func (c *Client) Identity(ctx context.Context) (Identity, error) {
+	user, err := c.authenticatedUser(ctx)
+	if err != nil {
+		return Identity{}, err
 	}
 	login := user.login()
 	if !qualifiedLogin(login) {

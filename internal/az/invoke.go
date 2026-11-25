@@ -31,20 +31,29 @@ const (
 var objectIDPattern = regexp.MustCompile(`(?i)^[a-f0-9]{40}$`)
 
 type invokeRead struct {
-	path    []string
-	query   url.Values
-	inFile  string
-	outFile string
+	path         []string
+	query        url.Values
+	inFile       string
+	outFile      string
+	postBody     []byte
+	witResource  string
+	projectTypes bool
 }
 
-func parseInvoke(opts map[string]string) (invokeRead, error) {
+func parseInvoke(opts map[string]string, cwd string) (invokeRead, error) {
 	var read invokeRead
 	area := opts["area"]
+	if strings.EqualFold(area, "wit") {
+		return parseWitInvoke(opts, cwd)
+	}
 	if area != "" && !strings.EqualFold(area, "git") {
-		return read, errors.New("unsupported devops invoke area; only git is supported")
+		return read, errors.New("unsupported devops invoke area; only git and wit are supported")
 	}
 	if opts["resource"] == "" {
-		return read, errors.New("devops invoke endpoint discovery is unsupported; specify a Git resource")
+		return read, errors.New("devops invoke endpoint discovery is unsupported; specify a Git or work item resource")
+	}
+	if opts["media-type"] != "" || opts["query"] != "" {
+		return read, errors.New("unsupported option for Git devops invoke")
 	}
 	var suffix string
 	resource := strings.ToLower(opts["resource"])
@@ -188,11 +197,17 @@ func setInvokeItemQuery(query url.Values, params map[string]string) error {
 	return nil
 }
 
-func (read invokeRead) run(ctx context.Context, client *Client, cwd string, stdout io.Writer) error {
+func (read invokeRead) run(ctx context.Context, client *Client, scope Scope, cwd string, stdout io.Writer) error {
 	if read.outFile != "" {
 		return read.downloadBlobs(ctx, client, cwd)
 	}
-	resp, err := client.request(ctx, http.MethodGet, read.path, read.query, "application/json", nil)
+	method := http.MethodGet
+	var input io.Reader
+	if read.postBody != nil {
+		method = http.MethodPost
+		input = bytes.NewReader(read.postBody)
+	}
+	resp, err := client.request(ctx, method, read.path, read.query, "application/json", input)
 	if err != nil {
 		return err
 	}
@@ -206,10 +221,26 @@ func (read invokeRead) run(ctx context.Context, client *Client, cwd string, stdo
 		return errors.New("Azure DevOps returned an invalid JSON object")
 	}
 	token := json.RawMessage("null")
-	if header := resp.Header.Get("X-MS-ContinuationToken"); header != "" {
+	header := resp.Header.Get("X-MS-ContinuationToken")
+	if header != "" {
 		token, _ = json.Marshal(header)
 	}
 	object["continuation_token"] = token
+	switch read.witResource {
+	case "workitemtypes":
+		if read.projectTypes {
+			return writeWorkItemTypes(stdout, object["value"])
+		}
+	case "workitemsbatch":
+		if err := rewriteWorkItemBatchLinks(object, scope.Organization); err != nil {
+			return err
+		}
+	case "comments":
+		cursor := object["continuationToken"]
+		if header != "" && (cursor == nil || string(cursor) == "null" || string(cursor) == `""`) {
+			object["continuationToken"] = token
+		}
+	}
 	return json.NewEncoder(stdout).Encode(object)
 }
 
@@ -220,9 +251,9 @@ func invokeLocalPath(cwd, name string) string {
 	return name
 }
 
-func readBlobIDs(path string) ([]byte, error) {
+func readInvokeInput(path string, maxBytes int64) ([]byte, error) {
 	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > maxBlobInputBytes {
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxBytes {
 		return nil, errors.New("--in-file must be a small regular JSON file")
 	}
 	file, err := os.Open(path)
@@ -234,9 +265,17 @@ func readBlobIDs(path string) ([]byte, error) {
 	if err != nil || !os.SameFile(info, opened) {
 		return nil, errors.New("--in-file changed while opening")
 	}
-	data, err := io.ReadAll(io.LimitReader(file, maxBlobInputBytes+1))
-	if err != nil || len(data) > maxBlobInputBytes {
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil || int64(len(data)) > maxBytes {
 		return nil, errors.New("could not read --in-file within the size limit")
+	}
+	return data, nil
+}
+
+func readBlobIDs(path string) ([]byte, error) {
+	data, err := readInvokeInput(path, maxBlobInputBytes)
+	if err != nil {
+		return nil, err
 	}
 	var ids []string
 	if err := json.Unmarshal(data, &ids); err != nil || len(ids) == 0 || len(ids) > maxBlobIDs {
