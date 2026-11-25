@@ -1,0 +1,22 @@
+# CLI builds and local az shims at the repository root
+/tfsaz
+/tfsaz.exe
+/az
+/az.exe
+/bin/
+
+# Go test binaries and coverage reports
+*.test
+*.test.exe
+/coverage.out
+/coverage.html
+
+# Local collection profiles and generated setup state
+/config.json
+*.repo-setups.json
+*.repo-setups.json.lock
+.tfsaz-setup-*
+
+# OS metadata
+.DS_Store
+Thumbs.db
