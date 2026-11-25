@@ -1,0 +1,30 @@
+{
+  "pullRequestId": 42,
+  "repository": {
+    "id": "10101010-1111-4111-8111-101010101010",
+    "name": "Tool Kit",
+    "project": {
+      "id": "20202020-2222-4222-8222-202020202020",
+      "name": "Shared Project"
+    },
+    "webUrl": "https://server.example.invalid/tfs/Fixture%20Collection/Shared%20Project/_git/Tool%20Kit"
+  },
+  "title": "Document fixture setup",
+  "description": "Fixture documentation",
+  "createdBy": { "displayName": "Fixture Author", "uniqueName": "author@example.invalid" },
+  "reviewers": [{ "displayName": "Fixture Reviewer", "uniqueName": "FIXTURE\\reviewer", "vote": 10 }],
+  "sourceRefName": "refs/heads/user/feat/1-(#2)-slug",
+  "targetRefName": "refs/heads/main",
+  "lastMergeSourceCommit": { "commitId": "000000000000000000000000000000000000abcd" },
+  "creationDate": "2026-01-01T12:00:00Z",
+  "status": "active",
+  "mergeStatus": "succeeded",
+  "isDraft": false,
+  "forkSource": null,
+  "labels": [{ "name": "documentation" }],
+  "url": "https://server.example.invalid/tfs/Fixture%20Collection/_apis/git/pullrequests/42",
+  "_links": {
+    "web": { "href": "https://server.example.invalid/tfs/Fixture%20Collection/Shared%20Project/_git/Tool%20Kit/pullrequest/42" },
+    "self": { "href": "https://server.example.invalid/tfs/Fixture%20Collection/_apis/git/pullrequests/42" }
+  }
+}

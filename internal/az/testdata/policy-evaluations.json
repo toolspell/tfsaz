@@ -1,0 +1,25 @@
+{
+  "count": 2,
+  "value": [
+    {
+      "status": "queued",
+      "context": { "buildDefinitionName": "Fixture CI" },
+      "configuration": {
+        "url": "https://server.example.invalid/tfs/Fixture%20Collection/20202020-2222-4222-8222-202020202020/_apis/policy/configurations/3",
+        "isBlocking": true,
+        "isEnabled": true,
+        "type": { "id": "0609b952-1397-4640-95ec-e00a01b2c241", "displayName": "Build" },
+        "settings": { "displayName": "Fixture CI" }
+      }
+    },
+    {
+      "status": "rejected",
+      "configuration": {
+        "isBlocking": false,
+        "isEnabled": true,
+        "type": { "id": "cbdc66da-9728-4af8-aada-9a5a32e4a226", "displayName": "Status" },
+        "settings": { "statusName": "fixture/lint" }
+      }
+    }
+  ]
+}

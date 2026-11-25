@@ -1,0 +1,12 @@
+{
+  "id": "10101010-1111-4111-8111-101010101010",
+  "name": "Tool Kit",
+  "project": {
+    "id": "20202020-2222-4222-8222-202020202020",
+    "name": "Shared Project"
+  },
+  "defaultBranch": "refs/heads/main",
+  "remoteUrl": "https://server.example.invalid/tfs/Fixture%20Collection/Shared%20Project/_git/Tool%20Kit",
+  "webUrl": "https://server.example.invalid/tfs/Fixture%20Collection/Shared%20Project/_git/Tool%20Kit",
+  "sshUrl": "ssh://git@server.example.invalid:22/tfs/Fixture%20Collection/Shared%20Project/_git/Tool%20Kit"
+}
