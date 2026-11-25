@@ -121,9 +121,11 @@ If your `curl` does not use the OS trust store, add `--cacert alias.pem`. Then o
 4. Remove the certificate trust as listed in step 3.
 5. Delete `alias.pem` and `alias-key.pem`.
 
-## macOS desktop browser verification
+## T3 desktop browser verification
 
 In the installed T3 Nightly desktop app, a disposable Electron profile mapped one exact generated alias to the redirector’s high loopback port and trusted the corresponding leaf certificate for that origin. Opening the raw alias reached the real Azure DevOps Server PR 118 authentication page with the expected query and fragment. After the redirector stopped, a fresh navigation failed with `ERR_CONNECTION_REFUSED`. This test used a process-local hostname mapping.
+
+The installed T3 desktop apps on Ubuntu ARM64 and Windows x64 also opened the exact live PR 118 URL, including its query and fragment. Both displayed the native server’s authentication-required page. Before the redirector started and after it stopped, fresh navigations failed on the alias with `ERR_CONNECTION_REFUSED`. These tests used a process-local hostname mapping and exact certificate approvals in disposable T3 browser profiles. They ran over SSH with RDP closed.
 
 ## macOS web client Browser panel verification
 
