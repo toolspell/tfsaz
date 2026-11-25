@@ -1,0 +1,76 @@
+{
+  "threads": {
+    "count": 1,
+    "value": [
+      {
+        "id": 9,
+        "status": "active",
+        "comments": [
+          {
+            "id": 1,
+            "commentType": "text",
+            "content": "Please update the example.",
+            "publishedDate": "2026-01-01T12:00:00Z",
+            "author": {"displayName": "Fixture Reviewer"}
+          }
+        ]
+      }
+    ]
+  },
+  "labels": {"count": 1, "value": [{"name": "fixture-label", "active": true}]},
+  "iterations": {
+    "count": 1,
+    "value": [
+      {
+        "id": 2,
+        "sourceRefCommit": {"commitId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        "commonRefCommit": {"commitId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+      }
+    ]
+  },
+  "changes-first": {
+    "changeEntries": [
+      {
+        "changeTrackingId": 1,
+        "changeType": "edit",
+        "item": {
+          "path": "/docs/notes #1&+%2F.md",
+          "gitObjectType": "blob",
+          "objectId": "cccccccccccccccccccccccccccccccccccccccc",
+          "originalObjectId": "dddddddddddddddddddddddddddddddddddddddd"
+        }
+      }
+    ],
+    "nextSkip": 1,
+    "nextTop": 2000
+  },
+  "changes-second": {
+    "changeEntries": [
+      {
+        "changeTrackingId": 2,
+        "changeType": "add",
+        "item": {"path": "/extra.md", "gitObjectType": "blob"}
+      }
+    ],
+    "nextSkip": 0,
+    "nextTop": 0
+  },
+  "item-main": {
+    "path": "/docs/notes #1&+%2F.md",
+    "gitObjectType": "blob",
+    "content": "updated line\n",
+    "contentMetadata": {"isBinary": false}
+  },
+  "item-base": {
+    "path": "/docs/notes #1&+%2F.md",
+    "gitObjectType": "blob",
+    "content": "original line\n",
+    "contentMetadata": {"isBinary": false}
+  },
+  "item-extra": {
+    "path": "/extra.md",
+    "gitObjectType": "blob",
+    "content": "extra line\n",
+    "contentMetadata": {"isBinary": false}
+  }
+}

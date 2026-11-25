@@ -1,9 +1,10 @@
 // Use the adapter and dependency versions from the selected T3 checkout.
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const [root, cwd] = process.argv.slice(2);
+const [root, cwd, web] = process.argv.slice(2);
 const pkg = path.join(root, "packages/source-control-azure-devops");
 const load = (name) => import(import.meta.resolve(name, pathToFileURL(path.join(pkg, "package.json")).href));
 const adapter = (file) => import(pathToFileURL(path.join(pkg, "src/server", file)).href);
@@ -14,10 +15,14 @@ const [Effect, Layer, NodeServices, host, az, pulls, provider] = await Promise.a
   adapter("AzureDevOpsPullRequestProvider.ts"),
 ]);
 
-const org = "https://fixture.visualstudio.com";
+const { makeSourceControlDefinitionRegistry } = await load("@t3tools/source-control-core/shared/definition");
+const { definition } = await import(pathToFileURL(path.join(pkg, "src/shared/definition.ts")).href);
+const definitions = makeSourceControlDefinitionRegistry([definition]);
+const remote = execFileSync("git", ["remote", "get-url", "origin"], { cwd, encoding: "utf8" }).trim();
+assert.equal(definitions.recognizeRemote(remote).kind, "azure-devops");
+assert.equal(definitions.repositoryKeyFromRemote(remote), definitions.repositoryKeyFromRemote(web));
 const repository = "Tool Kit";
-const remote = org + "/DefaultCollection/Shared%20Project/_git/Tool%20Kit";
-const pr = { cwd, host: "fixture.visualstudio.com", repository, number: 42 };
+const pr = { cwd, host: new URL(web).host, repository, number: 42 };
 const program = Effect.gen(function* () {
   const cli = yield* az.AzureDevOpsCli;
   const branch = yield* cli.getDefaultBranch({ cwd, repository, remoteUrl: remote });
@@ -28,13 +33,31 @@ const program = Effect.gen(function* () {
   const list = yield* service.listChangeRequests({
     ...pr, viewer, involvement: "authored", state: "open", limit: 10,
   });
-  assert.equal(list.items[0]?.url, remote + "/pullrequest/42");
+  assert.equal(list.items[0]?.url, web + "/pullrequest/42");
   for (const expected of ["pending", "passing"]) {
     const summary = yield* service.getChangeRequestSummary(pr);
     assert.equal(summary.state, "open");
-    assert.equal(summary.url, remote + "/pullrequest/42");
+    assert.equal(summary.url, web + "/pullrequest/42");
     assert.equal(summary.checksState, expected);
   }
+  const pullCli = yield* pulls.AzureDevOpsPullRequestCli;
+  const location = { project: "Shared Project", repository };
+  const labels = yield* pullCli.listLabels({ cwd, number: 42, location });
+  assert.deepEqual(labels.map(({ name }) => name), ["fixture-label"]);
+  const activity = yield* service.getChangeRequestActivity(pr);
+  assert.equal(activity.commentsTruncated, false);
+  assert.deepEqual(activity.comments.map(({ body }) => body), ["Please update the example."]);
+  const diff = yield* service.getDiff(pr);
+  assert.equal(diff.truncated, false);
+  assert.equal(diff.nextCursor, null);
+  assert.match(diff.patch, /-original line\n\+updated line\n/);
+  assert.match(diff.patch, /\+extra line\n/);
+  const item = "docs/notes #1&+%2F.md";
+  const contents = yield* service.getDiffFileContents({
+    ...pr, changeType: "change", oldPath: item, newPath: item,
+  });
+  assert.equal(contents.oldContents, "original line\n");
+  assert.equal(contents.newContents, "updated line\n");
 });
 const support = Layer.mergeAll(NodeServices.layer, host.layerWithRealGit());
 const deps = pulls.layer.pipe(Layer.provideMerge(az.layer), Layer.provide(support));

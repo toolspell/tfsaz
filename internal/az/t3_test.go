@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,6 +42,8 @@ func TestStockT3Adapter(t *testing.T) {
 	// A full first page of filtered-out rows must not hide the next policy.
 	firstPage := bytes.ReplaceAll(policies.Value[0], []byte(`"isEnabled": true`), []byte(`"isEnabled": false`))
 	var first, second atomic.Int32
+	var blobBatches, escapedItemReads, extraItemReads atomic.Int32
+	invoke := newInvokeFixture(t)
 	const prefix = "/Fixture Collection"
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, password, ok := r.BasicAuth(); !ok || password != pat {
@@ -64,7 +67,13 @@ func TestStockT3Adapter(t *testing.T) {
 		case "/_apis/git/pullrequests/42":
 			io.WriteString(w, pr)
 		case "/Shared Project/_apis/git/repositories/Tool Kit":
-			io.WriteString(w, repo)
+			var details map[string]any
+			if err := json.Unmarshal([]byte(repo), &details); err != nil {
+				t.Error(err)
+				return
+			}
+			details["sshUrl"] = "ssh://git@" + r.Host + "/Fixture%20Collection/Shared%20Project/_git/Tool%20Kit"
+			json.NewEncoder(w).Encode(details)
 		case "/Shared Project/_apis/git/repositories/Tool Kit/pullrequests":
 			if r.URL.Query().Get("searchCriteria.creatorId") != repoTestViewerID {
 				t.Error("missing scoped creator filter")
@@ -93,6 +102,20 @@ func TestStockT3Adapter(t *testing.T) {
 				http.NotFound(w, r)
 			}
 		default:
+			if invoke.serve(t, w, r, strings.TrimPrefix(r.URL.Path, prefix)) {
+				switch strings.TrimPrefix(r.URL.Path, prefix+invokeFixtureRepo) {
+				case "/blobs":
+					blobBatches.Add(1)
+				case "/items":
+					switch r.URL.Query().Get("path") {
+					case invokeFixtureItem:
+						escapedItemReads.Add(1)
+					case "/extra.md":
+						extraItemReads.Add(1)
+					}
+				}
+				return
+			}
 			t.Errorf("unexpected fixture path %s", r.URL.Path)
 			http.NotFound(w, r)
 		}
@@ -130,11 +153,43 @@ func TestStockT3Adapter(t *testing.T) {
 	if out, err := probe.Output(); err != nil || string(out) != "author@example.invalid\n" {
 		t.Fatalf("discovery probe: %v, %q", err, out)
 	}
-	run := exec.CommandContext(t.Context(), "node", "--experimental-import-meta-resolve", "testdata/t3-adapter.mjs", root, cwd)
+	web := p.Organization + "/DefaultCollection/Shared%20Project/_git/Tool%20Kit"
+	if runtime.GOOS != "windows" {
+		// A read-only empty repository speaks the Git packet protocol. This
+		// keeps the production Git/SSH helper and stock T3 entry points in the test.
+		if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte("#!/bin/sh\nprintf '0000'\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		native := p.CollectionURL + "/Shared%20Project/_git/Tool%20Kit"
+		u, err := url.Parse(native)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gitAt(t, cwd, "remote", "set-url", "origin", u.String())
+		setup := exec.CommandContext(t.Context(), exe, "repo", "setup", cwd)
+		if out, err := setup.CombinedOutput(); err != nil {
+			t.Fatalf("managed setup: %v: %s", err, out)
+		}
+		t.Cleanup(func() {
+			if out, err := exec.Command(exe, "repo", "restore", cwd).CombinedOutput(); err != nil {
+				t.Errorf("restore: %v: %s", err, out)
+			}
+		})
+		records, err := readSetupRecords()
+		if err != nil || len(records) != 1 {
+			t.Fatalf("setup records: count %d, error %v", len(records), err)
+		}
+		web = "https://" + records[0].Host + "/Shared%20Project/_git/Tool%20Kit"
+	}
+	run := exec.CommandContext(t.Context(), "node", "--experimental-import-meta-resolve", "testdata/t3-adapter.mjs", root, cwd, web)
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("T3 adapter: %v: %s", err, out)
 	}
 	if first.Load() != 2 || second.Load() != 2 {
 		t.Errorf("expected two reads of both pages, got %d and %d", first.Load(), second.Load())
+	}
+	if blobBatches.Load() != 1 || escapedItemReads.Load() != 2 || extraItemReads.Load() != 1 {
+		t.Errorf("want one blob batch, two explicit item sides and one fallback item; got %d, %d, %d",
+			blobBatches.Load(), escapedItemReads.Load(), extraItemReads.Load())
 	}
 }

@@ -3,6 +3,7 @@ module github.com/toolspell/tfsaz
 go 1.26.0
 
 require (
+	github.com/gofrs/flock v0.13.2
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/term v0.48.0
 )

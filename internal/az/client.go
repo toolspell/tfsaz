@@ -72,15 +72,31 @@ func newClient(profile Profile, pat string) (*Client, error) {
 
 // Get appends individual REST path segments to the collection and decodes JSON.
 func (c *Client) Get(ctx context.Context, path []string, query url.Values, dest any) error {
+	resp, err := c.request(ctx, http.MethodGet, path, query, "application/json", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := readResponse(resp.Body, maxResponseBytes)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(body, dest); err != nil {
+		return errors.New("Azure DevOps returned an invalid JSON response")
+	}
+	return nil
+}
+
+func (c *Client) request(ctx context.Context, method string, path []string, query url.Values, accept string, body io.Reader) (*http.Response, error) {
 	if len(path) == 0 {
-		return errors.New("missing Azure DevOps REST path")
+		return nil, errors.New("missing Azure DevOps REST path")
 	}
 	target := c.collection
 	escaped := strings.TrimRight(target.EscapedPath(), "/")
 	target.Path = strings.TrimRight(target.Path, "/")
 	for _, segment := range path {
 		if !validSegment(segment) {
-			return errors.New("invalid Azure DevOps REST path segment")
+			return nil, errors.New("invalid Azure DevOps REST path segment")
 		}
 		target.Path += "/" + segment
 		escaped += "/" + url.PathEscape(segment)
@@ -88,33 +104,36 @@ func (c *Client) Get(ctx context.Context, path []string, query url.Values, dest 
 	target.RawPath = escaped
 	target.RawQuery = query.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, method, target.String(), body)
 	if err != nil {
-		return errors.New("could not construct the Azure DevOps REST request")
+		return nil, errors.New("could not construct the Azure DevOps REST request")
 	}
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", accept)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	req.Header.Set("X-TFS-FedAuthRedirect", "Suppress")
 	req.SetBasicAuth("", c.pat)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return collectionRequestError(err)
+		return nil, collectionRequestError(err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || resp.StatusCode == http.StatusNonAuthoritativeInfo {
-		return collectionResponseError(resp, path)
+		defer resp.Body.Close()
+		return nil, collectionResponseError(resp, path)
 	}
+	return resp, nil
+}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+func readResponse(r io.Reader, maxBytes int64) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
 	if err != nil {
-		return collectionRequestError(err)
+		return nil, collectionRequestError(err)
 	}
-	if len(body) > maxResponseBytes {
-		return errors.New("Azure DevOps response exceeded the size limit")
+	if int64(len(body)) > maxBytes {
+		return nil, errors.New("Azure DevOps response exceeded the size limit")
 	}
-	if err := json.Unmarshal(body, dest); err != nil {
-		return errors.New("Azure DevOps returned an invalid JSON response")
-	}
-	return nil
+	return body, nil
 }
 
 func collectionRequestError(err error) error {

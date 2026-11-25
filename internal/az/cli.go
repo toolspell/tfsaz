@@ -16,10 +16,13 @@ import (
 const usage = `tfsaz — Azure DevOps Server for T3 Code
 
   tfsaz --version
+  tfsaz repo setup [PATH] [--profile ID] [--ssh-url URL]
+  tfsaz repo verify [PATH] | repo list | repo restore [PATH]
   tfsaz devops login --organization URL
   az account show --query user.name -o tsv
   az account show --query user --output json
   az repos show | repos pr list | repos pr show | repos pr policy list
+  az devops invoke --area git --resource RESOURCE ...
 
 Configure collection profiles in tfsaz/config.json in your OS user configuration
 directory, or select an absolute config file with TFSAZ_CONFIG. Login reads a PAT
@@ -29,6 +32,7 @@ from a hidden prompt or stdin and stores it in the OS keyring.`
 // --repository=-name and --project=-name forms.
 var commandOptions = map[string]string{
 	"devops login":         "organization",
+	"devops invoke":        "organization detect only-show-errors output area resource api-version route-parameters query-parameters http-method in-file accept-media-type out-file",
 	"account show":         "query output organization only-show-errors",
 	"repos show":           "organization project repository detect only-show-errors output",
 	"repos pr show":        "organization id detect only-show-errors output",
@@ -70,6 +74,21 @@ func parse(args []string) (string, map[string]string, error) {
 				return "", nil, fmt.Errorf("--%s takes no value", name)
 			}
 			v = "true"
+		} else if name == "route-parameters" || name == "query-parameters" {
+			var values []string
+			if joined {
+				values = append(values, v)
+			}
+			for i < len(args) && !strings.HasPrefix(args[i], "-") {
+				values = append(values, args[i])
+				i++
+			}
+			if len(values) > maxInvokeParameters || slices.ContainsFunc(values, func(value string) bool {
+				return len(value) > maxInvokeParameterBytes || strings.ContainsRune(value, 0)
+			}) {
+				return "", nil, fmt.Errorf("invalid --%s list", name)
+			}
+			v = strings.Join(values, "\x00")
 		} else if !joined {
 			if i == len(args) || strings.HasPrefix(args[i], "--") {
 				return "", nil, fmt.Errorf("--%s requires a value", name)
@@ -113,6 +132,12 @@ func Run(ctx context.Context, args []string) error {
 }
 
 func (a app) run(ctx context.Context, args []string) error {
+	if len(args) >= 2 && args[0] == "repo" {
+		if args[1] == "ssh" {
+			return runSetupSSH(ctx, args[2:])
+		}
+		return a.runRepo(ctx, args[1:])
+	}
 	if len(args) == 1 {
 		switch args[0] {
 		case "--version":
@@ -127,8 +152,22 @@ func (a app) run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	var invoke invokeRead
+	if command == "devops invoke" {
+		invoke, err = parseInvoke(opts)
+		if err != nil {
+			return err
+		}
+	}
 	cfg, err := loadConfig()
 	if err != nil {
+		return err
+	}
+	records, err := readSetupRecords()
+	if err != nil {
+		return err
+	}
+	if err := cfg.addSetupAliases(records); err != nil {
 		return err
 	}
 	if command == "devops login" {
@@ -168,6 +207,9 @@ func (a app) run(ctx context.Context, args []string) error {
 			return err
 		}
 		return json.NewEncoder(a.stdout).Encode(map[string]string{"name": id.Login, "type": "user"})
+	}
+	if command == "devops invoke" {
+		return invoke.run(ctx, client, a.cwd, a.stdout)
 	}
 	result, err := runRepos(ctx, client, scope, command, opts)
 	if err != nil {
