@@ -73,6 +73,9 @@ case " $* " in
     *" -- server.example git-upload-pack '/tfs/Collection/Project/_git/Repository'"*) ;;
     *) exit 92 ;;
 esac
+if [ -n "$TFSAZ_TEST_GIT_WRITE" ]; then
+    git config --local tfsaz.writtenduringprobe yes || exit 93
+fi
 if [ -n "$TFSAZ_TEST_PUBLIC_KEY" ]; then
     if ! ssh-add -T "$TFSAZ_TEST_PUBLIC_KEY" 2>/dev/null; then
         printf '%s\n' 'fixture-private-detail: Permission denied (publickey).' >&2
@@ -462,4 +465,15 @@ func TestRepoRestoreWithMissingSSHConfigAndExternalOverride(t *testing.T) {
 	}
 	managerTestRun(t, a, "restore")
 	managerTestState(t, c, setupGitState{url: managerTestOrigin})
+}
+
+func TestRepoSetupChecksSSHWithGitConfigUnlocked(t *testing.T) {
+	a, _, c := managerTestRepo(t)
+	t.Setenv("TFSAZ_TEST_GIT_WRITE", "1")
+	managerTestRun(t, a, "setup")
+	values, err := c.configValues(t.Context(), "", "tfsaz.writtenduringprobe")
+	if err != nil || len(values) != 1 || values[0] != "yes" {
+		t.Fatalf("concurrent Git config write was lost: %v", err)
+	}
+	managerTestRun(t, a, "restore")
 }

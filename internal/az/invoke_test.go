@@ -341,3 +341,45 @@ func TestInvokeBlobFailureLeavesDestinationUntouched(t *testing.T) {
 		})
 	}
 }
+
+func TestBlobArchiveAboveT3DiffBudget(t *testing.T) {
+	// Stock T3 checks the file size to select its per-item fallback.
+	const megabytes = 65
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		archive := zip.NewWriter(w)
+		entry, err := archive.CreateHeader(&zip.FileHeader{Name: invokeFixtureOldBlob, Method: zip.Store})
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		chunk := make([]byte, 1<<20)
+		for range megabytes {
+			if _, err := entry.Write(chunk); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+		if err := archive.Close(); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "ids"), []byte(`["`+invokeFixtureOldBlob+`"]`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	client := newClientForTest(t, clientTestProfile(t, server, invokeFixtureCollection))
+	read := invokeRead{path: []string{"_apis", "git", "blobs"}, inFile: "ids", outFile: "batch.zip"}
+	if err := read.downloadBlobs(t.Context(), client, dir); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := zip.OpenReader(filepath.Join(dir, "batch.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	if len(archive.File) != 1 || archive.File[0].UncompressedSize64 != megabytes<<20 {
+		t.Fatal("incomplete large blob archive")
+	}
+}

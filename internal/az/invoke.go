@@ -26,7 +26,6 @@ const (
 	maxInvokeParameterBytes = 3*maxInvokeItemPathBytes + len("path=")
 	maxBlobIDs              = 200 // Two object IDs for each of T3's 100 files.
 	maxBlobInputBytes       = 16 << 10
-	maxBlobArchiveBytes     = 64 << 20
 )
 
 var objectIDPattern = regexp.MustCompile(`(?i)^[a-f0-9]{40}$`)
@@ -265,26 +264,28 @@ func (read invokeRead) downloadBlobs(ctx context.Context, client *Client, cwd st
 	if media != "application/zip" && media != "application/octet-stream" {
 		return errors.New("Azure DevOps did not return a ZIP response")
 	}
-	data, err := readResponse(resp.Body, maxBlobArchiveBytes)
+	// T3 checks the finished archive size itself. Stream to a private file so
+	// large batches can follow T3's normal per-item fallback.
+	file, err := os.CreateTemp(filepath.Dir(out), ".tfsaz-blobs-*.zip")
 	if err != nil {
-		return err
+		return errors.New("could not stage --out-file")
 	}
-	if _, err := zip.NewReader(bytes.NewReader(data), int64(len(data))); err != nil {
-		return errors.New("Azure DevOps returned an invalid ZIP archive")
+	defer os.Remove(file.Name())
+	n, writeErr := io.Copy(file, resp.Body)
+	if writeErr == nil {
+		if _, err := zip.NewReader(file, n); err != nil {
+			file.Close()
+			return errors.New("Azure DevOps returned an invalid ZIP archive")
+		}
 	}
-	// The destination may have appeared during the request.
-	file, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
+	if err := errors.Join(writeErr, file.Close()); err != nil {
+		return errors.New("could not write --out-file")
+	}
+	if err := os.Link(file.Name(), out); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return errors.New("--out-file already exists")
 		}
-		return errors.New("could not create --out-file")
-	}
-	_, writeErr := file.Write(data)
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		_ = os.Remove(out)
-		return errors.New("could not write --out-file")
+		return errors.New("could not publish --out-file")
 	}
 	return nil
 }

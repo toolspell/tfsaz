@@ -319,7 +319,13 @@ func (c setupCheckout) verifyEffective(ctx context.Context, state setupGitState)
 		if err != nil {
 			return err
 		}
+		if entry.key == "ssh.variant" && len(values) == 1 && values[0] == "ssh" {
+			continue
+		}
 		if !slices.Equal(values, entry.want) {
+			if entry.key == setupSSHKey && state.ssh == "" {
+				return errors.New("core.sshCommand is customized in Git configuration; tfsaz needs the checkout SSH command and OpenSSH on PATH (use git config --show-origin --get-all core.sshCommand to locate it)")
+			}
 			return fmt.Errorf("effective Git setting %s differs from the expected values", entry.key)
 		}
 	}
@@ -354,10 +360,26 @@ func (c setupCheckout) verifyWorktrees(ctx context.Context, state setupGitState)
 	if err != nil {
 		return fmt.Errorf("list linked Git worktrees: %w", err)
 	}
-	for line := range strings.SplitSeq(string(out), "\x00") {
+	for record := range strings.SplitSeq(string(out), "\x00\x00") {
+		line, attributes, _ := strings.Cut(record, "\x00")
 		path, ok := strings.CutPrefix(line, "worktree ")
 		if !ok {
 			continue
+		}
+		// A prunable record (or an offline locked worktree) has no active
+		// local Git process whose effective configuration we can inspect.
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			inactive := false
+			for field := range strings.SplitSeq(attributes, "\x00") {
+				name, _, _ := strings.Cut(field, " ")
+				if name == "prunable" || name == "locked" {
+					inactive = true
+					break
+				}
+			}
+			if inactive {
+				continue
+			}
 		}
 		worktree := setupCheckout{repo: path, gitDir: c.gitDir}
 		if err := worktree.verifyEffective(ctx, state); err != nil {
@@ -598,7 +620,7 @@ func verifySetup(ctx context.Context, c setupCheckout, r setupRecord, cfg config
 	}
 	expected.Phase = r.Phase
 	if expected != r {
-		return errors.New("repository setup routing or SSH helper command has drifted")
+		return errors.New("repository setup routing or SSH helper path has changed; run repo restore then repo setup with the installed helper")
 	}
 	return checkSetupSSHAccess(ctx, c, r, "origin")
 }
@@ -668,11 +690,6 @@ func (s *setupRegistry) settleSetup(ctx context.Context, lock *setupGitLock, r s
 			}
 		}
 	}
-	if transition == activateSetup {
-		if err := checkSetupSSHAccess(ctx, c, r, r.RemoteURL); err != nil {
-			return err
-		}
-	}
 	if from != to {
 		if err := lock.change(ctx, from, to); err != nil {
 			return err
@@ -722,7 +739,7 @@ func (s *setupRegistry) prepare(ctx context.Context, c setupCheckout, cfg config
 	if err != nil {
 		return setupRecord{}, err
 	}
-	return r, s.update(r, setupPhasePreparing)
+	return r, nil
 }
 
 func (s *setupRegistry) gitTransaction(c setupCheckout, run func(*setupGitLock) error) (err error) {
@@ -779,11 +796,27 @@ func (s *setupRegistry) mutate(ctx context.Context, c setupCheckout, op repoSetu
 		return errors.New("no setup recorded for this repository")
 	}
 
-	var r setupRecord
-	err := s.gitTransaction(c, func(lock *setupGitLock) error {
-		var err error
-		r, err = s.prepare(ctx, c, cfg, op.sshURL, op.profile)
+	r, err := s.prepare(ctx, c, cfg, op.sshURL, op.profile)
+	if err != nil {
+		return err
+	}
+	// Network reads run under the manager lock, before taking Git's lock.
+	if err := checkSetupSSHAccess(ctx, c, r, r.RemoteURL); err != nil {
+		return err
+	}
+	err = s.gitTransaction(c, func(lock *setupGitLock) error {
+		current, err := c.localState(ctx)
 		if err != nil {
+			return err
+		}
+		original, _ := setupStates(r)
+		if current != original {
+			return errors.New("Git configuration changed during the SSH check; retry setup")
+		}
+		if err := c.verifyWorktrees(ctx, current); err != nil {
+			return err
+		}
+		if err := s.update(r, setupPhasePreparing); err != nil {
 			return err
 		}
 		return s.settleSetup(ctx, lock, r, activateSetup)

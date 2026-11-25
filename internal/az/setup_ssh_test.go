@@ -12,11 +12,19 @@ import (
 
 func sshTestRecord(t *testing.T) setupRecord {
 	t.Helper()
-	return setupRecord{
+	r := setupRecord{
 		RemoteURL: "ssh://git@vs-ssh.visualstudio.com/v3/tfsaz-example/My%20Project/Repo%21%27Name",
 		SSHURL:    "ssh://server-user@native.invalid:2222/Second%20Collection/My%20Project/_git/Repo%21%27Name",
 		SSHConfig: filepath.Join(t.TempDir(), "private ' ssh.conf"),
 	}
+	data, err := renderSetupSSH(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(r.SSHConfig, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return r
 }
 
 func TestSetupSSHArgs(t *testing.T) {
@@ -29,7 +37,7 @@ func TestSetupSSHArgs(t *testing.T) {
 		t.Run(service, func(t *testing.T) {
 			args := append(slices.Clone(binding), "-o", "SendEnv=GIT_PROTOCOL", synthetic, service+" "+path)
 			got, probe, err := setupSSHArgs(args, false)
-			want := []string{"-o", "SendEnv=GIT_PROTOCOL", "-F", record.SSHConfig, "-p", "2222", "-l", "server-user", "--", "native.invalid", service + " " + nativePath}
+			want := []string{"-o", "SendEnv=GIT_PROTOCOL", "-p", "2222", "-l", "server-user", "--", "native.invalid", service + " " + nativePath}
 			if err != nil || probe || !slices.Equal(got, want) {
 				t.Fatalf("got %q, probe %v, error %v; want %q", got, probe, err, want)
 			}
@@ -77,23 +85,12 @@ func TestSetupSSHArgs(t *testing.T) {
 	}
 }
 
-func TestRenderSetupSSHIncludesNativeHostConfig(t *testing.T) {
+func TestRenderSetupSSHAlias(t *testing.T) {
 	ssh, err := exec.LookPath("ssh")
 	if err != nil {
 		t.Skip("OpenSSH is unavailable")
 	}
 	record := sshTestRecord(t)
-	record.SSHURL = "ssh://native.invalid/Collection/Project/_git/Repo"
-	home := filepath.Join(t.TempDir(), "home with [brackets]")
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	config := "Host native.invalid\n    User from-user-config\n    HostKeyAlias native-host-key\n"
-	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(config), 0600); err != nil {
-		t.Fatal(err)
-	}
 	data, err := renderSetupSSH(record)
 	if err != nil {
 		t.Fatal(err)
@@ -101,22 +98,8 @@ func TestRenderSetupSSHIncludesNativeHostConfig(t *testing.T) {
 	if err := os.WriteFile(record.SSHConfig, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	output, err := exec.Command(ssh, "-G", "-F", record.SSHConfig, "--", "native.invalid").CombinedOutput()
+	output, err := exec.Command(ssh, "-G", "-F", record.SSHConfig, "--", setupSyntheticSSHHost).CombinedOutput()
 	settings := strings.ReplaceAll(string(output), "\r\n", "\n")
-	if err != nil || !strings.Contains(settings, "\nuser from-user-config\n") ||
-		!strings.Contains(settings, "\nhostkeyalias native-host-key\n") {
-		t.Fatalf("ssh -G did not load the native Host settings: %v\n%s", err, output)
-	}
-	record = sshTestRecord(t)
-	data, err = renderSetupSSH(record)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(record.SSHConfig, data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	output, err = exec.Command(ssh, "-G", "-F", record.SSHConfig, "--", setupSyntheticSSHHost).CombinedOutput()
-	settings = strings.ReplaceAll(string(output), "\r\n", "\n")
 	if err != nil || !strings.Contains(settings, "\nhostname native.invalid\n") ||
 		!strings.Contains(settings, "\nuser server-user\n") || !strings.Contains(settings, "\nport 2222\n") {
 		t.Fatalf("ssh -G did not resolve the synthetic alias: %v\n%s", err, output)
@@ -196,7 +179,7 @@ printf '0000'
 		remote string
 		want   []string
 	}{
-		{record.RemoteURL, []string{"version=2", "-o", "SendEnv=GIT_PROTOCOL", "-F", record.SSHConfig, "-p", "2222",
+		{record.RemoteURL, []string{"version=2", "-o", "SendEnv=GIT_PROTOCOL", "-p", "2222",
 			"-l", "server-user", "--", "native.invalid", `git-upload-pack '/Second Collection/My Project/_git/Repo'\!''\''Name'`}},
 		{"ssh://git@other.invalid:443/ordinary%20repo", []string{"version=2", "-o", "SendEnv=GIT_PROTOCOL",
 			"-p", "443", "--", "git@other.invalid", "git-upload-pack '/ordinary repo'"}},

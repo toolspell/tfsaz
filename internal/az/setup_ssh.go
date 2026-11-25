@@ -38,6 +38,15 @@ func setupSSHCommand(r setupRecord) (string, error) {
 	if err != nil {
 		return "", errors.New("locate tfsaz executable for Git SSH command")
 	}
+	// Prefer the installation link (for example Homebrew's bin/tfsaz)
+	// when it resolves to this binary. Versioned install directories can move.
+	if installed, err := exec.LookPath("tfsaz"); err == nil && filepath.IsAbs(installed) {
+		current, e1 := os.Stat(exe)
+		target, e2 := os.Stat(installed)
+		if e1 == nil && e2 == nil && os.SameFile(current, target) {
+			exe = installed
+		}
+	}
 	command := setupSSHQuote(filepath.ToSlash(exe)) + " repo ssh " +
 		setupSSHQuote(r.RemoteURL) + " " + setupSSHQuote(r.SSHURL) + " " +
 		setupSSHQuote(r.SSHConfig) + " --"
@@ -54,22 +63,9 @@ func renderSetupSSH(r setupRecord) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, errors.New("locate user SSH config directory")
-	}
-	paths := []string{filepath.Join(home, ".ssh", "config")}
-	if runtime.GOOS == "windows" {
-		if programData := os.Getenv("ProgramData"); programData != "" {
-			paths = append(paths, filepath.Join(programData, "ssh", "ssh_config"))
-		}
-	} else {
-		paths = append(paths, "/etc/ssh/ssh_config")
-	}
-
-	// ssh -F skips normal config loading. Include the defaults in order and
-	// match against the native hostname so existing Host and Match rules apply.
-	// Use an absolute path since OpenSSH may resolve ~ independently of HOME.
+	// The file records the endpoint for this checkout. Git's helper passes
+	// the verified native target to ordinary OpenSSH, preserving its normal
+	// Host/Match processing and platform-specific configuration directories.
 	var config strings.Builder
 	fmt.Fprintf(&config, "Host %s\n    HostName %s\n", setupSyntheticSSHHost,
 		strings.ReplaceAll(native.Hostname(), "%", "%%"))
@@ -78,13 +74,6 @@ func renderSetupSSH(r setupRecord) ([]byte, error) {
 	}
 	if native.User != nil {
 		fmt.Fprintf(&config, "    User %s\n", native.User.Username())
-	}
-	pattern := strings.NewReplacer("[", "[[]", "]", "[]]", "*", "[*]", "?", "[?]", "%", "%%")
-	for _, path := range paths {
-		if !filepath.IsAbs(path) || setupSSHHasControl(path) {
-			return nil, errors.New("invalid default SSH config path")
-		}
-		fmt.Fprintf(&config, "Host *\n    Include %s\n", strconv.Quote(pattern.Replace(filepath.ToSlash(path))))
 	}
 	return []byte(config.String()), nil
 }
@@ -298,7 +287,20 @@ func setupSSHArgs(args []string, check bool) (sshArgs []string, probe bool, err 
 		if check && service != "git-upload-pack" {
 			return nil, false, invalid
 		}
-		sshArgs = append(sshArgs, "-F", config)
+		if !check {
+			binding := setupRecord{RemoteURL: synthetic.String(), SSHURL: native.String(), SSHConfig: config}
+			expected, err := renderSetupSSH(binding)
+			if err != nil {
+				return nil, false, err
+			}
+			present, err := checkSetupSSH(binding, expected)
+			if err != nil {
+				return nil, false, err
+			}
+			if !present {
+				return nil, false, errors.New("managed repository SSH configuration is missing")
+			}
+		}
 		if native.Port() != "" {
 			sshArgs = append(sshArgs, "-p", native.Port())
 		}
