@@ -17,6 +17,9 @@ import (
 
 const routeUsage = `tfsaz route explain URL
 tfsaz route resolve URL
+tfsaz route mac-handler-export NEW.app BROWSER_BUNDLE_ID
+tfsaz route browser-target URL
+tfsaz route verify-node
 tfsaz route browser-export NEW_DIRECTORY
 tfsaz route browser-verify DIRECTORY
 tfsaz route run -- PROGRAM [ARG ...]
@@ -30,6 +33,32 @@ func (a app) runRoute(ctx context.Context, args []string) error {
 	if len(args) == 0 || (len(args) == 1 && (args[0] == "--help" || args[0] == "-h")) {
 		_, err := fmt.Fprintln(a.stdout, routeUsage)
 		return err
+	}
+	switch args[0] {
+	case "mac-handler-export":
+		if len(args) != 3 {
+			return usageError{errors.New("expected route mac-handler-export NEW.app BROWSER_BUNDLE_ID")}
+		}
+		return exportMacLinkHandler(ctx, args[1], args[2])
+	case "browser-target":
+		if len(args) != 2 {
+			return usageError{errors.New("expected route browser-target URL")}
+		}
+		target, err := browserTarget(args[1])
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(a.stdout, target)
+		return err
+	case "verify-node":
+		if len(args) != 1 {
+			return usageError{errors.New("expected route verify-node")}
+		}
+		cfg, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		return verifyRouteNode(ctx, cfg, a.stdout)
 	}
 	if args[0] == "run" && len(args) >= 3 && args[1] == "--" {
 		return a.runWithHTTPSGit(ctx, args[2:])
