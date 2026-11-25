@@ -172,7 +172,7 @@ func checkWorkItemJSON(t *testing.T, want string, got []byte) {
 	}
 }
 
-func TestWitRejectsUnsupportedRequestsBeforeCredentialLookup(t *testing.T) {
+func TestStockWorkItemInvokeShapes(t *testing.T) {
 	cwd := t.TempDir()
 	setConfig(t, Profile{ID: "fixture", Organization: witFixtureOrganization, CollectionURL: "https://example.invalid/Collection"})
 	store := &memoryStore{}
@@ -209,12 +209,12 @@ func TestWitRejectsUnsupportedRequestsBeforeCredentialLookup(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			err := a.run(t.Context(), witArgs(tc.resource, tc.version, tc.route, tc.extra))
-			if ExitCode(err) != 2 || !strings.Contains(err.Error(), tc.diagnostic) {
-				t.Fatalf("error = %v, want usage error containing %q", err, tc.diagnostic)
+			_, opts, err := parse(witArgs(tc.resource, tc.version, tc.route, tc.extra))
+			if err == nil {
+				_, err = parseStockInvoke(opts, cwd)
 			}
-			if len(store.reads) != 0 {
-				t.Fatal("invalid work item request reached the credential store")
+			if err == nil || !strings.Contains(err.Error(), tc.diagnostic) {
+				t.Fatalf("error = %v, want usage error containing %q", err, tc.diagnostic)
 			}
 		})
 	}
@@ -225,7 +225,7 @@ func TestWitRejectsUnsupportedRequestsBeforeCredentialLookup(t *testing.T) {
 	args = witArgs("tags", "7.1", nil, nil)
 	args[slices.Index(args, "project="+witFixtureProject)] = "project=Group%2Fother"
 	err := a.run(t.Context(), args)
-	if ExitCode(err) != 2 || !strings.Contains(err.Error(), "requires a valid project") || len(store.reads) != 0 {
+	if ExitCode(err) != 2 || !strings.Contains(err.Error(), "invalid REST route parameter") || len(store.reads) != 0 {
 		t.Fatalf("invalid project reached command dispatch: %v", err)
 	}
 }

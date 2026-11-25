@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	maxInvokeParameters     = 6
+	maxInvokeParameters     = 128
 	maxInvokeItemPathBytes  = 4096
 	maxInvokeParameterBytes = 3*maxInvokeItemPathBytes + len("path=")
 	maxBlobIDs              = 200 // Two object IDs for each of T3's 100 files.
@@ -40,7 +40,7 @@ type invokeRead struct {
 	projectTypes bool
 }
 
-func parseInvoke(opts map[string]string, cwd string) (invokeRead, error) {
+func parseStockInvoke(opts map[string]string, cwd string) (invokeRead, error) {
 	var read invokeRead
 	area := opts["area"]
 	if strings.EqualFold(area, "wit") {
@@ -236,10 +236,7 @@ func (read invokeRead) run(ctx context.Context, client *Client, scope Scope, cwd
 			return err
 		}
 	case "comments":
-		cursor := object["continuationToken"]
-		if header != "" && (cursor == nil || string(cursor) == "null" || string(cursor) == `""`) {
-			object["continuationToken"] = token
-		}
+		setCommentCursor(object, header)
 	}
 	return json.NewEncoder(stdout).Encode(object)
 }
@@ -334,4 +331,11 @@ func (read invokeRead) downloadBlobs(ctx context.Context, client *Client, cwd st
 		return errors.New("could not publish --out-file")
 	}
 	return nil
+}
+
+func setCommentCursor(object map[string]json.RawMessage, header string) {
+	cursor := object["continuationToken"]
+	if header != "" && (cursor == nil || string(cursor) == "null" || string(cursor) == `""`) {
+		object["continuationToken"], _ = json.Marshal(header)
+	}
 }

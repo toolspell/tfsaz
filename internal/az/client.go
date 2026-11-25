@@ -24,13 +24,16 @@ const (
 	loginHint        = "Run 'az devops login' for this collection."
 )
 
+var serviceErrorCode = regexp.MustCompile(`\b(?:tf|vs)[0-9]{4,8}\b`)
+
 var errRejectedPAT = errors.New("Azure DevOps rejected the PAT")
 
 // Client makes authenticated REST requests to a single collection.
 type Client struct {
-	collection url.URL
-	pat        string
-	http       *http.Client
+	collection    url.URL
+	pat           string
+	http          *http.Client
+	checkBoundary func([]string) error
 }
 
 func newClient(profile Profile, pat string) (*Client, error) {
@@ -88,8 +91,21 @@ func (c *Client) Get(ctx context.Context, path []string, query url.Values, dest 
 }
 
 func (c *Client) request(ctx context.Context, method string, path []string, query url.Values, accept string, body io.Reader) (*http.Response, error) {
+	contentType := ""
+	if body != nil {
+		contentType = "application/json"
+	}
+	return c.requestWithMedia(ctx, method, path, query, accept, contentType, nil, body)
+}
+
+func (c *Client) requestWithMedia(ctx context.Context, method string, path []string, query url.Values, accept, contentType string, headers http.Header, body io.Reader) (*http.Response, error) {
 	if len(path) == 0 {
 		return nil, errors.New("missing Azure DevOps REST path")
+	}
+	if c.checkBoundary != nil {
+		if err := c.checkBoundary(path); err != nil {
+			return nil, usageError{err}
+		}
 	}
 	target := c.collection
 	escaped := strings.TrimRight(target.EscapedPath(), "/")
@@ -108,9 +124,14 @@ func (c *Client) request(ctx context.Context, method string, path []string, quer
 	if err != nil {
 		return nil, errors.New("could not construct the Azure DevOps REST request")
 	}
+	for name, values := range headers {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+	}
 	req.Header.Set("Accept", accept)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	req.Header.Set("X-TFS-FedAuthRedirect", "Suppress")
 	req.SetBasicAuth("", c.pat)
@@ -185,6 +206,11 @@ func collectionResponseError(resp *http.Response, path []string) error {
 		(strings.Contains(message, "pull request") && (strings.Contains(message, "not found") || strings.Contains(message, "does not exist"))) ||
 		(prByID && status == http.StatusNotFound) {
 		return errors.New("pull request not found")
+	}
+	// Server messages can echo request bodies and user data. A stable TF or
+	// VS code identifies the error without exposing that text.
+	if code := serviceErrorCode.FindString(message); code != "" {
+		return fmt.Errorf("Azure DevOps collection request failed (HTTP %d, %s)", status, strings.ToUpper(code))
 	}
 	return fmt.Errorf("Azure DevOps collection request failed (HTTP %d)", status)
 }

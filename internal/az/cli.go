@@ -24,7 +24,8 @@ const usage = `tfsaz — Azure DevOps Server for T3 Code
   az repos show | repos pr list | repos pr show | repos pr policy list
   az boards work-item show --id ID [--expand relations]
   az devops team list | devops team list-member
-  az devops invoke --area git|wit --resource RESOURCE ...
+  az devops invoke [--area AREA [--resource RESOURCE]] [--route-parameters key=value ...]
+  az rest --url COLLECTION_API_URL [--method METHOD]
 
 Configure collection profiles in tfsaz/config.json in your OS user configuration
 directory, or select an absolute config file with TFSAZ_CONFIG. Login reads a PAT
@@ -34,7 +35,8 @@ from a hidden prompt or stdin and stores it in the OS keyring.`
 // --repository=-name and --project=-name forms.
 var commandOptions = map[string]string{
 	"devops login":            "organization",
-	"devops invoke":           "organization detect only-show-errors output area resource api-version route-parameters query-parameters http-method in-file media-type accept-media-type out-file query",
+	"devops invoke":           "organization detect only-show-errors output area resource api-version route-parameters query-parameters http-method in-file media-type accept-media-type out-file query encoding",
+	"rest":                    "url method body headers uri-parameters output-file output query only-show-errors",
 	"devops team list":        "organization project detect only-show-errors output top skip",
 	"devops team list-member": "organization project detect only-show-errors output team top skip",
 	"boards work-item show":   "organization id detect only-show-errors output expand",
@@ -44,7 +46,7 @@ var commandOptions = map[string]string{
 	"repos pr list":           "organization project repository detect only-show-errors output top skip source-branch target-branch status include-links creator reviewer",
 	"repos pr policy list":    "organization id detect only-show-errors output top skip",
 }
-var optionNames = map[string]string{"--org": "organization", "-o": "output", "-p": "project", "-r": "repository", "-i": "id"}
+var optionNames = map[string]string{"--uri": "url", "-u": "url", "-m": "method", "-b": "body", "--url-parameters": "uri-parameters", "--org": "organization", "-o": "output", "-p": "project", "-r": "repository", "-i": "id"}
 
 func parse(args []string) (string, map[string]string, error) {
 	i := 0
@@ -79,7 +81,7 @@ func parse(args []string) (string, map[string]string, error) {
 				return "", nil, fmt.Errorf("--%s takes no value", name)
 			}
 			v = "true"
-		} else if name == "route-parameters" || name == "query-parameters" {
+		} else if name == "route-parameters" || name == "query-parameters" || name == "uri-parameters" || name == "headers" {
 			var values []string
 			if joined {
 				values = append(values, v)
@@ -121,7 +123,7 @@ func parse(args []string) (string, map[string]string, error) {
 		if !viewer && !discovery {
 			return "", nil, errors.New("supported account queries are --query user -o json and --query user.name -o tsv")
 		}
-	} else if output != "" && output != "json" {
+	} else if command != "devops invoke" && command != "rest" && output != "" && output != "json" {
 		return "", nil, errors.New("Azure DevOps reads require JSON output")
 	}
 	return command, opts, nil
@@ -184,11 +186,22 @@ func (a app) run(ctx context.Context, args []string) error {
 		return usageError{err}
 	}
 	var invoke invokeRead
+	var generic *apiCall
 	var item workItemRead
 	var teams teamRead
 	switch command {
 	case "devops invoke":
-		invoke, err = parseInvoke(opts, a.cwd)
+		// Preserve the adapter's URL normalization, file handling and workflow
+		// projection for the precise request shapes it already uses.
+		if stockOutput(opts) {
+			invoke, err = parseStockInvoke(opts, a.cwd)
+			if err == nil {
+				break
+			}
+		}
+		fallthrough
+	case "rest":
+		generic, err = parseAPICall(command, opts, a.cwd)
 	case "boards work-item show":
 		item, err = parseWorkItemShow(opts)
 	case "devops team list", "devops team list-member":
@@ -223,10 +236,17 @@ func (a app) run(ctx context.Context, args []string) error {
 		_, err = fmt.Fprintln(a.stdout, login)
 		return err
 	}
-	// T3 allows 30 seconds for a repository read. Share one deadline across
-	// checkout discovery, identity lookup and all REST calls in the command.
-	ctx, cancel := context.WithTimeout(ctx, 27*time.Second)
+	// Stock T3 allows 30 seconds per CLI read. Direct REST calls can also
+	// transfer a file and need a longer budget.
+	timeout := 27 * time.Second
+	if generic != nil {
+		timeout = genericRESTTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if command == "rest" {
+		return a.runRest(ctx, cfg, generic, opts["url"])
+	}
 	p, scope, err := cfg.scope(ctx, a.cwd, opts)
 	if err != nil {
 		return err
@@ -235,6 +255,7 @@ func (a app) run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	client.checkBoundary = func(path []string) error { return cfg.checkRestBoundary(p, path) }
 	if command == "account show" {
 		id, err := client.Identity(ctx)
 		if err != nil {
@@ -245,6 +266,13 @@ func (a app) run(ctx context.Context, args []string) error {
 			return err
 		}
 		return json.NewEncoder(a.stdout).Encode(map[string]string{"name": id.Login, "type": "user"})
+	}
+	if generic != nil {
+		err := generic.invoke(ctx, client, scope, a.stdout)
+		if strings.EqualFold(generic.area, "wit") {
+			return client.boardsReadError(ctx, err)
+		}
+		return err
 	}
 	if command == "devops invoke" {
 		err = invoke.run(ctx, client, scope, a.cwd, a.stdout)

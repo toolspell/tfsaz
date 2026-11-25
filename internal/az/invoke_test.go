@@ -236,10 +236,7 @@ func invokeBlobArgs(in, out string) []string {
 		"--accept-media-type", "application/zip", "--only-show-errors"})
 }
 
-func TestInvokeRejectsUnsupportedRequestsBeforeCredentialLookup(t *testing.T) {
-	setConfig(t, Profile{ID: "fixture", Organization: "https://fixture.visualstudio.com", CollectionURL: "https://example.invalid/Collection"})
-	store := &memoryStore{}
-	a := app{stdout: io.Discard, store: store}
+func TestStockGitInvokeShapes(t *testing.T) {
 	pr := []string{"pullRequestId=42"}
 	for _, tc := range []struct {
 		name, resource string
@@ -262,12 +259,12 @@ func TestInvokeRejectsUnsupportedRequestsBeforeCredentialLookup(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			args := invokeArgs(tc.resource, tc.route, tc.extra)
-			err := a.run(t.Context(), append(args, "--organization", "https://fixture.visualstudio.com"))
+			_, opts, err := parse(args)
+			if err == nil {
+				_, err = parseStockInvoke(opts, "")
+			}
 			if err == nil || !strings.Contains(err.Error(), tc.match) {
 				t.Fatalf("error = %v, want %q", err, tc.match)
-			}
-			if len(store.reads) != 0 {
-				t.Error("invalid request reached credential lookup")
 			}
 		})
 	}
