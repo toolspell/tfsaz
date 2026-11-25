@@ -197,10 +197,7 @@ esac
 	}
 }
 
-func TestRepoPreserveDefaultRequiresHelperOnMac(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("macOS uses preserve transport by default")
-	}
+func TestRepoPreserveDefaultRequiresHelper(t *testing.T) {
 	a, c, cfgPath, _ := preserveTestRepo(t)
 	root := filepath.Dir(c.repo)
 	preserveTestConfig(t, cfgPath, "https://server.example/tfs/Collection")
@@ -272,11 +269,7 @@ fi
 	managerTestGit(t, c.repo, "config", "credential.helper", credentials)
 	managerTestGit(t, c.repo, "config", "credential.useHttpPath", "true")
 
-	setup := []string{"setup"}
-	if runtime.GOOS != "darwin" {
-		setup = append(setup, "--preserve-transport")
-	}
-	managerTestRun(t, a, setup...)
+	managerTestRun(t, a, "setup")
 	managerTestRun(t, a, "show", c.repo)
 	r := managerTestRecords(t)[0]
 	if r.Transport != "https" || !strings.HasPrefix(r.RemoteURL, "https://tfsaz-") ||

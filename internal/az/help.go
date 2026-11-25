@@ -177,7 +177,7 @@ var nativeCommands = map[string]nativeCommand{
 		"shim install --dir ./bin",
 	},
 	"repo setup": {
-		"Set up a checkout for T3. New macOS setups preserve the native Git transport. Use --managed-ssh for the SSH wrapper or --preserve-transport to select the per-remote Git helper on other platforms.",
+		"Set up a checkout for T3. New setups preserve the original HTTPS or SSH transport. Use --managed-ssh to select the SSH wrapper.",
 		"[PATH] [--profile ID] [--preserve-transport | --managed-ssh [--ssh-url URL]]",
 		"repo setup ./checkout --preserve-transport",
 	},

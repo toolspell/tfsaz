@@ -908,7 +908,7 @@ func (s *setupRegistry) gitTransaction(c setupCheckout, run func(*setupGitLock) 
 
 func (s *setupRegistry) mutate(ctx context.Context, c setupCheckout, op repoSetupArgs) error {
 	index := setupRecordIndex(s.records, c.gitDir)
-	preserve := op.mode == repoSetupPreserve || (op.mode == repoSetupDefault && runtime.GOOS == "darwin")
+	preserve := op.mode != repoSetupManagedSSH
 	var cfg config
 	if op.action == "setup" {
 		var err error
