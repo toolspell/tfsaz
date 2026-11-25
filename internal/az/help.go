@@ -211,6 +211,16 @@ var nativeCommands = map[string]nativeCommand{
 		"URL",
 		"route resolve https://engineering-example.visualstudio.com/Project/_git/Repo/pullrequest/42",
 	},
+	"route handler-export": {
+		"Export a desktop HTTP/HTTPS handler for the current platform. Use an app bundle and browser bundle ID on macOS, a new folder and browser .exe on Windows, or a .desktop file and browser executable on Linux.",
+		"DESTINATION BROWSER",
+		desktopHandlerExample,
+	},
+	"route handler-open": {
+		"Open one HTTP or HTTPS link using an exported handler’s config file and browser executable.",
+		"CONFIG BROWSER URL",
+		"route handler-open CONFIG BROWSER https://example.org/",
+	},
 	"route mac-handler-export": {
 		"Export a macOS link handler that opens routed URLs in the specified browser.",
 		"NEW.app BROWSER_BUNDLE_ID",

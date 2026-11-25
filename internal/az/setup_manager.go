@@ -33,11 +33,15 @@ func setupRegistryPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return setupRegistryForConfig(path), nil
+}
+
+func setupRegistryForConfig(path string) string {
 	path = filepath.Clean(path)
 	if dir, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
 		path = filepath.Join(dir, filepath.Base(path))
 	}
-	return path + ".repo-setups.json", nil
+	return path + ".repo-setups.json"
 }
 
 func readSetupRecords() ([]setupRecord, error) {

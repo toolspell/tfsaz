@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 )
 
 const macLinkHandlerBundleID = "com.toolspell.tfsaz.link-handler"
@@ -20,12 +19,12 @@ var macBrowserBundleID = regexp.MustCompile(`^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
 
 func exportMacLinkHandler(ctx context.Context, dest, browserBundleID string) error {
 	if runtime.GOOS != "darwin" {
-		return errors.New("the system web-link handler can only be exported on macOS")
+		return errors.New("use route handler-export to export a native link handler on this platform")
 	}
 	if !macBrowserBundleID.MatchString(browserBundleID) || strings.EqualFold(browserBundleID, macLinkHandlerBundleID) {
 		return errors.New("specify the bundle ID of a browser other than the tfsaz link handler")
 	}
-	if !validMacHandlerPath(dest) || !strings.EqualFold(filepath.Ext(dest), ".app") || len(filepath.Base(dest)) <= len(".app") {
+	if !validLinkPath(dest) || !strings.EqualFold(filepath.Ext(dest), ".app") || len(filepath.Base(dest)) <= len(".app") {
 		return errors.New("specify a new .app bundle path")
 	}
 	dest, err := filepath.Abs(dest)
@@ -40,7 +39,7 @@ func exportMacLinkHandler(ctx context.Context, dest, browserBundleID string) err
 	if err != nil {
 		return err
 	}
-	if !filepath.IsAbs(executable) || !validMacHandlerPath(executable) || !filepath.IsAbs(config) || !validMacHandlerPath(config) {
+	if !absoluteLinkPath(executable) || !absoluteLinkPath(config) {
 		return errors.New("the tfsaz executable and config must have valid absolute paths")
 	}
 
@@ -92,10 +91,6 @@ func exportMacLinkHandler(ctx context.Context, dest, browserBundleID string) err
 	}
 	finished = true
 	return nil
-}
-
-func validMacHandlerPath(path string) bool {
-	return path != "" && utf8.ValidString(path) && !strings.ContainsFunc(path, unicode.IsControl)
 }
 
 func macLinkHandlerSource(executable, config, open, browserBundleID string) string {

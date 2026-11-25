@@ -52,3 +52,39 @@ func TestSystemBrowserTargets(t *testing.T) {
 		}
 	}
 }
+
+func TestLinkHandlerUsesExportedConfigAndLiveRegistry(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "exported.json")
+	t.Setenv("TFSAZ_CONFIG", filepath.Join(root, "other.json"))
+	cfg := httpsRouteTestConfig()
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerTestWrite(t, file, string(data))
+	p := cfg.Profiles[0]
+	repo := setupCheckout{repo: root, gitDir: filepath.Join(root, ".git")}
+	r, err := makePreserveSetupRecord(cfg, repo, p.CollectionURL+"/Project/_git/Repo", p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Phase = setupPhaseActive
+	data, err = json.Marshal([]setupRecord{r})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := setupRegistryForConfig(file)
+	managerTestWrite(t, registry, string(data))
+	const path = "/Project/_git/Repo/pullrequest/17?view=files#anchor"
+	link := "https://" + r.Host + path
+	if target, err := browserTargetAt(link, file); err != nil || target != p.CollectionURL+path {
+		t.Fatalf("registered link = %q, %v", target, err)
+	}
+	if err := os.Remove(registry); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := browserTargetAt(link, file); err == nil {
+		t.Fatal("retired managed alias opened after restore")
+	}
+}

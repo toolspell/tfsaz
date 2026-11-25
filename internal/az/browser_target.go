@@ -12,6 +12,10 @@ import (
 // browserTarget also handles ordinary web links when the OS dispatches them to
 // tfsaz as the default browser. They need no checkout, profile, or credential.
 func browserTarget(raw string) (string, error) {
+	return browserTargetAt(raw, "")
+}
+
+func browserTargetAt(raw, configFile string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" ||
 		strings.Contains(raw, "\\") || strings.ContainsFunc(raw, unicode.IsControl) || u.User != nil {
@@ -37,11 +41,17 @@ func browserTarget(raw string) (string, error) {
 	if !ok || (host == "dev.azure.com" && len(parts) > 0 && strings.Contains(parts[0], "%")) {
 		return "", errors.New("invalid Azure web link path")
 	}
-	cfg, err := loadConfig()
+	if configFile == "" {
+		configFile, err = configPath()
+		if err != nil {
+			return "", err
+		}
+	}
+	cfg, err := loadConfigAt(configFile)
 	if err != nil {
 		return "", err
 	}
-	records, err := readSetupRecords()
+	records, err := readSetupRegistry(setupRegistryForConfig(configFile))
 	if err != nil {
 		return "", err
 	}

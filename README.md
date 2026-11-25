@@ -9,7 +9,7 @@
 | Connect an installed T3 app | Use `tfsaz shim install --dir DIR`, put DIR on the backend’s PATH, and run `tfsaz init --collection URL`. |
 | Use an existing clone | Run `tfsaz repo setup PATH`. New setups keep the original SSH or HTTPS transport. Use `tfsaz repo verify PATH` to check it and `tfsaz repo restore PATH` to recover the original URL offline. |
 | Clone a synthetic HTTPS URL in a shell or job | Start Git under `tfsaz route run --` and configure Git credentials for the native collection. This also works when no checkout exists yet. |
-| Open links from T3 Desktop on macOS | Export the macOS link handler on the machine where the link opens. It works with the user’s selected browser. |
+| Open links from T3 Desktop | Export the native link handler on the Windows, Ubuntu or macOS desktop where links open, and select a browser to receive them. |
 
 ## Build and configure
 
@@ -91,18 +91,55 @@ Offline help works for groups and individual commands, including `tfsaz repo set
 
 ## Route synthetic HTTPS URLs
 
-### Installed T3 Code desktop app on macOS
+### Open links from the installed T3 Code desktop app
 
-T3 Desktop sends an external web link to the Mac’s default browser. The optional tfsaz link handler receives that URL, translates a registered Azure link using the current configuration, and opens the result in your chosen browser. Browser sign-in takes place at the real collection. You can use Safari, Firefox, or another installed browser. This path needs only the installed tfsaz binary and its configuration. The handler starts on demand.
+Run `tfsaz route handler-export DESTINATION BROWSER` on the desktop where links open. The handler starts on demand, translates registered Azure web links, and passes ordinary HTTP and HTTPS links through to your chosen browser. Unsupported paths on registered aliases are refused. Browser sign-in takes place at the real collection. This works with the installed T3 app and requires no browser extension, background service or administrator access.
 
-For Safari, run the following once with tfsaz installed at its permanent path.
+Export using a permanent tfsaz installation. The handler captures the paths to tfsaz and its config file and reads that config and the repo registry on each click. Restore your usual default browser before removing the handler. If you move tfsaz or its config, or choose a different target browser, export a new handler.
+
+#### Windows 11
+
+From PowerShell, export a package for your installed browser and run its per-user installer. This example uses Edge. Windows expands percent signs in protocol commands, so choose tfsaz, browser and config paths without a literal `%`.
+
+```powershell
+$handler = Join-Path $env:LOCALAPPDATA 'tfsaz Links'
+$browser = Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'
+tfsaz route handler-export $handler $browser
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$handler\Install.ps1"
+```
+
+In **Settings → Apps → Default apps**, select **tfsaz Links** for **HTTP** and **HTTPS**. Windows requires the user to choose the defaults. To remove the handler, first select your usual browser for both protocols, then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$handler\Uninstall.ps1"` and delete the exported directory. Uninstall the old registration before installing a replacement package. [Windows default apps](https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/default-apps-platform)
+
+#### Ubuntu desktop
+
+Install the desktop entry under your user's applications directory. Supply the absolute path to a browser executable or launcher such as Firefox.
+
+```sh
+apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+mkdir -p "$apps"
+tfsaz route handler-export "$apps/com.toolspell.tfsaz.links.desktop" "$(command -v firefox)"
+update-desktop-database "$apps"
+```
+
+Try it first with `gio launch "$apps/com.toolspell.tfsaz.links.desktop" 'YOUR_AZURE_PR_URL'`. Record the current HTTP and HTTPS defaults, then select **tfsaz Links** for both.
+
+```sh
+xdg-mime query default x-scheme-handler/http
+xdg-mime query default x-scheme-handler/https
+gio mime x-scheme-handler/http com.toolspell.tfsaz.links.desktop
+gio mime x-scheme-handler/https com.toolspell.tfsaz.links.desktop
+```
+
+To remove it, restore each recorded desktop ID with `gio mime x-scheme-handler/SCHEME PREVIOUS_ID`, or choose your browser in GNOME's **Default Apps**. Then remove the exported desktop file. [freedesktop default application associations](https://specifications.freedesktop.org/mime-apps/latest/default)
+
+#### macOS
 
 ```sh
 mkdir -p "$HOME/Applications"
-tfsaz route mac-handler-export "$HOME/Applications/tfsaz Links.app" com.apple.Safari
+tfsaz route handler-export "$HOME/Applications/tfsaz Links.app" com.apple.Safari
 ```
 
-For Firefox use `org.mozilla.firefox` as the final argument. First try the handler with `open -a "$HOME/Applications/tfsaz Links.app" "YOUR_AZURE_PR_URL"`. To have desktop links use it automatically, select **tfsaz Links** in **System Settings → Desktop & Dock → Default web browser**. Ordinary web links go to the chosen browser. Unsupported paths on a registered alias produce an error. To undo the change, select your usual default browser again and remove the exported app. The handler captures the CLI and config file paths at export. Changes to the contents of that file or to active repo setups apply on the next click. If either path moves, or if you switch browsers, export a new handler.
+For Firefox, use `org.mozilla.firefox` as the browser bundle ID. Try the handler with `open -a "$HOME/Applications/tfsaz Links.app" 'YOUR_AZURE_PR_URL'`. Select **tfsaz Links** in **System Settings → Desktop & Dock → Default web browser**. To remove it, select your usual browser and delete the exported app. The earlier `route mac-handler-export` command remains supported.
 
 The OS hands off links from applications such as T3 Desktop. Typing a URL into a browser or clicking a link in the browser version of T3 usually keeps navigation inside that browser. For these cases use `tfsaz route resolve URL` or the optional Chromium integration below. Scripts can also consume `route resolve` directly. Exact hostname entries can separately catch traffic from programs that resolve names locally.
 
@@ -216,7 +253,8 @@ The installed Windows T3 Nightly desktop app and the backend from the Ubuntu Nig
 
 - **Credential stores.** On Ubuntu the automatic desktop login had no default persistent Secret Service collection. An isolated, unlocked GNOME Keyring session handled the test PATs. On Windows, Credential Manager rejected writes directly from an SSH logon. Starting the test process under a password-backed Windows logon with its user profile loaded allowed it to store, use and remove the test credentials.
 - **Git clients and TLS.** The live HTTPS tests trusted the testbed CA explicitly and supplied Git credentials scoped to the native collection. The Windows SSH tests passed with Git for Windows’ bundled OpenSSH. With Windows’ system OpenSSH, a direct native Git read authenticated and then stalled on this VM. Confirm native `git ls-remote` works with the chosen client before setup.
-- **HTTPS routing.** On each OS, `route resolve` produced native PR URLs and `route run -- git clone` retained the synthetic origin while fetching the native HEAD. In isolated browser profiles, Windows Edge and Ubuntu Firefox refused registered aliases and reached an unrelated local test site directly. Windows WinHTTP selected the loopback HTTP proxy for a registered host. Ubuntu’s GNOME GIO resolver selected loopback SOCKS5 followed by the loopback HTTP proxy. Both resolvers selected DIRECT for an unrelated host. These tests left the machine-wide proxy settings in place. Native desktop link-handler export is available on macOS.
+- **HTTPS routing.** On each OS, `route resolve` produced native PR URLs and `route run -- git clone` retained the synthetic origin while fetching the native HEAD. In isolated browser profiles, Windows Edge and Ubuntu Firefox refused registered aliases and reached an unrelated local test site directly. Windows WinHTTP selected the loopback HTTP proxy for a registered host. Ubuntu’s GNOME GIO resolver selected loopback SOCKS5 followed by the loopback HTTP proxy. Both resolvers selected DIRECT for an unrelated host. These tests left the machine-wide proxy settings in place.
+- **Desktop link handlers.** Both installed T3 Nightly packages contained Electron’s external-link handoff. The tests exercised the OS dispatch directly. Windows listed **tfsaz Links** for HTTP and HTTPS. The Windows shell dispatched a PR URL to the registered handler and the browser receiver got the translated URL with its encoded query and fragment intact. It also received ordinary HTTP links unchanged. Edge opened a local page in a disposable profile, preserving its query and fragment. Install, uninstall and a registration collision were tested under the VM user's account. On Ubuntu, GIO dispatched both schemes with isolated desktop defaults. After repo restore, the former alias was refused on the next click. Firefox opened a local test page using a disposable profile. The Windows test selected the registered handler explicitly. Neither test changed the user's desktop defaults.
 
 ### Feature coverage at this T3 revision
 
@@ -224,7 +262,7 @@ The command table above lists implemented commands. The table below shows how th
 
 | Feature | What works or is missing |
 | --- | --- |
-| Discovery, project recognition and link matching | Version and account probes work. PR web URLs preserve the recognized checkout identity. An exported Chromium extension opens supported HTTPS links on the native server. |
+| Discovery, project recognition and link matching | Version and account probes work. PR web URLs preserve the recognized checkout identity. The native desktop handlers and the optional Chromium extension open supported HTTPS links on the real collection. |
 | Clone, branch and checkout | `repos show` supplies clone URLs and default branch. T3 finds a branch's PR with `repos pr list`. For same-repo PR checkout it reads `repos pr show` and uses Git fetch/switch. PR templates also use local Git. Clone transports were exercised live. Template and checkout paths were checked in upstream code/tests. T3 rejects fork checkout. The displayed shell command `az repos pr checkout` also works for same-repository PRs. |
 | Create or publish | Supports `repos create` and `repos pr create`, including draft PR creation. |
 | PR board, preview, detail, linked thread and checks | List/show and paginated policy reads work. T3 can show authors, reviewers, body, state, policy checks and the labels included in the PR response. Linked summaries use those same reads for refresh. Watch notifications, mobile surfaces and agent tools were not independently exercised end to end. |

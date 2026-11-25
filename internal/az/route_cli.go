@@ -20,6 +20,16 @@ func (a app) runRoute(ctx context.Context, args []string) error {
 		return writeHelp(a.stdout, "route")
 	}
 	switch args[0] {
+	case "handler-export":
+		if len(args) != 3 {
+			return usageError{errors.New("expected route handler-export DESTINATION BROWSER")}
+		}
+		return exportDesktopLinkHandler(ctx, args[1], args[2])
+	case "handler-open":
+		if len(args) != 4 {
+			return usageError{errors.New("expected route handler-open CONFIG BROWSER URL")}
+		}
+		return openDesktopLink(ctx, args[1], args[2], args[3])
 	case "mac-handler-export":
 		if len(args) != 3 {
 			return usageError{errors.New("expected route mac-handler-export NEW.app BROWSER_BUNDLE_ID")}

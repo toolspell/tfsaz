@@ -105,6 +105,10 @@ func loadConfig() (config, error) {
 	if err != nil {
 		return config{}, err
 	}
+	return loadConfigAt(path)
+}
+
+func loadConfigAt(path string) (config, error) {
 	cfg, err := readConfigFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return config{}, fmt.Errorf("%w; run tfsaz init to configure a collection", err)
