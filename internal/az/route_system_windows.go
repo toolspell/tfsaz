@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
@@ -20,7 +21,7 @@ import (
 
 // Windows: a per-user Task Scheduler logon task runs the redirect service
 // directly on loopback port 443 (Winsock needs no privilege for it), hidden
-// through conhost --headless. The leaf goes into the user's Root store, which
+// through Windows PowerShell. The leaf goes into the user's Root store, which
 // shows a confirmation dialog on the interactive desktop. Only the hosts edit
 // runs elevated, as a fixed PowerShell script behind one UAC prompt.
 
@@ -63,13 +64,19 @@ func routeSystemInstallOS(ctx context.Context, p routeSystemPlan) error {
 	if err != nil {
 		return err
 	}
-	if err := routeHostsConflict(hosts, p.id, p.aliases); err != nil {
+	pending, err := windowsHostsRecoveryPending(routeHostsPath())
+	if err != nil {
 		return err
+	}
+	if !pending {
+		if err := routeHostsConflict(hosts, p.id, p.aliases); err != nil {
+			return err
+		}
 	}
 	if err := installWindowsTask(ctx, p); err != nil {
 		return err
 	}
-	if err := waitRouteSystemService(ctx, p, 15*time.Second); err != nil {
+	if err := waitRouteSystemService(ctx, p, 45*time.Second); err != nil {
 		if busy := checkRouteSystem443(ctx, p); busy != nil {
 			return busy
 		}
@@ -78,7 +85,7 @@ func routeSystemInstallOS(ctx context.Context, p routeSystemPlan) error {
 	if err := installWindowsTrust(ctx, p); err != nil {
 		return err
 	}
-	if editRouteHosts(hosts, p.id, p.aliases, true) == hosts {
+	if !pending && editRouteHosts(hosts, p.id, p.aliases, true) == hosts {
 		return nil
 	}
 	return runWindowsElevated(ctx, windowsHostsScript(p.id, p.aliases, true))
@@ -95,7 +102,9 @@ func routeSystemRestoreOS(ctx context.Context, p routeSystemPlan) error {
 	hosts, err := readRouteHosts()
 	if err != nil {
 		errs = append(errs, err)
-	} else if routeHostsHasMarker(hosts, p.id) {
+	} else if pending, err := windowsHostsRecoveryPending(routeHostsPath()); err != nil {
+		errs = append(errs, err)
+	} else if pending || routeHostsHasMarker(hosts, p.id) {
 		if err := runWindowsElevated(ctx, windowsHostsScript(p.id, nil, false)); err != nil {
 			errs = append(errs, err)
 		}
@@ -116,26 +125,29 @@ func checkWindowsPaths(p routeSystemPlan) error {
 	return nil
 }
 
-// windowsTaskArguments is the conhost command line of the logon task.
-// conhost --headless splits its arguments and quotes them again with
-// backslash escapes, which cmd.exe does not understand, so a quoted cmd line
-// with spaces in a path arrives garbled. Only the base64 of -EncodedCommand
-// passes through unchanged. That script sets TFSAZ_CONFIG and hands cmd its
-// command line verbatim through ProcessStartInfo.Arguments.
+// Task Scheduler may leave an on-demand run stopped after a failed action.
+// Supervise the redirector in the task so crashes recover before the next logon.
+// The encoded command preserves paths with spaces.
 func windowsTaskArguments(p routeSystemPlan) string {
 	cmd := filepath.Join(windowsRoot(), "System32", "cmd.exe")
 	log := filepath.Join(p.dir, "redirect.log")
 	inner := fmt.Sprintf(`/d /s /c ""%s" route redirect --cert "%s" --key "%s" --port 443 >> "%s" 2>&1"`,
 		p.exe, p.certFile, p.keyFile, log)
-	script := `$env:TFSAZ_CONFIG = ` + psQuote(p.configFile) + `
+	script := windowsSupervisorMarker(p.id) + `$env:TFSAZ_CONFIG = ` + psQuote(p.configFile) + `
 $s = New-Object Diagnostics.ProcessStartInfo
 $s.FileName = ` + psQuote(cmd) + `
 $s.Arguments = ` + psQuote(inner) + `
 $s.UseShellExecute = $false
-$c = [Diagnostics.Process]::Start($s)
-$c.WaitForExit()
-exit $c.ExitCode
+$s.CreateNoWindow = $true
+while ($true) {
+  $c = [Diagnostics.Process]::Start($s)
+  try { $c.WaitForExit(); $code = $c.ExitCode } finally { $c.Dispose() }
+  if ($code -eq 0) { exit 0 }
+  Start-Sleep -Seconds 10
+}
 `
+	// A regular console can wait for the desktop terminal to initialize in a
+	// disconnected session. Keep the supervisor inside its own headless console.
 	return `--headless "` + windowsPowerShell() + `" -NoLogo -NoProfile -NonInteractive -EncodedCommand ` + powerShellEncode(script)
 }
 
@@ -153,8 +165,9 @@ func windowsTaskXML(p routeSystemPlan, sid string) string {
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
     <RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure>
     <Hidden>true</Hidden>
+    <Priority>5</Priority>
   </Settings>
-  <Actions Context="Author"><Exec><Command>` + xmlEscape(filepath.Join(windowsRoot(), "System32", "conhost.exe")) + `</Command><Arguments>` + xmlEscape(args) + `</Arguments></Exec></Actions>
+  <Actions Context="Author"><Exec><Command>` + xmlEscape(filepath.Join(winSystemDir, "conhost.exe")) + `</Command><Arguments>` + xmlEscape(args) + `</Arguments></Exec></Actions>
 </Task>
 `
 }
@@ -199,11 +212,21 @@ func installWindowsTask(ctx context.Context, p routeSystemPlan) error {
 // setup's certificate, then waits until loopback port 443 no longer shows it.
 func stopWindowsTask(ctx context.Context, p routeSystemPlan) error {
 	if _, err := runRouteSystemCommand(ctx, nil, filepath.Join(winSystemDir, "schtasks.exe"), "/Query", "/TN", windowsTaskName(p.id)); err == nil {
-		runRouteSystemCommand(ctx, nil, filepath.Join(winSystemDir, "schtasks.exe"), "/End", "/TN", windowsTaskName(p.id))
+		if _, endErr := runRouteSystemCommand(ctx, nil, filepath.Join(winSystemDir, "schtasks.exe"), "/End", "/TN", windowsTaskName(p.id)); endErr != nil {
+			// An idle task needs no stop. A live supervisor must be stopped
+			// before its child or it can relaunch the redirector during restore.
+			check := `$ErrorActionPreference = 'Stop'; $s = New-Object -ComObject Schedule.Service; $s.Connect(); $t = $s.GetFolder('\tfsaz').GetTask(` +
+				psQuote(filepath.Base(windowsTaskName(p.id))) + `); if ($t.GetInstances(0).Count -ne 0) { exit 1 }`
+			if _, err := runRouteSystemCommand(ctx, nil, windowsPowerShell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", powerShellEncode(check)); err != nil {
+				return fmt.Errorf("could not confirm that the routing task stopped: %w", endErr)
+			}
+		}
 	}
 	// Ending the task may leave its child running; this also stops one serving
 	// an earlier leaf from the same path.
-	runRouteSystemCommand(ctx, nil, windowsPowerShell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", powerShellEncode(windowsStopScript(p.certFile)))
+	if _, err := runRouteSystemCommand(ctx, nil, windowsPowerShell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", powerShellEncode(windowsStopScript(p))); err != nil {
+		return fmt.Errorf("stop the routing task's child processes: %w", err)
+	}
 	sni := routeSystemProbeName(p)
 	if sni == "" {
 		return nil
@@ -235,9 +258,23 @@ func routeSystemProbeName(p routeSystemPlan) string {
 	return ""
 }
 
-func windowsStopScript(certFile string) string {
-	return `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains(' route redirect ') -and $_.CommandLine.Contains(` +
-		psQuote(`"`+certFile+`"`) + `) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
+func windowsSupervisorMarker(id string) string {
+	return "# tfsaz routing supervisor " + id + "\n"
+}
+
+func windowsStopScript(p routeSystemPlan) string {
+	// Ending the console host can leave PowerShell behind in a disconnected
+	// session. Stop the supervisor before its child, including while it sleeps.
+	return `$ErrorActionPreference = 'Stop'
+$marker = ` + psQuote(windowsSupervisorMarker(p.id)) + `
+Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | ForEach-Object {
+  if ($_.ProcessId -ne $PID -and $_.CommandLine -match ' -EncodedCommand\s+"?([a-zA-Z0-9+/=]+)"?\s*$') {
+    try { $script = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($Matches[1])) } catch { return }
+    if ($script.StartsWith($marker, [StringComparison]::Ordinal)) { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  }
+}
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains(' route redirect ') -and $_.CommandLine.Contains(` +
+		psQuote(`"`+p.certFile+`"`) + `) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
 }
 
 func removeWindowsTask(ctx context.Context, p routeSystemPlan) error {
@@ -250,8 +287,14 @@ func removeWindowsTask(ctx context.Context, p routeSystemPlan) error {
 	if _, err := runRouteSystemCommand(ctx, nil, filepath.Join(winSystemDir, "schtasks.exe"), "/Delete", "/TN", windowsTaskName(p.id), "/F"); err != nil {
 		return fmt.Errorf("remove the logon task: %w", err)
 	}
+	// schtasks leaves the \tfsaz folder behind. Task Scheduler refuses to delete
+	// a folder that still holds another configuration's task, so this removes
+	// only an empty one.
+	runRouteSystemCommand(ctx, nil, windowsPowerShell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", powerShellEncode(windowsTaskFolderScript))
 	return nil
 }
+
+const windowsTaskFolderScript = `$s = New-Object -ComObject Schedule.Service; $s.Connect(); $f = $s.GetFolder('\tfsaz'); if ($f.GetTasks(1).Count -eq 0 -and $f.GetFolders(0).Count -eq 0) { $s.GetFolder('\').DeleteFolder('tfsaz', 0) }`
 
 func psQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 
@@ -351,12 +394,39 @@ func removeWindowsTrust(ctx context.Context, sha256Hex string) error {
 	return nil
 }
 
-// windowsHostsScript mirrors editRouteHosts. It publishes
-// an atomic replacement that preserves its ACL, treating bytes as Latin-1 so
-// foreign content round-trips unchanged.
+// windowsHostsScript mirrors editRouteHosts. It rewrites the hosts file in
+// place, so its file ID, owner, group, ACL and attributes stay as they are,
+// while a share mode keeps other writers, renames and deletes out. Bytes are
+// treated as Latin-1, so foreign content and mixed line endings round-trip
+// unchanged.
+//
+// Before the first byte changes, the script durably writes an undo journal
+// beside the file holding only this edit's old and new content. A later run
+// recovers it first: it drops the journal when the file holds either version
+// and rolls back a file that is a torn mix of both. Any other content means
+// someone edited the file after the interruption, so the script exits with
+// windowsHostsExitChanged and keeps both files for the user. The test
+// replaces the "# interrupt:" comments to stop the process at those points.
 func windowsHostsScript(id string, aliases []string, install bool) string {
 	return windowsHostsScriptAt(routeHostsPath(), id, aliases, install)
 }
+
+func windowsHostsJournal(path string) string { return path + ".tfsaz-journal" }
+
+// Recovery must run even when the interrupted write left no marked line.
+func windowsHostsRecoveryPending(path string) (bool, error) {
+	_, err := os.Lstat(windowsHostsJournal(path))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+const (
+	windowsHostsExitLocked  = 3
+	windowsHostsExitChanged = 4
+	windowsHostsExitForeign = 5
+)
 
 func windowsHostsScriptAt(path, id string, aliases []string, install bool) string {
 	var add []string
@@ -371,17 +441,73 @@ func windowsHostsScriptAt(path, id string, aliases []string, install bool) strin
 	}
 	return `$ErrorActionPreference = 'Stop'
 $h = ` + psQuote(path) + `
+$j = ` + psQuote(windowsHostsJournal(path)) + `
 $m = ` + psQuote(routeHostsMarker(id)) + `
 $install = ` + flag + `
 $add = @(` + strings.Join(add, ", ") + `)
 $enc = [Text.Encoding]::GetEncoding(28591)
-# Allow an atomic replacement while excluding competing in-place writers.
-$share = [IO.FileShare]::Read -bor [IO.FileShare]::Delete
-$fs = [IO.File]::Open($h, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
-$tmp = $null
+$head = "tfsaz hosts undo 1` + "`n" + `"
+$tail = "` + "`n" + `end` + "`n" + `"
+function Same([string]$a, [string]$b) { [string]::Equals($a, $b) }
+function Read-Text([IO.FileStream]$s) {
+  $b = New-Object byte[] ([int]$s.Length)
+  $s.Position = 0
+  $n = 0
+  while ($n -lt $b.Length) { $r = $s.Read($b, $n, $b.Length - $n); if ($r -le 0) { throw 'The hosts file ended early' }; $n += $r }
+  $enc.GetString($b)
+}
+function Write-Text([IO.FileStream]$s, [string]$text) {
+  $b = $enc.GetBytes($text)
+  $s.Position = 0
+  $s.Write($b, 0, $b.Length)
+  $s.SetLength($b.Length)
+  $s.Flush($true)
+}
+function Read-Journal {
+  $t = $enc.GetString([IO.File]::ReadAllBytes($j))
+  if (-not $t.StartsWith($head, [StringComparison]::Ordinal) -or -not $t.EndsWith($tail, [StringComparison]::Ordinal)) { return $null }
+  $eol = $t.IndexOf([char]10, $head.Length)
+  if ($eol -lt 0) { return $null }
+  $sizes = $t.Substring($head.Length, $eol - $head.Length).Split(' ')
+  $lo = 0; $ln = 0
+  if ($sizes.Count -ne 2 -or -not [int]::TryParse($sizes[0], [ref]$lo) -or -not [int]::TryParse($sizes[1], [ref]$ln) -or $lo -lt 0 -or $ln -lt 0) { return $null }
+  if ($t.Length -ne $eol + 1 + $lo + $ln + $tail.Length) { return $null }
+  @{ old = $t.Substring($eol + 1, $lo); new = $t.Substring($eol + 1 + $lo, $ln) }
+}
+# A torn in-place write leaves each byte from the old or new content, or zero
+# where the file grew, at a length between the two.
+function Test-Torn([string]$cur, [string]$old, [string]$new) {
+  if ($cur.Length -lt [Math]::Min($old.Length, $new.Length) -or $cur.Length -gt [Math]::Max($old.Length, $new.Length)) { return $false }
+  for ($i = 0; $i -lt $cur.Length; $i++) {
+    $c = [int]$cur[$i]
+    if (($i -lt $old.Length -and $c -eq [int]$old[$i]) -or ($i -lt $new.Length -and $c -eq [int]$new[$i]) -or ($i -ge $old.Length -and $c -eq 0)) { continue }
+    return $false
+  }
+  $true
+}
 try {
-  $reader = [IO.BinaryReader]::new($fs)
-  $text = $enc.GetString($reader.ReadBytes([int]$fs.Length))
+  # Readers such as the DNS client stay allowed. Writers, renames and deletes do not.
+  $fs = [IO.File]::Open($h, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read)
+} catch {
+  $e = $_.Exception
+  while ($e.InnerException) { $e = $e.InnerException }
+  if ($e -is [IO.IOException] -and ($e.HResult -band 0xFFFF) -eq 32) { exit ` + fmt.Sprint(windowsHostsExitLocked) + ` }
+  throw
+}
+try {
+  $text = Read-Text $fs
+  if ([IO.File]::Exists($j)) {
+    # The journal is complete before the hosts file changes, so an incomplete
+    # one means the hosts file was never touched.
+    $undo = Read-Journal
+    if ($undo -and -not (Same $text $undo.old) -and -not (Same $text $undo.new)) {
+      if (-not (Test-Torn $text $undo.old $undo.new)) { exit ` + fmt.Sprint(windowsHostsExitChanged) + ` }
+      Write-Text $fs $undo.old
+      $text = $undo.old
+    }
+    # interrupt: recovered
+    [IO.File]::Delete($j)
+  }
   $kept = [Text.StringBuilder]::new()
   $nl = [Environment]::NewLine
   if ($text.Length -gt 0 -and -not $text.Contains([string][char]13 + [char]10)) { $nl = [string][char]10 }
@@ -392,35 +518,57 @@ try {
     if ($line.EndsWith($m, [StringComparison]::Ordinal)) { continue }
     if ($install) {
       $names = @(($line.Split('#')[0].Trim() -split '\s+') | Select-Object -Skip 1)
-      foreach ($name in $names) { if ($aliases -contains $name.TrimEnd('.')) { throw 'Foreign hosts entry already names this alias' } }
+      foreach ($name in $names) { if ($aliases -contains $name.TrimEnd('.')) { exit ` + fmt.Sprint(windowsHostsExitForeign) + ` } }
     }
     [void]$kept.Append($match.Value)
   }
   $out = $kept.ToString()
-  if ($out -cne $text) {
-    $tmp = Join-Path ([IO.Path]::GetDirectoryName($h)) ([IO.Path]::GetRandomFileName())
-    $writer = [IO.File]::Open($tmp, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
-    try {
-      $bytes = $enc.GetBytes($out)
-      $writer.Write($bytes, 0, $bytes.Length)
-      $writer.Flush($true)
-    } finally { $writer.Dispose() }
-    [IO.File]::Replace($tmp, $h, [System.Management.Automation.Language.NullString]::Value)
+  if (-not (Same $out $text)) {
+    $record = $enc.GetBytes($head + $text.Length + ' ' + $out.Length + [char]10 + $text + $out + $tail)
+    $js = [IO.File]::Open($j, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try { $js.Write($record, 0, $record.Length); $js.Flush($true) } finally { $js.Dispose() }
+    # interrupt: journaled
+    Write-Text $fs $out
+    # interrupt: written
+    [IO.File]::Delete($j)
   }
-} finally { $fs.Dispose(); if ($tmp -and [IO.File]::Exists($tmp)) { [IO.File]::Delete($tmp) } }
+} finally { $fs.Dispose() }
 exit 0
 `
 }
 
 // runWindowsElevated starts Windows PowerShell elevated through one UAC
 // prompt. The script travels on the command line, never through a file.
-func runWindowsElevated(ctx context.Context, script string) error {
-	ps := windowsPowerShell()
-	outer := `$p = Start-Process -FilePath ` + psQuote(ps) + ` -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand',` +
+func windowsElevationCommand(script string) string {
+	return `$ErrorActionPreference = 'Stop'; $p = Start-Process -FilePath ` + psQuote(windowsPowerShell()) + ` -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand',` +
 		psQuote(powerShellEncode(script)) + `
 exit $p.ExitCode`
-	if _, err := runRouteSystemCommand(ctx, nil, ps, "-NoProfile", "-NonInteractive", "-EncodedCommand", powerShellEncode(outer)); err != nil {
+}
+
+func runWindowsElevated(ctx context.Context, script string) error {
+	// Encode the inner script once. Double-encoding even a small hosts update
+	// can exceed the Windows process command-line limit.
+	if _, err := runRouteSystemCommand(ctx, nil, windowsPowerShell(), "-NoProfile", "-NonInteractive", "-Command", windowsElevationCommand(script)); err != nil {
+		if msg := windowsHostsExitMessage(err); msg != "" {
+			return errors.New(msg)
+		}
 		return fmt.Errorf("administrator step for the hosts file (approve the UAC prompt on the interactive desktop): %w", err)
 	}
 	return nil
+}
+
+func windowsHostsExitMessage(err error) string {
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		return ""
+	}
+	switch exit.ExitCode() {
+	case windowsHostsExitLocked:
+		return "another program is blocking writes to the hosts file; retry when it releases the file"
+	case windowsHostsExitChanged:
+		return "the hosts file changed after an interrupted tfsaz edit; compare it with " + windowsHostsJournal(routeHostsPath()) + ", then delete that journal and retry"
+	case windowsHostsExitForeign:
+		return "the hosts file gained an entry for this alias that tfsaz did not add; remove it first"
+	}
+	return ""
 }
