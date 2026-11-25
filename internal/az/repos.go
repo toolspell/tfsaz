@@ -134,12 +134,7 @@ func listPullRequests(ctx context.Context, client *Client, scope Scope, opts map
 		return nil, err
 	}
 	if status, ok := opts["status"]; ok {
-		switch status {
-		case "active", "abandoned", "completed", "all":
-			query.Set("searchCriteria.status", status)
-		default:
-			return nil, fmt.Errorf("invalid --status %q", status)
-		}
+		query.Set("searchCriteria.status", status)
 	}
 	for _, filter := range []struct{ option, key string }{
 		{"source-branch", "searchCriteria.sourceRefName"},

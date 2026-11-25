@@ -898,7 +898,7 @@ func parseRepoSetupArgs(args []string) (repoSetupArgs, error) {
 func (a app) runRepo(ctx context.Context, args []string) (err error) {
 	op, err := parseRepoSetupArgs(args)
 	if err != nil {
-		return err
+		return usageError{err}
 	}
 	path, err := setupRegistryPath()
 	if err != nil {

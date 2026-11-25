@@ -39,8 +39,12 @@ type invokeRead struct {
 
 func parseInvoke(opts map[string]string) (invokeRead, error) {
 	var read invokeRead
-	if !strings.EqualFold(opts["area"], "git") || opts["api-version"] != gitReadVersion {
-		return read, errors.New("devops invoke requires --area git and --api-version " + gitReadVersion)
+	area := opts["area"]
+	if area != "" && !strings.EqualFold(area, "git") {
+		return read, errors.New("unsupported devops invoke area; only git is supported")
+	}
+	if opts["resource"] == "" {
+		return read, errors.New("devops invoke endpoint discovery is unsupported; specify a Git resource")
 	}
 	var suffix string
 	resource := strings.ToLower(opts["resource"])
@@ -54,6 +58,9 @@ func parseInvoke(opts map[string]string) (invokeRead, error) {
 	case "items", "blobs":
 	default:
 		return read, errors.New("unsupported devops invoke resource")
+	}
+	if area == "" || opts["api-version"] != gitReadVersion {
+		return read, errors.New("devops invoke requires --area git and --api-version " + gitReadVersion)
 	}
 	method := strings.ToUpper(opts["http-method"])
 	accept := opts["accept-media-type"]

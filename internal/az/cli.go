@@ -49,7 +49,7 @@ func parse(args []string) (string, map[string]string, error) {
 	command := strings.Join(args[:i], " ")
 	allowed, ok := commandOptions[command]
 	if !ok {
-		return "", nil, errors.New("unsupported tfsaz command; see tfsaz --help")
+		return "", nil, errors.New("unknown command")
 	}
 	names := strings.Fields(allowed)
 	opts := map[string]string{}
@@ -60,7 +60,7 @@ func parse(args []string) (string, map[string]string, error) {
 		if !alias {
 			name, ok = strings.CutPrefix(key, "--")
 			if !ok {
-				return "", nil, errors.New("expected an option")
+				return "", nil, errors.New("unsupported option or unexpected argument for " + command)
 			}
 		}
 		if !slices.Contains(names, name) {
@@ -104,6 +104,11 @@ func parse(args []string) (string, map[string]string, error) {
 	if d := opts["detect"]; d != "" && d != "true" && d != "false" {
 		return "", nil, errors.New("--detect expects true or false")
 	}
+	switch opts["status"] {
+	case "", "active", "abandoned", "completed", "all":
+	default:
+		return "", nil, errors.New("--status expects active, abandoned, completed, or all")
+	}
 	output := opts["output"]
 	if command == "account show" {
 		viewer := opts["query"] == "user" && (output == "" || output == "json")
@@ -115,6 +120,27 @@ func parse(args []string) (string, map[string]string, error) {
 		return "", nil, errors.New("repository reads require JSON output")
 	}
 	return command, opts, nil
+}
+
+type usageError struct{ error }
+
+func (e usageError) Error() string {
+	return "unsupported invocation: " + e.error.Error() +
+		".\nThis is tfsaz, an Azure CLI compatibility tool for Azure DevOps Server. Run tfsaz --help or see https://github.com/toolspell/tfsaz#readme"
+}
+
+func (e usageError) Unwrap() error { return e.error }
+
+// ExitCode maps command errors to the executable's exit status.
+func ExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var usage usageError
+	if errors.As(err, &usage) {
+		return 2
+	}
+	return 1
 }
 
 type app struct {
@@ -132,8 +158,8 @@ func Run(ctx context.Context, args []string) error {
 }
 
 func (a app) run(ctx context.Context, args []string) error {
-	if len(args) >= 2 && args[0] == "repo" {
-		if args[1] == "ssh" {
+	if len(args) > 0 && args[0] == "repo" {
+		if len(args) >= 2 && args[1] == "ssh" {
 			return runSetupSSH(ctx, args[2:])
 		}
 		return a.runRepo(ctx, args[1:])
@@ -150,13 +176,13 @@ func (a app) run(ctx context.Context, args []string) error {
 	}
 	command, opts, err := parse(args)
 	if err != nil {
-		return err
+		return usageError{err}
 	}
 	var invoke invokeRead
 	if command == "devops invoke" {
 		invoke, err = parseInvoke(opts)
 		if err != nil {
-			return err
+			return usageError{err}
 		}
 	}
 	cfg, err := loadConfig()

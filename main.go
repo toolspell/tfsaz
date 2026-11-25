@@ -14,6 +14,6 @@ func main() {
 	defer cancel()
 	if err := az.Run(ctx, os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "tfsaz:", err)
-		os.Exit(1)
+		os.Exit(az.ExitCode(err))
 	}
 }

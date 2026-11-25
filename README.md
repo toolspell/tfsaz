@@ -70,6 +70,8 @@ The CLI maps the synthetic organization to the real collection for REST calls. D
 | `az repos pr policy list --id N --top 100 --skip 0` | Returns one array of raw evaluations. T3 advances the offset and computes the check state. |
 | `az devops invoke --area git` | Reads PR threads, labels, iterations, iteration changes, file revisions and batched blobs for the diff view. |
 
+When `tfsaz` is installed as `az`, an unsupported invocation exits with status **2**, leaves stdout empty, and explains the limitation on stderr. This includes `az rest` and endpoint discovery with bare `az devops invoke`. The diagnostic identifies `tfsaz`, points to this README, and names `tfsaz --help` for offline use. Configuration, authentication, and server failures exit with status **1**.
+
 An explicit `--organization` or `--org` selects the profile even in a checkout belonging to another collection. Repository and viewer commands fail if the selected credential fails. Outside a recognized checkout, supply the organization and any required project and repository. Work items and write operations are outside the current command set.
 
 ## Verification
