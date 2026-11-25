@@ -68,6 +68,8 @@ On Windows, Git for Windows ships `openssl.exe`. Keep the key under your user pr
 
 Snap browsers on Ubuntu keep their NSS database inside the snap's home directory. A desktop T3 tab can remember a verified certificate in its own browser profile. Compare the displayed fingerprint with the certificate you created first. Ubuntu Chromium versions and packaging can use different NSS directories, including `$XDG_DATA_HOME/pki/nssdb` or `~/.local/share/pki/nssdb`. For the T3 web client's server-hosted Browser panel, configure trust under the account that launches its Chromium process. Do not add the certificate to the system-wide store or as a general CA.
 
+On Ubuntu 26.04, snap Chromium 158 used `~/snap/chromium/current/.local/share/pki/nssdb` after its first launch. Install `libnss3-tools` for `certutil`. Adding the leaf to the Ubuntu system certificate bundle made curl trust it, but this Chromium build also required its own trusted-peer entry. Check IPv4 and IPv6 separately with `curl -4` and `curl -6`.
+
 ### 4. Point the alias at loopback
 
 Add only the alias lines from `tfsaz route hosts` to the hosts file as described in the README section **Local hostname catch-all**. Check with `tfsaz route verify-hosts`.
@@ -107,7 +109,7 @@ If your `curl` does not use the OS trust store, add `--cacert alias.pem`. Then o
 
 ## Remove
 
-1. Stop the service and its supervisor entry.
+1. Stop using the alias in browsers and other clients. Once the hosts entry is removed, public DNS can resolve the name to Azure again. Stop the service and its supervisor entry.
 2. Remove the alias lines from the hosts file.
 3. Remove the port redirect (`pf` anchor, `iptables` rule) or the `setcap` capability.
 4. Remove the certificate trust as listed in step 3.
@@ -115,4 +117,15 @@ If your `curl` does not use the OS trust store, add `--cacert alias.pem`. Then o
 
 ## macOS desktop browser verification
 
-In the installed T3 Nightly desktop app, a disposable Electron profile mapped one exact generated alias to the redirector’s high loopback port and trusted the corresponding leaf certificate for that origin. Opening the raw alias reached the real Azure DevOps Server PR 118 authentication page with the expected query and fragment. After the redirector stopped, a fresh navigation failed with `ERR_CONNECTION_REFUSED`. This test used a process-local hostname mapping. The machine-wide hosts and `pf` installation described above still needs a separate end-to-end check.
+In the installed T3 Nightly desktop app, a disposable Electron profile mapped one exact generated alias to the redirector’s high loopback port and trusted the corresponding leaf certificate for that origin. Opening the raw alias reached the real Azure DevOps Server PR 118 authentication page with the expected query and fragment. After the redirector stopped, a fresh navigation failed with `ERR_CONNECTION_REFUSED`. This test used a process-local hostname mapping.
+
+## macOS web client Browser panel verification
+
+A separate test opened a PR link in the T3 web client's Browser panel backed by the installed Nightly server's sandboxed Chromium. The raw alias redirected to a loopback HTTPS fixture with the expected collection path, encoded query and fragment. The destination received neither an Authorization header nor a Referer. An unsupported API path stayed on the alias, and a new navigation after shutdown failed with `ERR_CONNECTION_REFUSED`.
+
+The test used a scratch Chromium launcher to supply the hostname mapping and certificate-error exceptions scoped to two test public keys. It exercised the server-side navigation path. It did not establish production DNS or certificate trust for that runtime or authenticate to a live collection. Install the production routing on the server that runs Chromium. Opening the same URL in an external browser uses that browser's machine and trust settings instead.
+
+## Machine-wide installation results
+
+- **macOS.** With real IPv4 and IPv6 hosts entries, a temporary `pf` anchor translated loopback port 443 to the high-port service. Both address families returned the correct 302. The exact self-signed leaf was installed in the System keychain with administrator-domain SSL trust limited to the alias. A noninteractive SSH command could import the certificate, but setting its trust required interactive authorization. Merely seeing the certificate in Keychain Access did not establish trust. Apple's `security verify-cert -c alias.pem -p ssl -s "$alias"` verified the policy. Both the installed desktop Electron tab and T3's server-hosted Chromium tab reached the exact live PR authentication page with query and fragment, using normal DNS and browser trust. The desktop tab reported `ERR_CONNECTION_REFUSED` when the service stopped. The bundled `/usr/bin/curl` still reported TLS error 60 on this Mac unless given `--cacert alias.pem`. After removal of the trust policy, the macOS verifier rejected the leaf again. The test removed the certificate copies, hosts entries, temporary anchor and PF enable reference.
+- **Ubuntu 26.04.** With real hosts entries, IPv4 and IPv6 NAT rules, and the exact leaf added to the system certificate bundle, curl received the correct 302 over both address families. Snap Chromium followed the redirect after the same leaf was trusted separately in its NSS database. The destination then required its own certificate trust. Stopping the listener produced connection refusal. Removing trust while it was running restored certificate rejection. The test restored the hosts file, NAT rules and trust entries.
