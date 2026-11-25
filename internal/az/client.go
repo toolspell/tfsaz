@@ -137,7 +137,12 @@ func (c *Client) requestWithMedia(ctx context.Context, method string, path []str
 	req.SetBasicAuth("", c.pat)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, collectionRequestError(err)
+		failure := collectionRequestError(err)
+		switch method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+			return nil, fmt.Errorf("%w; the request outcome is unknown, check the resource before retrying", failure)
+		}
+		return nil, failure
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || resp.StatusCode == http.StatusNonAuthoritativeInfo {
 		defer resp.Body.Close()
@@ -155,6 +160,19 @@ func readResponse(r io.Reader, maxBytes int64) ([]byte, error) {
 		return nil, errors.New("Azure DevOps response exceeded the size limit")
 	}
 	return body, nil
+}
+
+// Server can return 401 for an otherwise valid PAT missing permission
+// for an operation. Verify the credential at the same collection before asking
+// the caller to log in again.
+func (c *Client) permissionError(ctx context.Context, err error) error {
+	if !errors.Is(err, errRejectedPAT) {
+		return err
+	}
+	if _, probeErr := c.authenticatedUser(ctx); probeErr != nil {
+		return probeErr
+	}
+	return errors.New("Azure DevOps authenticated the PAT but denied this operation. Check the PAT's scopes and the account's project permissions")
 }
 
 func collectionRequestError(err error) error {

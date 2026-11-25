@@ -27,17 +27,7 @@ func runRepos(ctx context.Context, client *Client, scope Scope, command string, 
 		if err := client.Get(ctx, path, url.Values{"api-version": {gitReadVersion}}, &repository); err != nil {
 			return nil, err
 		}
-		// Server may return literal spaces in the collection portion of a
-		// clone URL. Preserve the advertised transport and existing escapes.
-		for _, key := range []string{"remoteUrl", "webUrl", "sshUrl"} {
-			var raw string
-			if json.Unmarshal(repository[key], &raw) != nil || !strings.Contains(raw, " ") {
-				continue
-			}
-			if u, err := url.Parse(raw); err == nil && u.IsAbs() {
-				repository[key], _ = json.Marshal(u.String())
-			}
-		}
+		normalizeRepositoryURLs(repository)
 		return repository, nil
 	case "repos pr list":
 		return listPullRequests(ctx, client, scope, opts)

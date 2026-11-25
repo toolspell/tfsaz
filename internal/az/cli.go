@@ -1,4 +1,4 @@
-// Package az implements the subset of the Azure CLI used by T3's read-only flows.
+// Package az implements the subset of the Azure CLI used by T3 Code.
 package az
 
 import (
@@ -22,6 +22,9 @@ const usage = `tfsaz — Azure DevOps Server for T3 Code
   az account show --query user.name -o tsv
   az account show --query user --output json
   az repos show | repos pr list | repos pr show | repos pr policy list
+  az repos create | repos pr create | repos pr update | repos pr checkout
+  az repos pr reviewer add | repos pr reviewer remove
+  az boards work-item create | boards work-item update
   az boards work-item show --id ID [--expand relations]
   az devops team list | devops team list-member
   az devops invoke [--area AREA [--resource RESOURCE]] [--route-parameters key=value ...]
@@ -34,17 +37,25 @@ from a hidden prompt or stdin and stores it in the OS keyring.`
 // These are the option sets emitted by the adapter, including its joined
 // --repository=-name and --project=-name forms.
 var commandOptions = map[string]string{
-	"devops login":            "organization",
-	"devops invoke":           "organization detect only-show-errors output area resource api-version route-parameters query-parameters http-method in-file media-type accept-media-type out-file query encoding",
-	"rest":                    "url method body headers uri-parameters output-file output query only-show-errors",
-	"devops team list":        "organization project detect only-show-errors output top skip",
-	"devops team list-member": "organization project detect only-show-errors output team top skip",
-	"boards work-item show":   "organization id detect only-show-errors output expand",
-	"account show":            "query output organization only-show-errors",
-	"repos show":              "organization project repository detect only-show-errors output",
-	"repos pr show":           "organization id detect only-show-errors output",
-	"repos pr list":           "organization project repository detect only-show-errors output top skip source-branch target-branch status include-links creator reviewer",
-	"repos pr policy list":    "organization id detect only-show-errors output top skip",
+	"repos create":             "organization project detect name only-show-errors output",
+	"repos pr checkout":        "organization id remote-name detect only-show-errors output",
+	"repos pr create":          "organization project repository detect only-show-errors output source-branch target-branch title description draft squash auto-complete delete-source-branch merge-commit-message transition-work-items",
+	"repos pr update":          "organization id detect only-show-errors output title description status squash auto-complete draft delete-source-branch merge-commit-message transition-work-items",
+	"repos pr reviewer add":    "organization id detect only-show-errors output reviewers required",
+	"repos pr reviewer remove": "organization id detect only-show-errors output reviewers",
+	"boards work-item create":  "organization project detect only-show-errors output type title description fields",
+	"boards work-item update":  "organization id detect only-show-errors output title description state fields",
+	"devops login":             "organization",
+	"devops invoke":            "organization detect only-show-errors output area resource api-version route-parameters query-parameters http-method in-file media-type accept-media-type out-file query encoding",
+	"rest":                     "url method body headers uri-parameters output-file output query only-show-errors",
+	"devops team list":         "organization project detect only-show-errors output top skip",
+	"devops team list-member":  "organization project detect only-show-errors output team top skip",
+	"boards work-item show":    "organization id detect only-show-errors output expand",
+	"account show":             "query output organization only-show-errors",
+	"repos show":               "organization project repository detect only-show-errors output",
+	"repos pr show":            "organization id detect only-show-errors output",
+	"repos pr list":            "organization project repository detect only-show-errors output top skip source-branch target-branch status include-links creator reviewer",
+	"repos pr policy list":     "organization id detect only-show-errors output top skip",
 }
 var optionNames = map[string]string{"--uri": "url", "-u": "url", "-m": "method", "-b": "body", "--url-parameters": "uri-parameters", "--org": "organization", "-o": "output", "-p": "project", "-r": "repository", "-i": "id"}
 
@@ -81,7 +92,7 @@ func parse(args []string) (string, map[string]string, error) {
 				return "", nil, fmt.Errorf("--%s takes no value", name)
 			}
 			v = "true"
-		} else if name == "route-parameters" || name == "query-parameters" || name == "uri-parameters" || name == "headers" {
+		} else if name == "route-parameters" || name == "query-parameters" || name == "uri-parameters" || name == "headers" || name == "fields" || name == "reviewers" {
 			var values []string
 			if joined {
 				values = append(values, v)
@@ -91,7 +102,7 @@ func parse(args []string) (string, map[string]string, error) {
 				i++
 			}
 			if len(values) > maxInvokeParameters || slices.ContainsFunc(values, func(value string) bool {
-				return len(value) > maxInvokeParameterBytes || strings.ContainsRune(value, 0)
+				return (name != "fields" && len(value) > maxInvokeParameterBytes) || strings.ContainsRune(value, 0)
 			}) {
 				return "", nil, fmt.Errorf("invalid --%s list", name)
 			}
@@ -103,7 +114,7 @@ func parse(args []string) (string, map[string]string, error) {
 			v = args[i]
 			i++
 		}
-		if v == "" {
+		if v == "" && name != "description" {
 			return "", nil, fmt.Errorf("--%s requires a value", name)
 		}
 		opts[name] = v
@@ -124,7 +135,7 @@ func parse(args []string) (string, map[string]string, error) {
 			return "", nil, errors.New("supported account queries are --query user -o json and --query user.name -o tsv")
 		}
 	} else if command != "devops invoke" && command != "rest" && output != "" && output != "json" {
-		return "", nil, errors.New("Azure DevOps reads require JSON output")
+		return "", nil, errors.New("these Azure DevOps commands require JSON output")
 	}
 	return command, opts, nil
 }
@@ -202,6 +213,8 @@ func (a app) run(ctx context.Context, args []string) error {
 		fallthrough
 	case "rest":
 		generic, err = parseAPICall(command, opts, a.cwd)
+	case "repos pr create", "repos pr update", "boards work-item create", "boards work-item update":
+		err = a.expandWriteText(opts)
 	case "boards work-item show":
 		item, err = parseWorkItemShow(opts)
 	case "devops team list", "devops team list-member":
@@ -247,7 +260,13 @@ func (a app) run(ctx context.Context, args []string) error {
 	if command == "rest" {
 		return a.runRest(ctx, cfg, generic, opts["url"])
 	}
-	p, scope, err := cfg.scope(ctx, a.cwd, opts)
+	var p *Profile
+	var scope Scope
+	if command == "repos pr checkout" {
+		p, scope, err = cfg.repoCheckoutScope(ctx, a.cwd, opts)
+	} else {
+		p, scope, err = cfg.scope(ctx, a.cwd, opts)
+	}
 	if err != nil {
 		return err
 	}
@@ -270,30 +289,39 @@ func (a app) run(ctx context.Context, args []string) error {
 	if generic != nil {
 		err := generic.invoke(ctx, client, scope, a.stdout)
 		if strings.EqualFold(generic.area, "wit") {
-			return client.boardsReadError(ctx, err)
+			return client.permissionError(ctx, err)
 		}
 		return err
 	}
 	if command == "devops invoke" {
 		err = invoke.run(ctx, client, scope, a.cwd, a.stdout)
 		if invoke.witResource != "" {
-			return client.boardsReadError(ctx, err)
+			return client.permissionError(ctx, err)
 		}
 		return err
 	}
 	var result any
 	switch command {
+	case "repos create", "repos pr checkout":
+		result, err = a.repoCommand(ctx, client, scope, command, opts)
+	case "repos pr create", "repos pr update", "repos pr reviewer add", "repos pr reviewer remove":
+		result, err = runPRWrite(ctx, client, scope, command, opts)
+	case "boards work-item create", "boards work-item update":
+		result, err = a.boardsWrite(ctx, client, scope, command, opts)
 	case "boards work-item show":
 		result, err = item.run(ctx, client, scope)
-		err = client.boardsReadError(ctx, err)
+		err = client.permissionError(ctx, err)
 	case "devops team list", "devops team list-member":
 		result, err = teams.run(ctx, client, scope)
-		err = client.boardsReadError(ctx, err)
+		err = client.permissionError(ctx, err)
 	default:
 		result, err = runRepos(ctx, client, scope, command, opts)
 	}
 	if err != nil {
 		return err
+	}
+	if result == nil {
+		return nil
 	}
 	return json.NewEncoder(a.stdout).Encode(result)
 }

@@ -256,7 +256,7 @@ func TestBoardsReadUnauthorized(t *testing.T) {
 		valid  bool
 		reason string
 	}{
-		{"missing permission", true, "authenticated the PAT but denied this read"},
+		{"missing permission", true, "authenticated the PAT but denied this operation"},
 		{"invalid PAT", false, "rejected the PAT"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

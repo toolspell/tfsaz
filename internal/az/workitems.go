@@ -46,19 +46,6 @@ func parseWorkItemShow(opts map[string]string) (workItemRead, error) {
 	return workItemRead{id: id, query: url.Values{"api-version": {witReadVersion}, "$expand": {expand}}}, nil
 }
 
-// Server can return 401 for an otherwise valid PAT missing a Boards or team
-// read permission. Verify the credential at the same collection before asking
-// the caller to log in again.
-func (c *Client) boardsReadError(ctx context.Context, err error) error {
-	if !errors.Is(err, errRejectedPAT) {
-		return err
-	}
-	if _, probeErr := c.authenticatedUser(ctx); probeErr != nil {
-		return probeErr
-	}
-	return errors.New("Azure DevOps authenticated the PAT but denied this read. Check the PAT's read scopes and the account's project permissions")
-}
-
 func (read workItemRead) run(ctx context.Context, client *Client, scope Scope) (any, error) {
 	var item map[string]json.RawMessage
 	if err := client.Get(ctx, []string{"_apis", "wit", "workItems", read.id}, read.query, &item); err != nil {

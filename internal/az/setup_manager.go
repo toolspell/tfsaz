@@ -228,6 +228,7 @@ func (c setupCheckout) gitCommand(ctx context.Context, args ...string) *exec.Cmd
 		}
 		cmd.Env = append(cmd.Env, e)
 	}
+	cmd.Env = append(cmd.Env, "LC_ALL=C")
 	return cmd
 }
 
