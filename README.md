@@ -2,6 +2,15 @@
 
 `tfsaz` lets stock T3 Code work with Git repositories, pull requests and work items in an on-premises Azure DevOps Server collection. It runs as `az` on the T3 **server process's** PATH and talks directly to the configured collection over HTTPS. T3 can publish repositories, open and complete PRs, show diffs and policy checks, and create, edit and comment on work items.
 
+## Choose the setup for your environment
+
+| Goal | Current entry point |
+| --- | --- |
+| Connect an installed T3 app | Put the CLI named `az` on the backend’s PATH, configure the collection profiles and run `tfsaz devops login` for each collection. |
+| Use an existing clone | Run `tfsaz repo setup PATH`. The managed origin uses SSH even when the saved origin used HTTPS. Use `tfsaz repo verify PATH` to check it and `tfsaz repo restore PATH` to recover the original URL offline. |
+| Clone a synthetic HTTPS URL in a shell or job | Start Git under `tfsaz route run --` and configure Git credentials for the native collection. This also works when no checkout exists yet. |
+| Open links from T3 Desktop on macOS | Export the macOS link handler on the machine where the link opens. It works with the user’s selected browser. |
+
 ## Build and configure
 
 Use the installed T3 Code desktop app. Only tfsaz developers running the adapter integration tests need a T3 source checkout.
