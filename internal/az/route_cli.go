@@ -67,6 +67,13 @@ func (a app) runRoute(ctx context.Context, args []string) error {
 		}
 		return usageError{errors.New("expected route sink [--port PORT]")}
 	}
+	if args[0] == "redirect" {
+		certFile, keyFile, port, err := parseRedirectOptions(args[1:])
+		if err != nil {
+			return err
+		}
+		return serveRouteRedirect(ctx, certFile, keyFile, port, a.stderr)
+	}
 	hosts := args[0] == "hosts" || args[0] == "verify-hosts"
 	if hosts && (len(args) > 2 || len(args) == 2 && args[1] != "--include-dev-azure") {
 		return usageError{errors.New("expected an optional --include-dev-azure")}

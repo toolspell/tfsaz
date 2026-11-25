@@ -199,6 +199,11 @@ type nativeCommand struct {
 	example     string
 }
 
+// Extra help text for native commands whose one-line summary is not enough.
+var nativeCommandNotes = map[string]string{
+	"route redirect": "Listens on 127.0.0.1 and ::1 (default port 443) and answers GET and HEAD for supported repository, PR, commit, work-item and build pages with a 302 to the real collection. The browser carries the #fragment to the destination. Fragments stay in the browser, so the redirector cannot validate them. The certificate must be an unexpired CA:FALSE serverAuth leaf whose DNS names are all exact generated aliases of active setups or profiles; wildcards, IP names and shared hosts such as dev.azure.com are refused. SNI and Host must name the same alias. Other names, methods, Git traffic, request bodies and Authorization headers are refused. Nothing is proxied or logged and no PAT is read. Each request rereads the configuration, so a restored setup stops redirecting at once. Map the alias to loopback with tfsaz route hosts and trust only this leaf. If port 443 needs elevated privileges, use a loopback port redirect to a high port and run tfsaz as the profile owner. See the README section on the loopback redirect service.",
+}
+
 const profileOptions = "[--id ID] [--organization URL] [--ca-file PATH] [--no-login]"
 const collectionExample = " --collection https://devops.example.invalid/tfs/DefaultCollection"
 
@@ -323,6 +328,11 @@ var nativeCommands = map[string]nativeCommand{
 		"[--port PORT]",
 		"route sink --port 8443",
 	},
+	"route redirect": {
+		"Redirect browser links for registered tfsaz-*.visualstudio.com aliases on loopback.",
+		"--cert FILE --key FILE [--port PORT]",
+		"route redirect --cert alias.pem --key alias-key.pem",
+	},
 	"route proxy": {
 		"Serve a PAC file and refuse SOCKS5 and HTTP proxy requests for routed hosts.",
 		"[--port PORT] [--include-dev-azure]",
@@ -437,7 +447,11 @@ func writeHelp(w io.Writer, topic string) error {
 			fmt.Fprintln(&b, "  tfsaz devops invoke --area build --query '[].[resourceName,routeTemplate]' -o tsv")
 		}
 	} else if command, ok := nativeCommands[topic]; ok {
-		fmt.Fprintf(&b, "\nUsage: tfsaz %s\n\nExample:\n  tfsaz %s\n", strings.TrimSpace(topic+" "+command.arguments), command.example)
+		fmt.Fprintf(&b, "\nUsage: tfsaz %s\n", strings.TrimSpace(topic+" "+command.arguments))
+		if notes := nativeCommandNotes[topic]; notes != "" {
+			fmt.Fprintf(&b, "\n%s\n", notes)
+		}
+		fmt.Fprintf(&b, "\nExample:\n  tfsaz %s\n", command.example)
 	} else {
 		prefix, command := "", "tfsaz"
 		if topic != "" {

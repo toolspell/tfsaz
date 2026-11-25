@@ -10,6 +10,7 @@
 | Use an existing clone | Run `tfsaz repo setup PATH`. New setups keep the original SSH or HTTPS transport. Use `tfsaz repo verify PATH` to check it and `tfsaz repo restore PATH` to recover the original URL offline. |
 | Clone a synthetic HTTPS URL in a shell or job | Start Git under `tfsaz route run --` and configure Git credentials for the native collection. This also works when no checkout exists yet. |
 | Open links from T3 Desktop | Export the native link handler on the Windows, Ubuntu or macOS desktop where links open, and select a browser to receive them. |
+| Open typed or in-browser alias links | Optional: run `tfsaz route redirect` on loopback with a locally trusted leaf for the exact generated aliases. See [the redirect guide](docs/route-redirect.md). |
 
 ## Build and configure
 
@@ -143,7 +144,7 @@ For Firefox, use `org.mozilla.firefox` as the browser bundle ID. Try the handler
 
 The OS hands off links from applications such as T3 Desktop. Typing a URL into a browser or clicking a link in the browser version of T3 usually keeps navigation inside that browser. For these cases use `tfsaz route resolve URL` or the optional Chromium integration below. Scripts can also consume `route resolve` directly. Exact hostname entries can separately catch traffic from programs that resolve names locally.
 
-**T3’s built-in browser** navigates directly when you paste a URL into its address bar. For a registered Azure alias, run `tfsaz route resolve 'AZURE_STYLE_URL'` and paste the resulting HTTPS URL into the tab. The browser must trust the real server’s certificate and uses its own sign-in session. Pasting the raw alias can send the request to Azure cloud.
+**Where to configure browser routing.** The installed T3 app can open a desktop browser tab on the workstation. The Browser panel in the T3 web client can instead stream a tab running on the T3 server. Configure alias resolution and certificate trust on the host running the tab. An ordinary link opened in the user's external browser uses that browser's host and profile. Without automatic routing, run `tfsaz route resolve 'AZURE_STYLE_URL'` and open its output. A raw alias can otherwise reach Azure cloud. [Loopback redirect setup](docs/route-redirect.md)
 
 | Caller | How to use it |
 | --- | --- |
@@ -161,6 +162,8 @@ Hostname mapping covers ordinary local DNS lookups for all ports. A client using
 An OS proxy setting applies to clients that consult it. For example, curl can explicitly select SOCKS with remote name resolution using `--proxy socks5h://127.0.0.1:1080`. The SOCKS5 refusal happens during the handshake. An HTTP proxy client supplies its destination in the request; the service sends a refusal without forwarding or logging it. In the macOS Chromium test, a cold start with an unavailable PAC URL attempted a direct connection. Use the hostname mapping alongside PAC when this failure mode matters. A SOCKS tunnel to the on-prem server alone would still leave the client checking TLS for the synthetic hostname and sending the cloud-form path. [Chromium proxy behavior](https://chromium.googlesource.com/chromium/src/+/HEAD/net/docs/proxy.md)
 
 The hostname and PAC commands omit the shared `dev.azure.com` hostname by default. Use `--include-dev-azure` only on a machine or network service where catching **every** organization on that hostname is intended. DNS and SOCKS cannot select an organization by HTTPS path. The Chromium rules can match the configured organization path before TLS. The extension and Git helper translate supported traffic without TLS interception. SSH still needs its separate repository-path translation. Raw REST clients can use `az rest` with an explicit collection.
+
+**Optional loopback redirect service.** `tfsaz route redirect --cert FILE --key FILE [--port PORT]` answers HTTPS browser requests for the generated `tfsaz-*.visualstudio.com` aliases on `127.0.0.1` and `::1` with a `302` to the real collection page. It needs the hosts entries above, a leaf certificate naming only those aliases and trusted only for them, and port 443 (macOS and Linux need a port redirect or capability). It refuses shared hosts, other names, unsafe methods, Git and API paths, and never proxies, logs or uses a PAT. Setup, the routing compared with proxy tradeoffs, removal and verification are in [docs/route-redirect.md](docs/route-redirect.md).
 
 **Verify a standalone Node client.** Run `tfsaz route verify-node` under the account and environment that launch the client. It runs the `node` on that PATH, checks the certificate chain and hostname for every configured real collection, and exits nonzero if any handshake fails. It sends no HTTP request or PAT. The profile’s `caFile` configures the Go CLI. To trust the same PEM in Node, set `NODE_EXTRA_CA_CERTS` to its absolute path in the client’s launch environment. The check applies to that Node runtime. An installed desktop app can bundle a different runtime, and GUI launches and background jobs can inherit different settings from a terminal. Ordinary T3 Azure CLI calls through tfsaz need neither this check nor a separate Node installation.
 
@@ -237,7 +240,7 @@ At T3 revision `c478fde9fe`, the offline adapter test exercises viewer, default 
 
 The same fixture runs T3’s issue tracker against a collection under `/tfs/`. It covers filtered and empty searches, result order and pagination, linked PRs, comment reactions and continuation tokens, update history spanning two pages, and tag and assignee candidates. The adapter also updates a PR description via stdin and posts a work-item comment via a temporary JSON file. The fixture checks the exact multiline Unicode text, API version and destination of both writes.
 
-The native suites passed with the Go race detector and the stock T3 adapter fixture on macOS ARM64, Windows 11 x64 and Ubuntu ARM64. The setup and restore tests exercise Git worktrees, preserved HTTPS and SSH, and the managed SSH path. Git for Windows uses its bundled shell and a disposable SSH agent for those fixtures. The routing tests exercise the PAC server, IPv4 and IPv6 sink, and detection of obsolete browser rules without installing system proxy settings.
+The native suites passed with the Go race detector and the stock T3 adapter fixture on macOS ARM64, Windows 11 x64 and Ubuntu ARM64. The setup and restore tests exercise Git worktrees, preserved HTTPS and SSH, and the managed SSH path. Git for Windows uses its bundled shell and a disposable SSH agent for those fixtures. The routing tests exercise the PAC server, IPv4 and IPv6 sink, and detection of obsolete browser rules without installing system proxy settings. The offline tests for the loopback redirect service, which use generated leaf certificates, have so far run only on macOS ARM64.
 
 ### Live results, 25 November 2026
 
