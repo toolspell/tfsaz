@@ -68,7 +68,8 @@ func validatePreserveSetupRecord(r setupRecord) error {
 }
 
 func checkPreserveHelper(ctx context.Context, c setupCheckout) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// Starting Git and a cold helper can take several seconds on Windows.
+	ctx, cancel := context.WithTimeout(ctx, setupSSHCheckTimeout)
 	defer cancel()
 	output, err := c.git(ctx, "remote-tfsaz", "--version")
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
