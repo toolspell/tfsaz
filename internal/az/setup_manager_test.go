@@ -138,7 +138,7 @@ func TestRepoSetupRoundTripSharedWorktrees(t *testing.T) {
 	linked := filepath.Join(filepath.Dir(c.repo), "linked")
 	managerTestGit(t, c.repo, "worktree", "add", "-b", "linked", linked)
 
-	managerTestRun(t, a, "setup", "--profile=test", linked)
+	managerTestRun(t, a, "setup", "--managed-ssh", "--profile=test", linked)
 	records := managerTestRecords(t)
 	if len(records) != 1 || records[0].Phase != setupPhaseActive || !sameSetupPath(records[0].GitDir, c.gitDir) {
 		t.Fatalf("records = %+v", records)
@@ -147,6 +147,9 @@ func TestRepoSetupRoundTripSharedWorktrees(t *testing.T) {
 	original, active := setupStates(r)
 	managerTestState(t, c, active)
 	managerTestRun(t, a, "setup")
+	if err := a.runRepo(t.Context(), []string{"setup", "--preserve-transport"}); err == nil || !strings.Contains(err.Error(), "different transport mode") {
+		t.Fatalf("preserve transport replaced existing managed SSH: %v", err)
+	}
 	managerTestRun(t, a, "list", c.repo)
 	managerTestRun(t, a, "verify")
 	if !strings.Contains(out.String(), r.Host) || !strings.Contains(out.String(), "verified") {
@@ -210,7 +213,11 @@ func TestRepoSetupSSHKeyCheckAndOfflineRestore(t *testing.T) {
 	}
 	checkKeyError := func(action string) {
 		t.Helper()
-		err := a.runRepo(t.Context(), []string{action, c.repo})
+		args := []string{action, c.repo}
+		if action == "setup" {
+			args = append(args, "--managed-ssh")
+		}
+		err := a.runRepo(t.Context(), args)
 		if err == nil || !strings.Contains(err.Error(), "ssh-agent or configure IdentityFile") ||
 			!strings.Contains(err.Error(), "only the public key") || strings.Contains(err.Error(), "fixture-private-detail") {
 			t.Fatalf("repo %s returned %v", action, err)
@@ -234,7 +241,7 @@ func TestRepoSetupSSHKeyCheckAndOfflineRestore(t *testing.T) {
 	if out, err := exec.Command("ssh-add", key).CombinedOutput(); err != nil {
 		t.Fatalf("load fixture key: %v\n%s", err, out)
 	}
-	managerTestRun(t, a, "setup")
+	managerTestRun(t, a, "setup", "--managed-ssh")
 	managerTestRun(t, a, "verify", c.repo)
 	t.Setenv("TFSAZ_TEST_SSH_FAILURE", "fixture-private-detail: Permission denied (publickey).")
 	checkKeyError("verify")
@@ -281,7 +288,7 @@ func TestRepoSetupRefusesConflicts(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := a.runRepo(t.Context(), []string{"setup"}); err == nil {
+			if err := a.runRepo(t.Context(), []string{"setup", "--managed-ssh"}); err == nil {
 				t.Fatal("setup accepted a conflict")
 			}
 			after, err := os.ReadFile(filepath.Join(c.gitDir, "config"))
@@ -297,11 +304,11 @@ func TestRepoSetupRefusesConflicts(t *testing.T) {
 
 func TestRepoSetupDriftAcrossAllRecords(t *testing.T) {
 	a, _, c := managerTestRepo(t)
-	managerTestRun(t, a, "setup")
+	managerTestRun(t, a, "setup", "--managed-ssh")
 	other := filepath.Join(filepath.Dir(c.repo), "other")
 	managerTestGit(t, c.repo, "init", other)
 	managerTestGit(t, other, "remote", "add", "origin", managerTestOrigin)
-	managerTestRun(t, a, "setup", other)
+	managerTestRun(t, a, "setup", other, "--managed-ssh")
 	records := managerTestRecords(t)
 	managerTestWrite(t, records[1].SSHConfig, "manually changed")
 	managerTestRun(t, a, "verify", c.repo)
@@ -319,7 +326,7 @@ func TestRepoSetupDriftAcrossAllRecords(t *testing.T) {
 
 func TestRepoSetupRecoversInterruptedGitTransaction(t *testing.T) {
 	a, _, c := managerTestRepo(t)
-	managerTestRun(t, a, "setup")
+	managerTestRun(t, a, "setup", "--managed-ssh")
 	r := managerTestRecords(t)[0]
 	path, err := setupRegistryPath()
 	if err != nil {
@@ -329,6 +336,10 @@ func TestRepoSetupRecoversInterruptedGitTransaction(t *testing.T) {
 	// Simulate a crash after the Git change but before the registry commit.
 	if err := registry.update(r, setupPhasePreparing); err != nil {
 		t.Fatal(err)
+	}
+	managerTestRun(t, a, "show")
+	if !strings.Contains(a.stdout.String(), "Phase: preparing") {
+		t.Fatalf("pending setup show = %q", a.stdout)
 	}
 	lock, err := lockSetupGit(c)
 	if err != nil {
@@ -362,7 +373,7 @@ func TestRepoSetupRollsBackWhenAnIncludeActivates(t *testing.T) {
 	included := filepath.Join(filepath.Dir(c.repo), "included.gitconfig")
 	managerTestWrite(t, included, "[remote \"origin\"]\n\tpushurl = "+managerTestOrigin+"\n")
 	managerTestGit(t, c.repo, "config", "includeIf.hasconfig:remote.*.url:"+r.RemoteURL+".path", filepath.ToSlash(included))
-	if err := a.runRepo(context.Background(), []string{"setup"}); err == nil || !strings.Contains(err.Error(), "remote.origin.pushurl") {
+	if err := a.runRepo(context.Background(), []string{"setup", "--managed-ssh"}); err == nil || !strings.Contains(err.Error(), "remote.origin.pushurl") {
 		t.Fatalf("setup with conflicting include returned %v", err)
 	}
 	managerTestState(t, c, setupGitState{url: managerTestOrigin})
@@ -384,14 +395,14 @@ func TestRepoSetupRegistryNamespacesAndLocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = a.runRepo(t.Context(), []string{"setup"})
+	err = a.runRepo(t.Context(), []string{"setup", "--managed-ssh"})
 	if unlockErr := release(); unlockErr != nil {
 		t.Fatal(unlockErr)
 	}
 	if err == nil || !strings.Contains(err.Error(), "another repository setup transaction") {
 		t.Fatalf("setup while the registry was locked returned %v", err)
 	}
-	managerTestRun(t, a, "setup")
+	managerTestRun(t, a, "setup", "--managed-ssh")
 	r := managerTestRecords(t)[0]
 	alternate := filepath.Join(filepath.Dir(path), "alternate.json")
 	managerTestWrite(t, alternate, `{"profiles":[{"id":"test","organization":"https://dev.azure.com/example","collectionUrl":"https://server.example/tfs/Collection"}]}`)
@@ -399,7 +410,7 @@ func TestRepoSetupRegistryNamespacesAndLocks(t *testing.T) {
 	if records := managerTestRecords(t); len(records) != 0 {
 		t.Fatalf("different config file exposed records: %+v", records)
 	}
-	if err := a.runRepo(t.Context(), []string{"setup"}); err == nil {
+	if err := a.runRepo(t.Context(), []string{"setup", "--managed-ssh"}); err == nil {
 		t.Fatal("another registry took over the repository")
 	}
 	_, active := setupStates(r)
@@ -408,7 +419,7 @@ func TestRepoSetupRegistryNamespacesAndLocks(t *testing.T) {
 
 func TestRepoSetupCompletesInterruptedRestore(t *testing.T) {
 	a, _, c := managerTestRepo(t)
-	managerTestRun(t, a, "setup")
+	managerTestRun(t, a, "setup", "--managed-ssh")
 	r := managerTestRecords(t)[0]
 	path, err := setupRegistryPath()
 	if err != nil {
@@ -454,7 +465,7 @@ func TestRepoSetupHTTPSOverrideAndManualOriginDrift(t *testing.T) {
 
 func TestRepoRestoreWithMissingSSHConfigAndExternalOverride(t *testing.T) {
 	a, _, c := managerTestRepo(t)
-	managerTestRun(t, a, "setup")
+	managerTestRun(t, a, "setup", "--managed-ssh")
 	r := managerTestRecords(t)[0]
 	if err := os.Remove(r.SSHConfig); err != nil {
 		t.Fatal(err)
@@ -470,7 +481,7 @@ func TestRepoRestoreWithMissingSSHConfigAndExternalOverride(t *testing.T) {
 func TestRepoSetupChecksSSHWithGitConfigUnlocked(t *testing.T) {
 	a, _, c := managerTestRepo(t)
 	t.Setenv("TFSAZ_TEST_GIT_WRITE", "1")
-	managerTestRun(t, a, "setup")
+	managerTestRun(t, a, "setup", "--managed-ssh")
 	values, err := c.configValues(t.Context(), "", "tfsaz.writtenduringprobe")
 	if err != nil || len(values) != 1 || values[0] != "yes" {
 		t.Fatalf("concurrent Git config write was lost: %v", err)

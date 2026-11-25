@@ -23,23 +23,45 @@ type memoryStore struct {
 	lockedProfile string
 }
 
-func (s *memoryStore) Get(id string) (string, error) {
+func memoryCredentialKey(service, id string) string {
+	if service == keyringService {
+		return id
+	}
+	return service + "/" + id
+}
+
+func (s *memoryStore) Get(service, id string) (string, error) {
 	s.reads = append(s.reads, id)
 	if s.lockedProfile == id {
 		return "", errors.New("unavailable")
 	}
-	v, ok := s.values[id]
+	v, ok := s.values[memoryCredentialKey(service, id)]
 	if !ok {
 		return "", errNoCredential
 	}
 	return v, nil
 }
 
-func (s *memoryStore) Set(id, pat string) error {
+func (s *memoryStore) Set(service, id, pat string) error {
 	if s.lockedProfile == id {
 		return errors.New("unavailable")
 	}
-	s.values[id] = pat
+	if s.values == nil {
+		s.values = make(map[string]string)
+	}
+	s.values[memoryCredentialKey(service, id)] = pat
+	return nil
+}
+
+func (s *memoryStore) Delete(service, id string) error {
+	if s.lockedProfile == id {
+		return errors.New("unavailable")
+	}
+	key := memoryCredentialKey(service, id)
+	if _, ok := s.values[key]; !ok {
+		return errNoCredential
+	}
+	delete(s.values, key)
 	return nil
 }
 

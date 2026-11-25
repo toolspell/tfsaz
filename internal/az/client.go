@@ -135,7 +135,15 @@ func (c *Client) requestWithMedia(ctx context.Context, method string, path []str
 	}
 	req.Header.Set("X-TFS-FedAuthRedirect", "Suppress")
 	req.SetBasicAuth("", c.pat)
+	start := time.Now()
 	resp, err := c.http.Do(req)
+	if trace := getCommandTrace(ctx); trace != nil {
+		status := 0
+		if resp != nil {
+			status = resp.StatusCode
+		}
+		trace.record(status, start)
+	}
 	if err != nil {
 		failure := collectionRequestError(err)
 		switch method {

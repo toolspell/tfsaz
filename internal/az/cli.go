@@ -13,64 +13,26 @@ import (
 	"time"
 )
 
-const usage = `tfsaz — Azure DevOps Server for T3 Code
-
-  tfsaz --version
-  tfsaz route --help
-  tfsaz repo setup [PATH] [--profile ID] [--ssh-url URL]
-  tfsaz repo verify [PATH] | repo list | repo restore [PATH]
-  tfsaz devops login --organization URL
-  az account show --query user.name -o tsv
-  az account show --query user --output json
-  az repos show | repos pr list | repos pr show | repos pr policy list
-  az repos create | repos pr create | repos pr update | repos pr checkout
-  az repos pr reviewer add | repos pr reviewer remove
-  az boards work-item create | boards work-item update
-  az boards work-item show --id ID [--expand relations]
-  az devops team list | devops team list-member
-  az devops invoke [--area AREA [--resource RESOURCE]] [--route-parameters key=value ...]
-  az rest --url COLLECTION_API_URL [--method METHOD]
-
-Configure collection profiles in tfsaz/config.json in your OS user configuration
-directory, or select an absolute config file with TFSAZ_CONFIG. Login reads a PAT
-from a hidden prompt or stdin and stores it in the OS keyring.`
-
-// These are the option sets emitted by the adapter, including its joined
-// --repository=-name and --project=-name forms.
-var commandOptions = map[string]string{
-	"repos create":             "organization project detect name only-show-errors output",
-	"repos pr checkout":        "organization id remote-name detect only-show-errors output",
-	"repos pr create":          "organization project repository detect only-show-errors output source-branch target-branch title description draft squash auto-complete delete-source-branch merge-commit-message transition-work-items",
-	"repos pr update":          "organization id detect only-show-errors output title description status squash auto-complete draft delete-source-branch merge-commit-message transition-work-items",
-	"repos pr reviewer add":    "organization id detect only-show-errors output reviewers required",
-	"repos pr reviewer remove": "organization id detect only-show-errors output reviewers",
-	"boards work-item create":  "organization project detect only-show-errors output type title description fields",
-	"boards work-item update":  "organization id detect only-show-errors output title description state fields",
-	"devops login":             "organization",
-	"devops invoke":            "organization detect only-show-errors output area resource api-version route-parameters query-parameters http-method in-file media-type accept-media-type out-file query encoding",
-	"rest":                     "url method body headers uri-parameters output-file output query only-show-errors",
-	"devops team list":         "organization project detect only-show-errors output top skip",
-	"devops team list-member":  "organization project detect only-show-errors output team top skip",
-	"boards work-item show":    "organization id detect only-show-errors output expand",
-	"account show":             "query output organization only-show-errors",
-	"repos show":               "organization project repository detect only-show-errors output",
-	"repos pr show":            "organization id detect only-show-errors output",
-	"repos pr list":            "organization project repository detect only-show-errors output top skip source-branch target-branch status include-links creator reviewer",
-	"repos pr policy list":     "organization id detect only-show-errors output top skip",
+func azureOptionToken(arg string) bool {
+	if strings.HasPrefix(arg, "--") {
+		return true
+	}
+	key, _, _ := strings.Cut(arg, "=")
+	if len(key) != 2 || key[0] != '-' {
+		return false
+	}
+	letter := key[1]
+	return (letter >= 'a' && letter <= 'z') || (letter >= 'A' && letter <= 'Z')
 }
-var optionNames = map[string]string{"--uri": "url", "-u": "url", "-m": "method", "-b": "body", "--url-parameters": "uri-parameters", "--org": "organization", "-o": "output", "-p": "project", "-r": "repository", "-i": "id"}
 
 func parse(args []string) (string, map[string]string, error) {
-	i := 0
-	for i < len(args) && !strings.HasPrefix(args[i], "-") {
-		i++
-	}
+	i := commandWords(args)
 	command := strings.Join(args[:i], " ")
-	allowed, ok := commandOptions[command]
+	spec, ok := azureCommands[command]
 	if !ok {
 		return "", nil, errors.New("unknown command")
 	}
-	names := strings.Fields(allowed)
+	names := strings.Fields(spec.options)
 	opts := map[string]string{}
 	for i < len(args) {
 		key, v, joined := strings.Cut(args[i], "=")
@@ -88,12 +50,13 @@ func parse(args []string) (string, map[string]string, error) {
 		if _, exists := opts[name]; exists {
 			return "", nil, fmt.Errorf("duplicate --%s", name)
 		}
-		if name == "include-links" || name == "only-show-errors" {
+		switch azureOptionKind(name) {
+		case flagOption:
 			if joined {
 				return "", nil, fmt.Errorf("--%s takes no value", name)
 			}
 			v = "true"
-		} else if name == "route-parameters" || name == "query-parameters" || name == "uri-parameters" || name == "headers" || name == "fields" || name == "reviewers" {
+		case listOption:
 			var values []string
 			if joined {
 				values = append(values, v)
@@ -108,12 +71,14 @@ func parse(args []string) (string, map[string]string, error) {
 				return "", nil, fmt.Errorf("invalid --%s list", name)
 			}
 			v = strings.Join(values, "\x00")
-		} else if !joined {
-			if i == len(args) || strings.HasPrefix(args[i], "--") {
-				return "", nil, fmt.Errorf("--%s requires a value", name)
+		case valueOption:
+			if !joined {
+				if i == len(args) || azureOptionToken(args[i]) {
+					return "", nil, fmt.Errorf("--%s requires a value", name)
+				}
+				v = args[i]
+				i++
 			}
-			v = args[i]
-			i++
 		}
 		if v == "" && name != "description" {
 			return "", nil, fmt.Errorf("--%s requires a value", name)
@@ -177,29 +142,37 @@ func Run(ctx context.Context, args []string) error {
 }
 
 func (a app) run(ctx context.Context, args []string) error {
-	if len(args) > 0 && args[0] == "route" {
-		return a.runRoute(ctx, args[1:])
+	if topic, ok := helpTopic(args); ok {
+		return writeHelp(a.stdout, topic)
 	}
-	if len(args) > 0 && args[0] == "repo" {
-		if len(args) >= 2 && args[1] == "ssh" {
-			return runSetupSSH(ctx, args[2:])
-		}
-		return a.runRepo(ctx, args[1:])
-	}
-	if len(args) == 1 {
+	if len(args) > 0 {
 		switch args[0] {
+		case "route":
+			return a.runRoute(ctx, args[1:])
+		case "repo":
+			if len(args) >= 2 && args[1] == "ssh" {
+				return runSetupSSH(ctx, args[2:])
+			}
+			return a.runRepo(ctx, args[1:])
+		case "init", "profile":
+			return a.runProfiles(ctx, args)
+		case "doctor":
+			return a.runDoctor(ctx, args[1:])
+		case "shim":
+			return a.runShim(args[1:])
 		case "--version":
-			_, err := fmt.Fprintln(a.stdout, "tfsaz 0.1.0")
-			return err
-		case "--help", "-h":
-			_, err := fmt.Fprintln(a.stdout, usage)
-			return err
+			if len(args) == 1 {
+				_, err := fmt.Fprintln(a.stdout, "tfsaz 0.1.0")
+				return err
+			}
 		}
 	}
 	command, opts, err := parse(args)
 	if err != nil {
 		return usageError{err}
 	}
+	ctx, trace := startCommandTrace(ctx, a.stderr, command)
+	defer trace.finish()
 	var invoke invokeRead
 	var generic *apiCall
 	var item workItemRead
@@ -243,6 +216,7 @@ func (a app) run(ctx context.Context, args []string) error {
 		if p == nil {
 			return errors.New("login requires --organization with a configured collection")
 		}
+		trace.selectProfile(*p, traceOrganization)
 		return a.login(ctx, *p)
 	}
 	if command == "account show" && opts["query"] == "user.name" && opts["organization"] == "" {
@@ -266,14 +240,20 @@ func (a app) run(ctx context.Context, args []string) error {
 	}
 	var p *Profile
 	var scope Scope
+	selection := traceCheckout
 	if command == "repos pr checkout" {
+		selection = traceGitRemote
 		p, scope, err = cfg.repoCheckoutScope(ctx, a.cwd, opts)
 	} else {
+		if opts["organization"] != "" {
+			selection = traceOrganization
+		}
 		p, scope, err = cfg.scope(ctx, a.cwd, opts)
 	}
 	if err != nil {
 		return err
 	}
+	trace.selectProfile(*p, selection)
 	client, err := a.client(*p)
 	if err != nil {
 		return err
@@ -331,7 +311,7 @@ func (a app) run(ctx context.Context, args []string) error {
 }
 
 func (a app) client(p Profile) (*Client, error) {
-	pat, err := a.store.Get(p.ID)
+	pat, err := a.profileCredential(p)
 	if errors.Is(err, errNoCredential) || (err == nil && pat == "") {
 		return nil, fmt.Errorf("profile %s has no PAT; use az devops login --organization %s", p.ID, p.Organization)
 	}
@@ -348,7 +328,9 @@ func (a app) discover(ctx context.Context, cfg config) (string, error) {
 	defer cancel()
 	deadline, _ := ctx.Deadline()
 	var failures []error
+	trace := getCommandTrace(ctx)
 	for i, p := range cfg.Profiles {
+		trace.selectProfile(p, traceDiscovery)
 		client, err := a.client(p)
 		if err == nil {
 			probe, end := context.WithTimeout(ctx, time.Until(deadline)/time.Duration(len(cfg.Profiles)-i))

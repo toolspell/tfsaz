@@ -15,11 +15,12 @@ import (
 )
 
 type Profile struct {
-	ID            string   `json:"id"`
-	Organization  string   `json:"organization"`
-	CollectionURL string   `json:"collectionUrl"`
-	Aliases       []string `json:"aliases,omitempty"`
-	CAFile        string   `json:"caFile,omitempty"`
+	ID                string   `json:"id"`
+	Organization      string   `json:"organization"`
+	CollectionURL     string   `json:"collectionUrl"`
+	Aliases           []string `json:"aliases,omitempty"`
+	CAFile            string   `json:"caFile,omitempty"`
+	CredentialVersion int      `json:"credentialVersion,omitempty"`
 }
 
 type config struct {
@@ -104,19 +105,35 @@ func loadConfig() (config, error) {
 	if err != nil {
 		return config{}, err
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return config{}, fmt.Errorf("read tfsaz configuration: %w", err)
+	cfg, err := readConfigFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return config{}, fmt.Errorf("%w; run tfsaz init to configure a collection", err)
 	}
-	var cfg config
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.DisallowUnknownFields()
-	if d.Decode(&cfg) != nil || d.Decode(new(any)) != io.EOF {
-		return config{}, errors.New("invalid tfsaz configuration; check JSON syntax and field names")
+	if err != nil {
+		return config{}, err
 	}
 	if len(cfg.Profiles) == 0 {
 		return config{}, errors.New("no collection profiles configured")
 	}
+	return validateConfig(cfg, path)
+}
+
+func readConfigFile(path string) (config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return config{}, fmt.Errorf("read tfsaz configuration: %w", err)
+	}
+	var cfg *config
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.DisallowUnknownFields()
+	if d.Decode(&cfg) != nil || cfg == nil || d.Decode(new(any)) != io.EOF {
+		return config{}, errors.New("invalid tfsaz configuration; check JSON syntax and field names")
+	}
+	return *cfg, nil
+}
+
+func validateConfig(cfg config, path string) (config, error) {
+	cfg.Profiles = append([]Profile(nil), cfg.Profiles...)
 	ids, selectors := map[string]bool{}, map[string]bool{}
 	for i := range cfg.Profiles {
 		p := &cfg.Profiles[i]
@@ -124,6 +141,9 @@ func loadConfig() (config, error) {
 			return config{}, fmt.Errorf("invalid or duplicate ID in profile %d", i+1)
 		}
 		ids[strings.ToLower(p.ID)] = true
+		if p.CredentialVersion != 0 && p.CredentialVersion != collectionCredentialVersion {
+			return config{}, fmt.Errorf("unsupported credential version in profile %s", p.ID)
+		}
 		values := p.selectors()
 		for j, raw := range values {
 			u, ok := baseURL(raw)

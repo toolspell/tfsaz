@@ -6,8 +6,8 @@
 
 | Goal | Current entry point |
 | --- | --- |
-| Connect an installed T3 app | Put the CLI named `az` on the backend’s PATH, configure the collection profiles and run `tfsaz devops login` for each collection. |
-| Use an existing clone | Run `tfsaz repo setup PATH`. The managed origin uses SSH even when the saved origin used HTTPS. Use `tfsaz repo verify PATH` to check it and `tfsaz repo restore PATH` to recover the original URL offline. |
+| Connect an installed T3 app | Use `tfsaz shim install --dir DIR`, put DIR on the backend’s PATH, and run `tfsaz init --collection URL`. |
+| Use an existing clone | Run `tfsaz repo setup PATH`. New macOS setups keep the original SSH or HTTPS transport. On Windows and Linux, add `--preserve-transport` to select this mode. Use `tfsaz repo verify PATH` to check it and `tfsaz repo restore PATH` to recover the original URL offline. |
 | Clone a synthetic HTTPS URL in a shell or job | Start Git under `tfsaz route run --` and configure Git credentials for the native collection. This also works when no checkout exists yet. |
 | Open links from T3 Desktop on macOS | Export the macOS link handler on the machine where the link opens. It works with the user’s selected browser. |
 
@@ -15,9 +15,25 @@
 
 Use the installed T3 Code desktop app. Only tfsaz developers running the adapter integration tests need a T3 source checkout.
 
-To build tfsaz from source, use Go 1.26 or newer. On macOS or Linux run `go build -o tfsaz .` and place a symlink named `az` in a directory early on T3's PATH. On Windows build `tfsaz.exe` and place a link or copy named `az.exe` on that PATH. Restart the T3 server with the updated environment. Keep the normal Azure CLI on a separate PATH if you use both. For a local macOS installation, put that directory on the user's login-shell PATH and fully quit and reopen T3 Desktop. Once a collection login has succeeded, use **Settings → Source control & issues → Rescan** in the installed app to check discovery. For a remote T3 environment install the CLI on the server and configure browser handoff on the Mac where you click the links.
+Build with Go 1.26 or newer, or use an installed tfsaz executable. For a local macOS build, these commands put the CLI and both helper names in a user-owned directory.
 
-Create `tfsaz/config.json` under your OS user configuration directory, or set `TFSAZ_CONFIG` to the absolute path of your configuration file for both the CLI and T3. For T3 Desktop launched from Finder, the default location avoids relying on a custom variable reaching its backend. The default directories are `~/Library/Application Support` on macOS, `%AppData%` on Windows, and `$XDG_CONFIG_HOME` or `~/.config` on Linux.
+```sh
+mkdir -p "$HOME/.local/bin"
+go build -o "$HOME/.local/bin/tfsaz" .
+"$HOME/.local/bin/tfsaz" shim install --dir "$HOME/.local/bin"
+```
+
+Put that directory early on the login-shell PATH that T3 Desktop uses, then fully quit and reopen the app. The shim installer creates links for `az` and `git-remote-tfsaz` and refuses to replace another installation. Choose a separate directory if you also use Microsoft’s Azure CLI. On Windows, build `tfsaz.exe`; if symbolic links are unavailable, install matching copies as `az.exe` and `git-remote-tfsaz.exe` and update those copies together. For a remote T3 environment install the shims on the server. Browser link handling belongs on the machine where links open.
+
+```sh
+tfsaz init --collection 'https://devops.example.invalid/tfs/DefaultCollection' --id engineering
+tfsaz profile list
+tfsaz doctor
+```
+
+`init` generates a stable Azure-style alias from the collection URL and verifies the PAT before saving it. On a terminal it can prompt for the collection URL and hides PAT input. For a job, pass the URL as an argument and pipe the PAT on stdin from a secret provider. `--no-login` writes only the nonsecret configuration and works without access to the OS keyring. Add another collection with `tfsaz profile add --collection URL`; `profile list` prints profiles in discovery order. Supply `--organization URL` to choose the organization alias, or `--ca-file PATH` for a private CA. Use **Settings → Source control & issues → Rescan** to confirm discovery in the installed T3 app.
+
+Alternatively, create `tfsaz/config.json` under your OS user configuration directory, or set `TFSAZ_CONFIG` to the absolute path of your configuration file for both the CLI and T3. For T3 Desktop launched from Finder, the default location avoids relying on a custom variable reaching its backend. The default directories are `~/Library/Application Support` on macOS, `%AppData%` on Windows, and `$XDG_CONFIG_HOME` or `~/.config` on Linux.
 
 ```json
 {
@@ -46,7 +62,7 @@ Store the PAT once per profile, as the OS user that runs T3. Log in to the first
 tfsaz devops login --organization https://engineering-example.visualstudio.com
 ```
 
-Enter the PAT at the hidden prompt, or pipe one line from a secret provider on stdin. Login verifies the PAT against the collection before saving it in the OS keyring under service `tfsaz` and the profile ID. Reading PRs requires Code (Read), and reading work items requires Work Items (Read). For edits, grant Code (Read & write) or Work Items (Read & write) as appropriate. Creating a repository also requires code management scope and the project’s Create repository permission. Listing assignee candidates uses project and team read access. Resolving a login through the identities endpoint can also require identity read access.
+Enter the PAT at the hidden prompt, or pipe one line from a secret provider on stdin. Login verifies the PAT against the collection before saving it in the OS keyring under the stable profile ID. Profiles created by the CLI use a keyring service scoped to the collection URL. Existing configuration files keep their original `tfsaz` service. `tfsaz profile logout --profile ID` removes the selected local credential and keeps the profile configured. Server-side token revocation is separate. Reading PRs requires Code (Read), and reading work items requires Work Items (Read). For edits, grant Code (Read & write) or Work Items (Read & write) as appropriate. Creating a repository also requires code management scope and the project’s Create repository permission. Listing assignee candidates uses project and team read access. Resolving a login through the identities endpoint can also require identity read access.
 
 ## Set up a checkout for stock T3
 
@@ -59,14 +75,18 @@ tfsaz repo verify /path/to/checkout
 tfsaz repo restore /path/to/checkout
 ```
 
-Setup matches the full collection path, creates a stable `tfsaz-…` organization for the repository, and installs an SSH origin that stock T3 recognizes. For example, T3 can see `ssh://git@vs-ssh.visualstudio.com/v3/tfsaz-…/App/api` while Git connects to `ssh://ado.example.invalid:2222/Second%20Collection/App/_git/api`. If several configured HTTPS listeners match a native SSH URL, select the collection with `--profile ID`.
+**New macOS checkouts keep their existing Git transport.** T3 sees an Azure-style repository URL. Git sees `remote.origin.vcs=tfsaz` and invokes `git-remote-tfsaz` for operations on that remote. The helper reads the bound native target from the checkout’s common Git configuration. An HTTPS origin continues using Git’s HTTPS credentials and trust settings. An SSH origin continues using the native SSH endpoint and Git’s SSH settings. Ordinary Git commands in an already-managed checkout need the helper on PATH and can run with T3 closed and `TFSAZ_CONFIG` unset. Clients using a separate Git implementation must support configured remote helpers.
 
-- **Starting with HTTPS.** The CLI uses the profile’s PAT to read the server’s advertised SSH clone URL. You can also pass the server’s native clone URL with `--ssh-url URL`. While setup is active, ordinary Git fetch, pull and push to `origin` use SSH. Restore returns the checkout to HTTPS.
-- **SSH credentials.** Setup and verify run a noninteractive `git ls-remote` against the repository. This tests read access with a key. Configure the key with OpenSSH or load it into your SSH agent, register its public key in Azure DevOps Server, and ensure the server’s host key is trusted. The check distinguishes rejected keys, host-key problems and unreachable servers. Push permissions are separate.
-- **Where the settings live.** Git’s common repository config stores the managed origin and `core.sshCommand`. A private SSH config in the common Git directory records the alias endpoint. The helper verifies that mapping, translates the repository path and invokes ordinary OpenSSH with the real hostname, so your usual host settings and agent apply. Linked worktrees share the setup. Git can run with T3 closed and uses the saved path to the installed helper. The registry next to the profile config stores the original URL and routing metadata. With the default filename it is `config.json.repo-setups.json`.
-- **Verification and recovery.** `repo verify` with no path checks every registered checkout. It checks the effective Git settings, SSH configuration, profile binding and SSH access. Setup refuses conflicting fetch/push URLs or a pre-existing custom SSH command. Setup and restore journal their changes and switch both Git settings together. After an interruption, rerun setup or restore. If a user edited managed settings, verify reports the conflict and restore preserves those edits until it can recognize the saved state. Restore can run offline.
+- **Inspect or verify.** `tfsaz repo show PATH` displays the saved origin, native Git target, transport and profile offline. `repo verify PATH` also checks current configuration and live read access. Use `repo list` for the registry and `repo verify` to check all managed checkouts. Setup refuses conflicting fetch/push destinations. Git credentials for the native collection are separate from the PAT used for CLI API calls.
+- **Select the mode.** On Windows and Linux, request `--preserve-transport` to use the per-remote helper. The default on those platforms is the existing managed SSH wrapper pending native verification. `--managed-ssh` selects the wrapper explicitly on all platforms, and `--ssh-url URL` selects it with a native SSH endpoint override. The wrapper manages the checkout’s `core.sshCommand` and checks public-key access. Use `--profile ID` if the native SSH URL could identify more than one collection.
+- **Restore or change modes.** Running setup again on an already-managed checkout retains its recorded mode unless you explicitly request a different one. To switch modes, restore the checkout and run setup for the desired mode. Linked worktrees share the common Git configuration. Both modes journal setup and restore and check for drift. Recover from interruption by rerunning the operation. Restore recovers the saved origin offline.
+- **Fresh clones.** A per-remote setting takes effect after the checkout exists. To clone directly from a synthetic HTTPS URL, use `tfsaz route run -- git clone URL`. You can also clone from the native server with plain Git, then run `repo setup`.
 
-The CLI maps the synthetic organization to the real collection for REST calls. Direct Git access to a real HTTPS URL uses ordinary Git authentication. The HTTPS routing commands below support Git, links opened by desktop apps on macOS, and optional routing inside Chromium. Clients must honor Git’s repository-local SSH command to use the managed remote. Manually configured Azure-style remotes and organization aliases remain supported.
+## Diagnose a CLI or checkout
+
+Use `tfsaz doctor [PATH]` or `tfsaz doctor --json [PATH]`. The report identifies the `az` selected by this process’s PATH, the config file, and the profile selected by the checkout. For managed checkouts it runs the repository verifier and checks the selected collection’s saved PAT. Outside a checkout, it checks configured profiles in order. A failed check produces a nonzero exit, including with JSON output. Run it in the same environment as the failing program: a terminal and an app launched from Finder may resolve different executables.
+
+Offline help works for groups and individual commands, including `tfsaz repo setup --help` and `az devops invoke --help`. To trace an Azure command, set `TFSAZ_TRACE=1` in its launch environment. Trace lines on stderr contain the command, profile ID, selection reason, HTTP status and elapsed time. Regular stdout is preserved. The trace omits arguments, URLs, identities, headers and request and response bodies.
 
 ## Route synthetic HTTPS URLs
 
@@ -182,6 +202,8 @@ The live server ran Azure DevOps Server 2022.2. The CLI sends REST API version 7
 - **Managed SSH origins.** Four disposable checkouts covered two collections and both original transports. With setup active, plain Git read the same HEAD as the native SSH remote, fetched, and completed a push dry-run without `TFSAZ_CONFIG`. Verification succeeded for all four together, and restore reproduced each original URL.
 
 On the test Mac, the installed T3 Code Nightly 0.1.12-nightly.20261125.5230 bundle contained the external-link handoff. A separate Launch Services test delivered a stock-format PR link to the exported app and verified that a disposable receiving app got the native URL, including query and fragment. macOS listed the handler as an HTTPS candidate. The test explicitly selected the handler for that event and left the user's default browser in place. The Node verifier rejected both live collection certificates with bundled roots and verified both with `NODE_USE_SYSTEM_CA=1`.
+
+Transport-preservation tests used the installed T3 Nightly backend in an isolated macOS GUI launchd job, with the helper directory on the test login-shell PATH. T3 pulled and resolved a PR for all four combinations of collection and original transport. Ordinary unattended Git also fetched with `TFSAZ_CONFIG` unset. Separate tests pushed over SSH and HTTPS to disposable repositories in both collections, checked the advertised commit IDs, and recycled the fixture repositories. Live onboarding checked stdin login, ordered profile listing, doctor in and outside a checkout, sanitized tracing, and logout of only the temporary credential slots.
 
 The macOS HTTPS routing run exercised fresh clone, fetch and push against both real collections. Stock T3 retried two rejected SSH clones over HTTPS and retained recognized Azure-style origins. The Git test supplied preemptive Basic authentication scoped to each real collection. In a disposable Chromium profile, a stock T3 “Open on Azure DevOps” click reached the native PR path, and links from both collections reached the corresponding server URLs. The browser had no on-prem login session. The same stock T3 instance linked a live work item in each project, displayed the attachments and returned the correct thread in the reverse lookup. Both test links were removed. Windows and Ubuntu system proxy settings and native browser behavior remain for VM verification.
 

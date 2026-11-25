@@ -18,9 +18,15 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	run := az.Run
-	isHelper := strings.TrimSuffix(strings.ToLower(filepath.Base(os.Args[0])), ".exe") == "git-remote-https"
-	if isHelper {
+	program := strings.TrimSuffix(strings.ToLower(filepath.Base(os.Args[0])), ".exe")
+	isHelper := true
+	switch program {
+	case "git-remote-https":
 		run = az.RunHTTPSGitHelper
+	case "git-remote-tfsaz":
+		run = az.RunPreserveGitHelper
+	default:
+		isHelper = false
 	}
 	if err := run(ctx, os.Args[1:]); err != nil {
 		var exit *exec.ExitError

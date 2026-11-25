@@ -215,6 +215,11 @@ func (a app) runRest(ctx context.Context, cfg config, call *apiCall, rawURL stri
 	if err != nil {
 		return usageError{err}
 	}
+	selection := traceCheckout
+	if scheme, _, _ := strings.Cut(rawURL, "://"); strings.EqualFold(scheme, "https") {
+		selection = traceRESTURL
+	}
+	getCommandTrace(ctx).selectProfile(*p, selection)
 	for key, values := range call.query {
 		query[key] = values
 	}

@@ -12,7 +12,7 @@ import (
 	"unicode"
 )
 
-// setupRecord binds the SSH transport and T3 identity to one saved checkout.
+// setupRecord binds the Git transport and T3 identity to one saved checkout.
 // Only the configured Profile can construct a REST client or select credentials.
 type setupRecord struct {
 	Repo          string `json:"repo"`
@@ -24,10 +24,68 @@ type setupRecord struct {
 	Host          string `json:"host"`
 	OriginalURL   string `json:"originalUrl"`
 	RemoteURL     string `json:"remoteUrl"`
+	Transport     string `json:"transport,omitempty"`
 	SSHURL        string `json:"sshUrl"`
 	SSHConfig     string `json:"sshConfig"`
 	SSHCommand    string `json:"sshCommand"`
 	Phase         string `json:"phase"`
+}
+
+func preserveSetupRemote(scheme, host, project, repository string) string {
+	if scheme == "ssh" {
+		return (&url.URL{
+			Scheme: "ssh",
+			User:   url.User("git"),
+			Host:   setupSyntheticSSHHost,
+			Path:   "/v3/" + strings.TrimSuffix(host, ".visualstudio.com") + "/" + project + "/" + repository,
+		}).String()
+	}
+	path := "/" + project + "/_git/" + repository
+	if strings.EqualFold(project, "DefaultCollection") {
+		path = "/DefaultCollection" + path
+	}
+	return (&url.URL{Scheme: "https", Host: host, Path: path}).String()
+}
+
+func preserveSetupTarget(raw string) (*url.URL, error) {
+	u, err := nativeSetupURL(raw)
+	if err != nil {
+		return nil, err
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if host == "dev.azure.com" || strings.HasSuffix(host, ".dev.azure.com") || strings.HasSuffix(host, ".visualstudio.com") {
+		return nil, errors.New("expected a native Azure DevOps Server origin")
+	}
+	if u.Scheme == "ssh" && (!validSetupSSHHost(u.Hostname()) ||
+		(u.Port() != "" && !setupSSHValidPort(u.Port())) ||
+		(u.User != nil && !setupSSHUserName.MatchString(u.User.Username()))) {
+		return nil, errors.New("unsupported native SSH host, port, or user")
+	}
+	return u, nil
+}
+
+func makePreserveSetupRecord(cfg config, c setupCheckout, original, profile string) (setupRecord, error) {
+	target, err := preserveSetupTarget(original)
+	if err != nil {
+		return setupRecord{}, err
+	}
+	p, scope, err := setupScope(cfg, target, profile)
+	if err != nil {
+		return setupRecord{}, err
+	}
+	if strings.HasPrefix(scope.Project, "@") || strings.HasPrefix(scope.Repository, "@") {
+		return setupRecord{}, errors.New("stock T3 cannot scope a repository or project name beginning with @")
+	}
+	host := setupHost(p.ID, p.CollectionURL, scope.Project, scope.Repository)
+	if other, _ := cfg.selectBase("https://" + host); other != nil && other.ID != p.ID {
+		return setupRecord{}, errors.New("generated organization conflicts with an existing profile")
+	}
+	return setupRecord{
+		Repo: c.repo, GitDir: c.gitDir, ProfileID: p.ID, CollectionURL: p.CollectionURL,
+		Project: scope.Project, Repository: scope.Repository, Host: host,
+		OriginalURL: original, RemoteURL: preserveSetupRemote(target.Scheme, host, scope.Project, scope.Repository),
+		Transport: target.Scheme,
+	}, nil
 }
 
 func setupHost(profileID, collectionURL, project, repository string) string {

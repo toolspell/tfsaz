@@ -41,6 +41,7 @@ func TestAzCompatibilityDiagnostics(t *testing.T) {
 		{"invoke version", []string{"devops", "invoke", "--area", "git", "--resource", "items", "--api-version", "private-marker"}, 2, "invalid --api-version"},
 		{"invoke shape", []string{"devops", "invoke", "--area", "git", "--resource", "items", "--api-version", "7.1", "--http-method", "private-marker"}, 2, "unsupported HTTP method"},
 		{"runtime", []string{"account", "show", "--query", "user.name", "-o", "tsv"}, 1, "read tfsaz configuration"},
+		{"bare command", nil, 0, "Azure DevOps Server for T3 Code"},
 		{"help", []string{"--help"}, 0, "Azure DevOps Server for T3 Code"},
 		{"version", []string{"--version"}, 0, "tfsaz "},
 	} {

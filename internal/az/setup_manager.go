@@ -22,8 +22,10 @@ const (
 	setupPhaseActive    = "active"
 	setupPhaseRestoring = "restoring"
 
-	setupOriginKey = "remote.origin.url"
-	setupSSHKey    = "core.sshCommand"
+	setupOriginKey  = "remote.origin.url"
+	setupSSHKey     = "core.sshCommand"
+	setupVCSKey     = "remote.origin.vcs"
+	setupBindingKey = "remote.origin.tfsazBinding"
 )
 
 func setupRegistryPath() (string, error) {
@@ -71,10 +73,16 @@ func readSetupRegistry(path string) ([]setupRecord, error) {
 	}
 	for i, r := range records {
 		if !filepath.IsAbs(r.Repo) || !filepath.IsAbs(r.GitDir) ||
-			r.SSHConfig != setupSSHPath(path, r.GitDir) ||
-			r.OriginalURL == "" || r.RemoteURL == "" || r.SSHCommand == "" ||
-			r.OriginalURL == r.RemoteURL {
+			r.OriginalURL == "" || r.RemoteURL == "" || r.OriginalURL == r.RemoteURL {
 			return nil, errors.New("invalid repository setup record")
+		}
+		if r.Transport == "" {
+			if r.SSHConfig != setupSSHPath(path, r.GitDir) || r.SSHCommand == "" {
+				return nil, errors.New("invalid repository SSH setup record")
+			}
+		} else if r.SSHConfig != "" || r.SSHCommand != "" || r.SSHURL != "" ||
+			validatePreserveSetupRecord(r) != nil {
+			return nil, errors.New("invalid repository transport setup record")
 		}
 		switch r.Phase {
 		case setupPhasePreparing, setupPhaseActive, setupPhaseRestoring:
@@ -271,11 +279,18 @@ func (c setupCheckout) configValues(ctx context.Context, file, key string) ([]st
 }
 
 type setupGitState struct {
-	url string
-	ssh string
+	url      string
+	ssh      string
+	vcs      string
+	binding  string
+	preserve bool
 }
 
 func (c setupCheckout) localState(ctx context.Context) (setupGitState, error) {
+	return c.loadLocalState(ctx, false)
+}
+
+func (c setupCheckout) loadLocalState(ctx context.Context, preserve bool) (setupGitState, error) {
 	path := filepath.Join(c.gitDir, "config")
 	if exists, err := setupFileExists(path); err != nil || !exists {
 		return setupGitState{}, errors.Join(err, fmt.Errorf("expected a regular Git config at %s", path))
@@ -284,24 +299,37 @@ func (c setupCheckout) localState(ctx context.Context) (setupGitState, error) {
 	if err != nil {
 		return setupGitState{}, err
 	}
-	ssh, err := c.configValues(ctx, path, setupSSHKey)
-	if err != nil {
-		return setupGitState{}, err
+	if len(urls) != 1 || urls[0] == "" {
+		return setupGitState{}, errors.New("expected exactly one common-config origin URL")
 	}
-	if len(urls) != 1 || urls[0] == "" || len(ssh) > 1 || (len(ssh) == 1 && ssh[0] == "") {
-		return setupGitState{}, errors.New("expected exactly one common-config origin URL and at most one nonempty SSH command")
-	}
-	state := setupGitState{url: urls[0]}
-	if len(ssh) == 1 {
-		state.ssh = ssh[0]
+	state := setupGitState{url: urls[0], preserve: preserve}
+	for _, entry := range []struct {
+		key string
+		out *string
+	}{{setupVCSKey, &state.vcs}, {setupBindingKey, &state.binding}, {setupSSHKey, &state.ssh}} {
+		if preserve && entry.key == setupSSHKey {
+			continue
+		}
+		values, err := c.configValues(ctx, path, entry.key)
+		if err != nil {
+			return setupGitState{}, err
+		}
+		if len(values) > 1 || (len(values) == 1 && values[0] == "") {
+			return setupGitState{}, fmt.Errorf("expected at most one nonempty common-config value for %s", entry.key)
+		}
+		if len(values) == 1 {
+			*entry.out = values[0]
+		}
 	}
 	return state, nil
 }
 
 func (c setupCheckout) verifyEffective(ctx context.Context, state setupGitState) error {
-	for _, key := range []string{"GIT_SSH_COMMAND", "GIT_SSH", "GIT_SSH_VARIANT"} {
-		if _, present := os.LookupEnv(key); present {
-			return fmt.Errorf("%s customizes Git SSH", key)
+	if !state.preserve {
+		for _, key := range []string{"GIT_SSH_COMMAND", "GIT_SSH", "GIT_SSH_VARIANT"} {
+			if _, present := os.LookupEnv(key); present {
+				return fmt.Errorf("%s customizes Git SSH", key)
+			}
 		}
 	}
 	for _, entry := range []struct {
@@ -310,12 +338,16 @@ func (c setupCheckout) verifyEffective(ctx context.Context, state setupGitState)
 	}{
 		{setupOriginKey, []string{state.url}},
 		{"remote.origin.pushurl", nil},
-		{"remote.origin.vcs", nil},
+		{setupVCSKey, nilIfEmptySetupValue(state.vcs)},
+		{setupBindingKey, nilIfEmptySetupValue(state.binding)},
 		{"remote.origin.uploadpack", nil},
 		{"remote.origin.receivepack", nil},
 		{setupSSHKey, nilIfEmptySetupValue(state.ssh)},
 		{"ssh.variant", nil},
 	} {
+		if state.preserve && (entry.key == setupSSHKey || entry.key == "ssh.variant") {
+			continue
+		}
 		values, err := c.configValues(ctx, "", entry.key)
 		if err != nil {
 			return err
@@ -475,12 +507,12 @@ func (l *setupGitLock) close() error {
 
 func (l *setupGitLock) change(ctx context.Context, from, to setupGitState) error {
 	c := l.c
-	actual, err := c.localState(ctx)
+	actual, err := c.loadLocalState(ctx, from.preserve)
 	if err != nil {
 		return err
 	}
 	if actual != from {
-		return errors.New("Git origin URL or SSH command has drifted")
+		return setupGitDriftError(from)
 	}
 	path := filepath.Join(c.gitDir, "config")
 	info, err := os.Lstat(path)
@@ -501,17 +533,23 @@ func (l *setupGitLock) change(ctx context.Context, from, to setupGitState) error
 		return err
 	}
 
-	args := []string{"config", "--file", stage.Name(), "--no-includes"}
-	if _, err := c.git(ctx, append(slices.Clone(args), "--replace-all", setupOriginKey, to.url)...); err != nil {
-		return fmt.Errorf("stage Git origin URL: %w", err)
-	}
-	if to.ssh == "" {
-		args = append(args, "--unset-all", setupSSHKey)
-	} else {
-		args = append(args, "--replace-all", setupSSHKey, to.ssh)
-	}
-	if _, err := c.git(ctx, args...); err != nil {
-		return fmt.Errorf("stage Git SSH command: %w", err)
+	for _, entry := range []struct {
+		key      string
+		from, to string
+	}{{setupOriginKey, from.url, to.url}, {setupSSHKey, from.ssh, to.ssh},
+		{setupVCSKey, from.vcs, to.vcs}, {setupBindingKey, from.binding, to.binding}} {
+		if entry.from == entry.to {
+			continue
+		}
+		args := []string{"config", "--file", stage.Name(), "--no-includes"}
+		if entry.to == "" {
+			args = append(args, "--unset-all", entry.key)
+		} else {
+			args = append(args, "--replace-all", entry.key, entry.to)
+		}
+		if _, err := c.git(ctx, args...); err != nil {
+			return fmt.Errorf("stage Git configuration for %s: %w", entry.key, err)
+		}
 	}
 	staged, err := os.ReadFile(stage.Name())
 	if err != nil {
@@ -561,7 +599,18 @@ func writeSetupGitLock(path string, lockInfo os.FileInfo, staged []byte, mode os
 }
 
 func setupStates(r setupRecord) (original, active setupGitState) {
+	if r.Transport != "" {
+		return setupGitState{url: r.OriginalURL, preserve: true},
+			setupGitState{url: r.RemoteURL, vcs: "tfsaz", binding: encodePreserveBinding(r), preserve: true}
+	}
 	return setupGitState{url: r.OriginalURL}, setupGitState{url: r.RemoteURL, ssh: r.SSHCommand}
+}
+
+func setupGitDriftError(state setupGitState) error {
+	if state.preserve {
+		return errors.New("Git origin URL or transport binding has drifted")
+	}
+	return errors.New("Git origin URL or SSH command has drifted")
 }
 
 func checkSetupSSH(r setupRecord, expected []byte) (bool, error) {
@@ -585,20 +634,23 @@ func checkSetupSSH(r setupRecord, expected []byte) (bool, error) {
 	return true, nil
 }
 
-func verifySetup(ctx context.Context, c setupCheckout, r setupRecord, cfg config) error {
+func verifySetupGitState(ctx context.Context, c setupCheckout, r setupRecord) error {
 	if r.Phase != setupPhaseActive {
 		return fmt.Errorf("repository setup transaction is %s", r.Phase)
 	}
 	_, active := setupStates(r)
-	actual, err := c.localState(ctx)
+	actual, err := c.loadLocalState(ctx, active.preserve)
 	if err != nil {
 		return err
 	}
 	if active != actual {
-		return errors.New("Git origin URL or SSH command has drifted")
+		return setupGitDriftError(active)
 	}
 	if err := c.verifyWorktrees(ctx, active); err != nil {
 		return err
+	}
+	if active.preserve {
+		return checkPreserveHelper(ctx, c)
 	}
 	ssh, err := renderSetupSSH(r)
 	if err != nil {
@@ -610,6 +662,24 @@ func verifySetup(ctx context.Context, c setupCheckout, r setupRecord, cfg config
 	}
 	if !exists {
 		return errors.New("generated SSH configuration is missing")
+	}
+	return nil
+}
+
+func verifySetup(ctx context.Context, c setupCheckout, r setupRecord, cfg config) error {
+	if err := verifySetupGitState(ctx, c, r); err != nil {
+		return err
+	}
+	if r.Transport != "" {
+		expected, err := makePreserveSetupRecord(cfg, setupCheckout{repo: r.Repo, gitDir: r.GitDir}, r.OriginalURL, r.ProfileID)
+		if err != nil {
+			return fmt.Errorf("repository setup routing has drifted: %w", err)
+		}
+		expected.Phase = r.Phase
+		if expected != r {
+			return errors.New("repository setup routing has drifted; run repo restore then repo setup")
+		}
+		return checkPreserveSetupAccess(ctx, c, r, "origin")
 	}
 	override := ""
 	if strings.HasPrefix(strings.ToLower(r.OriginalURL), "https://") {
@@ -645,28 +715,32 @@ func (s *setupRegistry) settleSetup(ctx context.Context, lock *setupGitLock, r s
 	// may itself be the reason the user needs to undo this setup.
 	checkEffective := transition == activateSetup
 	original, active := setupStates(r)
-	from, err := c.localState(ctx)
+	from, err := c.loadLocalState(ctx, original.preserve)
 	if err != nil {
 		return err
 	}
 	if from != original && from != active {
-		return errors.New("Git origin URL or SSH command has drifted")
+		return setupGitDriftError(from)
 	}
 	if checkEffective {
 		if err := c.verifyWorktrees(ctx, from); err != nil {
 			return err
 		}
 	}
-	data, err := renderSetupSSH(r)
-	if err != nil {
-		return err
-	}
-	exists, err := checkSetupSSH(r, data)
-	if transition == activateSetup && from == original && (exists || err != nil) {
-		return errors.Join(err, errors.New("SSH configuration path changed during setup"), s.update(r, ""))
-	}
-	if err != nil {
-		return err
+	var data []byte
+	var exists bool
+	if !original.preserve {
+		data, err = renderSetupSSH(r)
+		if err != nil {
+			return err
+		}
+		exists, err = checkSetupSSH(r, data)
+		if transition == activateSetup && from == original && (exists || err != nil) {
+			return errors.Join(err, errors.New("SSH configuration path changed during setup"), s.update(r, ""))
+		}
+		if err != nil {
+			return err
+		}
 	}
 	to := original
 	if transition == activateSetup && from != original {
@@ -682,7 +756,7 @@ func (s *setupRegistry) settleSetup(ctx context.Context, lock *setupGitLock, r s
 	}
 	if activate {
 		to = active
-		if !exists {
+		if !original.preserve && !exists {
 			if err := publishSetupFile(r.SSHConfig, data, false); err != nil {
 				if transition == activateSetup && errors.Is(err, os.ErrExist) {
 					return errors.Join(err, s.update(r, ""))
@@ -699,6 +773,11 @@ func (s *setupRegistry) settleSetup(ctx context.Context, lock *setupGitLock, r s
 	if checkEffective {
 		if err := c.verifyWorktrees(ctx, to); err != nil {
 			return err
+		}
+		if to.preserve {
+			if err := checkPreserveSetupAccess(ctx, c, r, "origin"); err != nil {
+				return err
+			}
 		}
 	}
 	if activate {
@@ -729,6 +808,9 @@ func (s *setupRegistry) prepare(ctx context.Context, c setupCheckout, cfg config
 	if state.ssh != "" {
 		return setupRecord{}, errors.New("Git already has a custom core.sshCommand")
 	}
+	if state.vcs != "" || state.binding != "" {
+		return setupRecord{}, errors.New("Git origin already has a transport helper or repository binding")
+	}
 	if err := c.verifyWorktrees(ctx, state); err != nil {
 		return setupRecord{}, err
 	}
@@ -743,6 +825,20 @@ func (s *setupRegistry) prepare(ctx context.Context, c setupCheckout, cfg config
 	return r, nil
 }
 
+func preparePreserveSetup(ctx context.Context, c setupCheckout, cfg config, profile string) (setupRecord, error) {
+	state, err := c.loadLocalState(ctx, true)
+	if err != nil {
+		return setupRecord{}, err
+	}
+	if state.vcs != "" || state.binding != "" {
+		return setupRecord{}, errors.New("Git origin already has a transport helper or repository binding")
+	}
+	if err := c.verifyWorktrees(ctx, state); err != nil {
+		return setupRecord{}, err
+	}
+	return makePreserveSetupRecord(cfg, c, state.url, profile)
+}
+
 func (s *setupRegistry) gitTransaction(c setupCheckout, run func(*setupGitLock) error) (err error) {
 	lock, err := lockSetupGit(c)
 	if err != nil {
@@ -754,6 +850,7 @@ func (s *setupRegistry) gitTransaction(c setupCheckout, run func(*setupGitLock) 
 
 func (s *setupRegistry) mutate(ctx context.Context, c setupCheckout, op repoSetupArgs) error {
 	index := setupRecordIndex(s.records, c.gitDir)
+	preserve := op.mode == repoSetupPreserve || (op.mode == repoSetupDefault && runtime.GOOS == "darwin")
 	var cfg config
 	if op.action == "setup" {
 		var err error
@@ -764,6 +861,9 @@ func (s *setupRegistry) mutate(ctx context.Context, c setupCheckout, op repoSetu
 	}
 	if index >= 0 {
 		r := s.records[index]
+		if op.mode == repoSetupDefault {
+			preserve = r.Transport != ""
+		}
 		if r.Phase != setupPhaseActive {
 			if err := s.gitTransaction(c, func(lock *setupGitLock) error {
 				return s.settleSetup(ctx, lock, r, recoverSetup)
@@ -774,6 +874,9 @@ func (s *setupRegistry) mutate(ctx context.Context, c setupCheckout, op repoSetu
 				return nil
 			}
 		} else if op.action == "setup" {
+			if preserve != (r.Transport != "") {
+				return errors.New("repository already has a setup with a different transport mode; restore it first")
+			}
 			if op.profile != "" && op.profile != r.ProfileID {
 				return errors.New("repository already has a setup with a different profile; restore it first")
 			}
@@ -797,21 +900,39 @@ func (s *setupRegistry) mutate(ctx context.Context, c setupCheckout, op repoSetu
 		return errors.New("no setup recorded for this repository")
 	}
 
-	r, err := s.prepare(ctx, c, cfg, op.sshURL, op.profile)
+	var r setupRecord
+	var err error
+	if preserve {
+		r, err = preparePreserveSetup(ctx, c, cfg, op.profile)
+	} else {
+		r, err = s.prepare(ctx, c, cfg, op.sshURL, op.profile)
+	}
 	if err != nil {
 		return err
 	}
 	// Network reads run under the manager lock, before taking Git's lock.
-	if err := checkSetupSSHAccess(ctx, c, r, r.RemoteURL); err != nil {
-		return err
+	if preserve {
+		if err := checkPreserveHelper(ctx, c); err != nil {
+			return err
+		}
+		if err := checkPreserveSetupAccess(ctx, c, r, r.OriginalURL); err != nil {
+			return err
+		}
+	} else {
+		if err := checkSetupSSHAccess(ctx, c, r, r.RemoteURL); err != nil {
+			return err
+		}
 	}
 	err = s.gitTransaction(c, func(lock *setupGitLock) error {
-		current, err := c.localState(ctx)
+		current, err := c.loadLocalState(ctx, preserve)
 		if err != nil {
 			return err
 		}
 		original, _ := setupStates(r)
 		if current != original {
+			if preserve {
+				return errors.New("Git configuration changed during the native transport check; retry setup")
+			}
 			return errors.New("Git configuration changed during the SSH check; retry setup")
 		}
 		if err := c.verifyWorktrees(ctx, current); err != nil {
@@ -842,22 +963,31 @@ func (s *setupRegistry) rollback(ctx context.Context, c setupCheckout, r setupRe
 	return cause
 }
 
+type repoSetupMode int
+
+const (
+	repoSetupDefault repoSetupMode = iota
+	repoSetupPreserve
+	repoSetupManagedSSH
+)
+
 type repoSetupArgs struct {
 	action  string
 	path    string
 	sshURL  string
 	profile string
+	mode    repoSetupMode
 }
 
 func parseRepoSetupArgs(args []string) (repoSetupArgs, error) {
 	if len(args) == 0 {
-		return repoSetupArgs{}, errors.New("expected repo setup, restore, list, or verify")
+		return repoSetupArgs{}, errors.New("expected repo setup, restore, show, list, or verify")
 	}
 	op := repoSetupArgs{action: args[0]}
 	switch op.action {
-	case "setup", "restore", "list", "verify":
+	case "setup", "restore", "show", "list", "verify":
 	default:
-		return op, errors.New("expected repo setup, restore, list, or verify")
+		return op, errors.New("expected repo setup, restore, show, list, or verify")
 	}
 	options := true
 	for i := 1; i < len(args); i++ {
@@ -868,6 +998,16 @@ func parseRepoSetupArgs(args []string) (repoSetupArgs, error) {
 		}
 		if options && strings.HasPrefix(arg, "-") {
 			key, value, joined := strings.Cut(arg, "=")
+			if op.action == "setup" && (key == "--preserve-transport" || key == "--managed-ssh") {
+				if joined || op.mode != repoSetupDefault {
+					return op, errors.New("expected at most one of --preserve-transport or --managed-ssh, without a value")
+				}
+				op.mode = repoSetupPreserve
+				if key == "--managed-ssh" {
+					op.mode = repoSetupManagedSSH
+				}
+				continue
+			}
 			if op.action != "setup" || (key != "--ssh-url" && key != "--profile") {
 				return op, fmt.Errorf("unsupported option for repo %s", op.action)
 			}
@@ -893,6 +1033,12 @@ func parseRepoSetupArgs(args []string) (repoSetupArgs, error) {
 		}
 		op.path = arg
 	}
+	if op.sshURL != "" {
+		if op.mode == repoSetupPreserve {
+			return op, errors.New("--preserve-transport and --ssh-url are mutually exclusive")
+		}
+		op.mode = repoSetupManagedSSH
+	}
 	return op, nil
 }
 
@@ -907,7 +1053,7 @@ func (a app) runRepo(ctx context.Context, args []string) (err error) {
 	}
 	var checkout setupCheckout
 	mutate := op.action == "setup" || op.action == "restore"
-	if mutate || op.path != "" {
+	if mutate || op.action == "show" || op.path != "" {
 		repo := op.path
 		if repo == "" {
 			repo = a.cwd
@@ -943,12 +1089,29 @@ func (a app) runRepo(ctx context.Context, args []string) (err error) {
 		_, err := fmt.Fprintf(a.stdout, "%s complete for %s\n", op.action, checkout.repo)
 		return err
 	}
-	if op.path != "" {
+	if op.path != "" || op.action == "show" {
 		i := setupRecordIndex(records, checkout.gitDir)
 		if i < 0 {
 			return errors.New("no setup recorded for this repository")
 		}
 		records = records[i : i+1]
+	}
+	if op.action == "show" {
+		r := records[0]
+		transport, target, mode := r.Transport, r.OriginalURL, "preserve"
+		if transport == "" {
+			transport, target, mode = "ssh", r.SSHURL, "legacy"
+		}
+		if _, err := fmt.Fprintf(a.stdout, "Checkout: %s\nRemote: origin\nPhase: %s\nProfile: %s\nRecorded origin: %s\nOriginal origin: %s\nRecorded Git target: %s\nTransport: %s (%s)\n",
+			checkout.repo, r.Phase, r.ProfileID, r.RemoteURL, r.OriginalURL, target, transport, mode); err != nil {
+			return err
+		}
+		if r.Phase == setupPhaseActive {
+			if err := verifySetupGitState(ctx, checkout, r); err != nil {
+				return fmt.Errorf("recorded origin mapping differs from the current Git setup: %w", err)
+			}
+		}
+		return nil
 	}
 	if op.action == "list" {
 		if len(records) == 0 {

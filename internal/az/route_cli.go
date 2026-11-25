@@ -15,24 +15,9 @@ import (
 	"golang.org/x/term"
 )
 
-const routeUsage = `tfsaz route explain URL
-tfsaz route resolve URL
-tfsaz route mac-handler-export NEW.app BROWSER_BUNDLE_ID
-tfsaz route browser-target URL
-tfsaz route verify-node
-tfsaz route browser-export NEW_DIRECTORY
-tfsaz route browser-verify DIRECTORY
-tfsaz route run -- PROGRAM [ARG ...]
-tfsaz route hosts [--include-dev-azure]
-tfsaz route verify-hosts [--include-dev-azure]
-tfsaz route sink [--port PORT]
-tfsaz route proxy [--port PORT] [--include-dev-azure]
-tfsaz route pac [--port PORT] [--include-dev-azure]`
-
 func (a app) runRoute(ctx context.Context, args []string) error {
-	if len(args) == 0 || (len(args) == 1 && (args[0] == "--help" || args[0] == "-h")) {
-		_, err := fmt.Fprintln(a.stdout, routeUsage)
-		return err
+	if len(args) == 0 {
+		return writeHelp(a.stdout, "route")
 	}
 	switch args[0] {
 	case "mac-handler-export":

@@ -171,7 +171,7 @@ func TestStockT3Adapter(t *testing.T) {
 			t.Fatal(err)
 		}
 		gitAt(t, cwd, "remote", "set-url", "origin", u.String())
-		setup := exec.CommandContext(t.Context(), exe, "repo", "setup", cwd)
+		setup := exec.CommandContext(t.Context(), exe, "repo", "setup", cwd, "--managed-ssh")
 		if out, err := setup.CombinedOutput(); err != nil {
 			t.Fatalf("managed setup: %v: %s", err, out)
 		}
