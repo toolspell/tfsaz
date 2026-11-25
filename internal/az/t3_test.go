@@ -55,7 +55,12 @@ func TestStockT3Adapter(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch strings.TrimPrefix(r.URL.Path, prefix) {
 		case "/_apis/connectionData":
-			fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"author@example.invalid"}}`, repoTestViewerID)
+			fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid","properties":{"Account":{"$value":"author"}}}}`, repoTestViewerID)
+		case "/_apis/identities":
+			if r.URL.Query().Get("identityIds") != repoTestViewerID {
+				t.Error("identity lookup must use the authenticated user's collection ID")
+			}
+			fmt.Fprintf(w, `{"value":[{"id":%q,"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid","properties":{"Account":{"$value":"author@example.invalid"}}}]}`, clientTestOtherID)
 		case "/_apis/git/pullrequests/42":
 			io.WriteString(w, pr)
 		case "/Shared Project/_apis/git/repositories/Tool Kit":

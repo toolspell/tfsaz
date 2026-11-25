@@ -24,6 +24,8 @@ const (
 	loginHint        = "Run 'az devops login' for this collection."
 )
 
+var errRejectedPAT = errors.New("Azure DevOps rejected the PAT")
+
 // Client makes authenticated REST requests to a single collection.
 type Client struct {
 	collection url.URL
@@ -140,7 +142,7 @@ func collectionResponseError(resp *http.Response, path []string) error {
 	status := resp.StatusCode
 	switch {
 	case status == http.StatusUnauthorized || status == http.StatusNonAuthoritativeInfo:
-		return fmt.Errorf("Azure DevOps rejected the PAT (HTTP %d). %s", status, loginHint)
+		return fmt.Errorf("%w (HTTP %d). %s", errRejectedPAT, status, loginHint)
 	case status >= 300 && status < 400:
 		return fmt.Errorf("Azure DevOps collection returned a redirect (HTTP %d)", status)
 	case status == http.StatusTooManyRequests:
@@ -205,12 +207,16 @@ func (c *Client) Identity(ctx context.Context) (Identity, error) {
 		return Identity{}, fmt.Errorf("Azure DevOps did not authenticate a PAT user. %s", loginHint)
 	}
 	login := user.login()
-	if login == "" {
+	if !qualifiedLogin(login) {
 		var identities struct {
 			Value []collectionIdentity `json:"value"`
 		}
 		query := url.Values{"api-version": {identityAPIVersion}, "identityIds": {user.ID}}
 		if err := c.Get(ctx, []string{"_apis", "identities"}, query, &identities); err != nil {
+			// Qualification is optional when connectionData already verified a login.
+			if login != "" && !errors.Is(err, errRejectedPAT) && !errors.Is(ctx.Err(), context.Canceled) {
+				return Identity{ID: user.ID, Login: login}, nil
+			}
 			return Identity{}, fmt.Errorf("look up the authenticated Azure DevOps user: %w", err)
 		}
 		if len(identities.Value) == 1 {
@@ -219,7 +225,9 @@ func (c *Client) Identity(ctx context.Context) (Identity, error) {
 			// identifies the same principal; keep the collection ID for filters.
 			sameDescriptor := user.Descriptor != "" && user.Descriptor == match.Descriptor
 			if match.isUser() && (strings.EqualFold(match.ID, user.ID) || sameDescriptor) {
-				login = match.login()
+				if resolved := match.login(); login == "" || qualifiedLogin(resolved) {
+					login = resolved
+				}
 			}
 		}
 	}

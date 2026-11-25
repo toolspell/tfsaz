@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -44,6 +45,7 @@ func (s *memoryStore) Set(id, pat string) error {
 
 func TestDiscoveryAndCheckoutIsolation(t *testing.T) {
 	// Both collections share an authority, and PR numbers can collide.
+	var directoryUnavailable atomic.Bool
 	keys := map[string]string{"alpha": rand.Text(), "beta": rand.Text()}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var id, base string
@@ -67,7 +69,16 @@ func TestDiscoveryAndCheckoutIsolation(t *testing.T) {
 		}
 		switch strings.TrimPrefix(r.URL.Path, base) {
 		case "/_apis/connectionData":
-			fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"uniqueName":%q}}`, repoTestViewerID, id+"@example.invalid")
+			fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"properties":{"Account":{"$value":%q}}}}`, repoTestViewerID, id)
+		case "/_apis/identities":
+			if directoryUnavailable.Load() {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			if r.URL.Query().Get("identityIds") != repoTestViewerID {
+				t.Error("identity lookup must use the authenticated user's collection ID")
+			}
+			fmt.Fprintf(w, `{"value":[{"id":%q,"uniqueName":%q}]}`, repoTestViewerID, id+"@example.invalid")
 		case "/_apis/git/pullrequests/42":
 			io.WriteString(w, repoFixture(t, "pull-request"))
 		default:
@@ -106,6 +117,9 @@ func TestDiscoveryAndCheckoutIsolation(t *testing.T) {
 		}
 	}
 	check(global, "alpha@example.invalid\n", "", "alpha")
+	directoryUnavailable.Store(true)
+	check(global, "alpha\n", "", "alpha")
+	directoryUnavailable.Store(false)
 	check(viewer, `"name":"beta@example.invalid"`, "", "beta")
 	check("repos pr show --detect true --id 42", "https://dev.azure.com/beta/Shared%20Project/_git/Tool%20Kit/pullrequest/42", "", "beta")
 	check("repos pr show --detect false --id 42 -o json --organization "+alpha.Organization, "https://alpha.visualstudio.com/Shared%20Project/_git/Tool%20Kit/pullrequest/42", "", "alpha")

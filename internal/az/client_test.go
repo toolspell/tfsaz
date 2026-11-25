@@ -195,18 +195,35 @@ func TestCollectionClientAuthenticatedIdentity(t *testing.T) {
 		fallback string
 		login    string
 		wantErr  string
+		status   int
 	}{
-		{"qualified account", `"properties":{"Account":{"$type":"System.String","$value":"EXAMPLE\\operator"}}`, "", `EXAMPLE\operator`, ""},
-		{"domain and account", `"properties":{"Account":{"$type":"System.String","$value":"operator"},"Domain":{"$type":"System.String","$value":"EXAMPLE"}}`, "", `EXAMPLE\operator`, ""},
-		{"unique name", `"uniqueName":"operator@example.test"`, "", "operator@example.test", ""},
+		{"qualified account", `"properties":{"Account":{"$type":"System.String","$value":"EXAMPLE\\operator"}}`, "", `EXAMPLE\operator`, "", 0},
+		{"domain and account", `"properties":{"Account":{"$type":"System.String","$value":"operator"},"Domain":{"$type":"System.String","$value":"EXAMPLE"}}`, "", `EXAMPLE\operator`, "", 0},
+		{"unique name", `"uniqueName":"operator@example.test"`, "", "operator@example.test", "", 0},
 		{"fallback by ID", `"providerDisplayName":"Example Operator"`,
-			fmt.Sprintf(`{"value":[{"id":%q,"uniqueName":"EXAMPLE\\operator"}]}`, strings.ToUpper(clientTestUserID)), `EXAMPLE\operator`, ""},
+			fmt.Sprintf(`{"value":[{"id":%q,"uniqueName":"EXAMPLE\\operator"}]}`, strings.ToUpper(clientTestUserID)), `EXAMPLE\operator`, "", 0},
 		{"display only", `"customDisplayName":"operator@example.test"`,
-			fmt.Sprintf(`{"value":[{"id":%q,"providerDisplayName":"operator@example.test"}]}`, clientTestUserID), "", "did not return a login"},
+			fmt.Sprintf(`{"value":[{"id":%q,"providerDisplayName":"operator@example.test"}]}`, clientTestUserID), "", "did not return a login", 0},
 		{"same descriptor with a different master ID", `"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid"`,
-			fmt.Sprintf(`{"value":[{"id":%q,"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid","properties":{"Domain":"FIXTURE","Account":"test user"}}]}`, clientTestOtherID), `FIXTURE\test user`, ""},
+			fmt.Sprintf(`{"value":[{"id":%q,"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid","properties":{"Domain":"FIXTURE","Account":"test user"}}]}`, clientTestOtherID), `FIXTURE\test user`, "", 0},
 		{"mismatched fallback", `"displayName":"Example Operator"`,
-			fmt.Sprintf(`{"value":[{"id":%q,"uniqueName":"different@example.test"}]}`, clientTestOtherID), "", "did not return a login"},
+			fmt.Sprintf(`{"value":[{"id":%q,"uniqueName":"different@example.test"}]}`, clientTestOtherID), "", "did not return a login", 0},
+		{"qualify bare account", `"properties":{"Account":{"$value":"operator"}},"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid"`,
+			fmt.Sprintf(`{"value":[{"id":%q,"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid","properties":{"Account":{"$value":"EXAMPLE\\operator"}}}]}`, clientTestOtherID), `EXAMPLE\operator`, "", 0},
+		{"keep bare account on mismatched principal", `"properties":{"Account":"operator"}`,
+			fmt.Sprintf(`{"value":[{"id":%q,"uniqueName":"different@example.test"}]}`, clientTestOtherID), "operator", "", 0},
+		{"keep bare login on unqualified match", `"uniqueName":"operator"`,
+			fmt.Sprintf(`{"value":[{"id":%q,"uniqueName":"different"}]}`, clientTestUserID), "operator", "", 0},
+		{"keep bare account without identity read access", `"properties":{"Account":"operator"}`,
+			"", "operator", "", http.StatusForbidden},
+		{"unavailable directory", `"properties":{"Account":"operator"}`, "", "operator", "", http.StatusInternalServerError},
+		{"missing directory route", `"properties":{"Account":"operator"}`, "", "operator", "", http.StatusNotFound},
+		{"directory timed out", `"properties":{"Account":"operator"}`, "", "operator", "", http.StatusGatewayTimeout},
+		{"directory sign-in response", `"properties":{"Account":"operator"}`, "", "", "rejected the PAT", http.StatusNonAuthoritativeInfo},
+		{"missing login requires identity read access", `"displayName":"Example Operator"`,
+			"", "", "denied access", http.StatusForbidden},
+		{"rejected PAT during enrichment", `"properties":{"Account":"operator"}`,
+			"", "", "rejected the PAT", http.StatusUnauthorized},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -225,7 +242,11 @@ func TestCollectionClientAuthenticatedIdentity(t *testing.T) {
 					if r.URL.Query().Get("identityIds") != clientTestUserID || r.URL.Query().Get("api-version") != "5.0" {
 						t.Error("identity fallback did not query the authenticated user's ID")
 					}
-					io.WriteString(w, tc.fallback)
+					if tc.status != 0 {
+						w.WriteHeader(tc.status)
+					} else {
+						io.WriteString(w, tc.fallback)
+					}
 				default:
 					t.Error("request escaped the collection identity routes")
 					http.NotFound(w, r)
@@ -241,8 +262,12 @@ func TestCollectionClientAuthenticatedIdentity(t *testing.T) {
 			} else if err == nil || !strings.Contains(err.Error(), tc.wantErr) || id != (Identity{}) {
 				t.Fatalf("identity = %+v, error = %v, want %q", id, err, tc.wantErr)
 			}
-			if got := fallbackRequests.Load(); (tc.fallback == "" && got != 0) || (tc.fallback != "" && got != 1) {
-				t.Errorf("unexpected number of identity fallback requests: %d", got)
+			var wantRequests int32
+			if tc.fallback != "" || tc.status != 0 {
+				wantRequests = 1
+			}
+			if got := fallbackRequests.Load(); got != wantRequests {
+				t.Errorf("identity fallback requests = %d, want %d", got, wantRequests)
 			}
 		})
 	}
