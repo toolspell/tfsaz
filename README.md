@@ -143,6 +143,8 @@ For Firefox, use `org.mozilla.firefox` as the browser bundle ID. Try the handler
 
 The OS hands off links from applications such as T3 Desktop. Typing a URL into a browser or clicking a link in the browser version of T3 usually keeps navigation inside that browser. For these cases use `tfsaz route resolve URL` or the optional Chromium integration below. Scripts can also consume `route resolve` directly. Exact hostname entries can separately catch traffic from programs that resolve names locally.
 
+**T3’s built-in browser** navigates directly when you paste a URL into its address bar. For a registered Azure alias, run `tfsaz route resolve 'AZURE_STYLE_URL'` and paste the resulting HTTPS URL into the tab. The browser must trust the real server’s certificate and uses its own sign-in session. Pasting the raw alias can send the request to Azure cloud.
+
 | Caller | How to use it |
 | --- | --- |
 | Human or script | `tfsaz route explain URL` shows the action, collection profile and destination. `tfsaz route resolve URL` prints the real URL for a shell client. Check its exit status before using the output. Supply the client's normal authentication for that destination. |
@@ -261,6 +263,8 @@ Transport-preservation tests used the installed T3 Nightly backend in an isolate
 On macOS, linked worktrees created before and after setup passed Git fetch, push dry-runs, scoped doctor checks, and live PR lookup through the stock T3 adapter over both transports in both collections. The installed T3 Nightly backend also created its own linked worktree and resolved PR 118 from it. After removal of the worktree that ran setup, pathless verification succeeded and restore from the later worktree returned the surviving checkouts to their original URL.
 
 The macOS HTTPS routing run exercised fresh clone, fetch and push against both real collections. Stock T3 retried two rejected SSH clones over HTTPS and retained recognized Azure-style origins. The Git test supplied preemptive Basic authentication scoped to each real collection. In a disposable Chromium profile, a stock T3 “Open on Azure DevOps” click reached the native PR path, and links from both collections reached the corresponding server URLs. The browser had no on-prem login session. The same stock T3 instance linked a live work item in each project, displayed the attachments and returned the correct thread in the reverse lookup. Both test links were removed.
+
+**Built-in browser on all three platforms.** The installed T3 Nightly desktop browser on macOS, Windows and Ubuntu opened the exact PR 118 URL produced by `route resolve`, including its query and fragment. Azure DevOps Server returned its authentication-required page in each tab. The test stopped before sign-in. Windows used T3’s certificate prompt after an independent check of the testbed certificate and hostname. Ubuntu used a disposable Chromium trust database that trusted the testbed’s self-signed leaf certificate. On all three platforms a synthetic fixture PR path on the raw alias stayed on the alias hostname and returned a 404. The test used no browser rewrite rules.
 
 ### Windows 11 x64 and Ubuntu 26.04 ARM64
 
