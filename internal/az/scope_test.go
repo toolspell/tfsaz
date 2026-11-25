@@ -126,3 +126,29 @@ func TestAmbiguousServerCheckout(t *testing.T) {
 		t.Fatal("ambiguous checkout selected a credential profile")
 	}
 }
+
+func TestCanonicalOrganizationAmbiguityLeavesRawRESTSelectorsUnchanged(t *testing.T) {
+	legacy := Profile{ID: "legacy", Organization: "https://shared-name.visualstudio.com", CollectionURL: "https://legacy.example.invalid/Collection"}
+	modern := Profile{ID: "modern", Organization: "https://dev.azure.com/shared-name", CollectionURL: "https://modern.example.invalid/Collection"}
+	const path = "/Project/_git/Repo"
+	cfg := config{Profiles: []Profile{legacy}}
+	if p, _ := cfg.selectBase(modern.Organization); p == nil || p.ID != legacy.ID {
+		t.Fatal("canonical organization did not select the legacy profile")
+	}
+	if p, _, _, err := cfg.restTarget(t.Context(), t.TempDir(), modern.Organization+"/_apis/projects"); p != nil || err == nil {
+		t.Fatal("an inferred CLI organization appeared as a raw REST URL selector")
+	}
+	cfg.Profiles = append(cfg.Profiles, modern)
+	if p, _ := cfg.selectBase(modern.Organization); p != nil {
+		t.Fatal("selected a credential for an ambiguous explicit organization")
+	}
+	if p, _ := cfg.remoteScope(modern.Organization + path); p != nil {
+		t.Fatal("selected a credential for an ambiguous canonical checkout")
+	}
+	if p, _ := cfg.remoteScope(legacy.Organization + path); p == nil || p.ID != legacy.ID {
+		t.Fatal("canonical ambiguity tainted the legacy checkout")
+	}
+	if p, _, _, err := cfg.restTarget(t.Context(), t.TempDir(), modern.Organization+"/_apis/projects"); err != nil || p == nil || p.ID != modern.ID {
+		t.Fatalf("explicit raw REST selector changed: %v, %v", p, err)
+	}
+}

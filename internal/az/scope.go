@@ -21,19 +21,40 @@ func (cfg config) selectBase(raw string) (*Profile, Scope) {
 	if !ok {
 		return nil, Scope{}
 	}
+	var selected *Profile
+	requested := u.String()
 	for i := range cfg.Profiles {
 		p := &cfg.Profiles[i]
 		for _, candidate := range p.selectors() {
-			if strings.EqualFold(candidate, u.String()) {
-				scope := Scope{Organization: p.Organization}
-				if azureOrganization(u) {
-					scope.Organization = u.String()
-				}
-				return p, scope
+			if !strings.EqualFold(candidate, requested) &&
+				!(u.Host == "dev.azure.com" && strings.EqualFold(canonicalAzureOrganization(candidate), requested)) {
+				continue
 			}
+			if selected != nil && selected != p {
+				return nil, Scope{}
+			}
+			selected = p
+			break
 		}
 	}
-	return nil, Scope{}
+	if selected == nil {
+		return nil, Scope{}
+	}
+	scope := Scope{Organization: selected.Organization}
+	if azureOrganization(u) {
+		scope.Organization = requested
+	}
+	return selected, scope
+}
+
+// T3 canonicalizes legacy repository keys to dev.azure.com. Keep that
+// equivalent in CLI organization selection without adding a raw REST alias.
+func canonicalAzureOrganization(legacy string) string {
+	host, ok := strings.CutPrefix(legacy, "https://")
+	if !ok || !legacyHost.MatchString(host) {
+		return ""
+	}
+	return "https://dev.azure.com/" + strings.TrimSuffix(host, ".visualstudio.com")
 }
 
 func remoteURL(raw string) (*url.URL, bool) {

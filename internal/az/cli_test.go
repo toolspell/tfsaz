@@ -123,6 +123,38 @@ func TestDiscoveryAndCheckoutIsolation(t *testing.T) {
 	check(viewer, `"name":"beta@example.invalid"`, "", "beta")
 	check("repos pr show --detect true --id 42", "https://dev.azure.com/beta/Shared%20Project/_git/Tool%20Kit/pullrequest/42", "", "beta")
 	check("repos pr show --detect false --id 42 -o json --organization "+alpha.Organization, "https://alpha.visualstudio.com/Shared%20Project/_git/Tool%20Kit/pullrequest/42", "", "alpha")
+	const repoPath = "/Shared%20Project/_git/Tool%20Kit"
+	const alphaCanonical = "https://dev.azure.com/alpha"
+	gitAt(t, cwd, "remote", "set-url", "origin", alphaCanonical+repoPath)
+	check(viewer, `"name":"alpha@example.invalid"`, "", "alpha")
+	check("repos pr show --id 42 --only-show-errors --output json --organization "+alphaCanonical, alphaCanonical+repoPath+"/pullrequest/42", "", "alpha")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := setupRegistryPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed := setupRecord{
+		Repo: cwd, GitDir: filepath.Join(cwd, ".git"), Phase: setupPhaseActive, ProfileID: beta.ID,
+		CollectionURL: cfg.Profiles[1].CollectionURL, Project: "Shared Project", Repository: "Tool Kit",
+		RemoteURL: beta.Organization + repoPath, OriginalURL: cfg.Profiles[1].CollectionURL + repoPath, SSHCommand: "fixture",
+	}
+	managed.Host = setupHost(managed.ProfileID, managed.CollectionURL, managed.Project, managed.Repository)
+	managed.SSHConfig = setupSSHPath(registry, managed.GitDir)
+	data, err := json.Marshal([]setupRecord{managed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerTestWrite(t, registry, string(data))
+	managedCanonical := canonicalAzureOrganization("https://" + managed.Host)
+	gitAt(t, cwd, "remote", "set-url", "origin", managedCanonical+repoPath)
+	check(viewer, `"name":"beta@example.invalid"`, "", "beta")
+	check("repos pr show --id 42 --only-show-errors --output json --organization "+managedCanonical, managedCanonical+repoPath+"/pullrequest/42", "", "beta")
+	gitAt(t, cwd, "remote", "set-url", "origin", beta.Organization+repoPath)
+
 	store.values["beta"] = rand.Text() // Simulate revocation in this collection only.
 	check(viewer, "", "rejected the PAT", "beta")
 	check("repos pr list --detect true --creator me --status all --top 1", "", "rejected the PAT", "beta")

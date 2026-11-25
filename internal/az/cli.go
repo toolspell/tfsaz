@@ -16,6 +16,7 @@ import (
 const usage = `tfsaz — Azure DevOps Server for T3 Code
 
   tfsaz --version
+  tfsaz route --help
   tfsaz repo setup [PATH] [--profile ID] [--ssh-url URL]
   tfsaz repo verify [PATH] | repo list | repo restore [PATH]
   tfsaz devops login --organization URL
@@ -176,6 +177,9 @@ func Run(ctx context.Context, args []string) error {
 }
 
 func (a app) run(ctx context.Context, args []string) error {
+	if len(args) > 0 && args[0] == "route" {
+		return a.runRoute(ctx, args[1:])
+	}
 	if len(args) > 0 && args[0] == "repo" {
 		if len(args) >= 2 && args[1] == "ssh" {
 			return runSetupSSH(ctx, args[2:])
