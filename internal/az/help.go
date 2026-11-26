@@ -101,7 +101,7 @@ var azureCommands = map[string]azureCommand{
 		"Requires --id. Use --expand relations to include linked work items and pull requests.",
 	},
 	"devops login": {
-		"Verify a PAT for a configured organization and save it in the OS keyring. Reads the PAT from a hidden prompt or stdin.",
+		"Verify a PAT for a configured organization and save it in the OS keyring. Reads the PAT from a hidden prompt or stdin. Warns when the collection offers no API 7.1.",
 		"organization",
 		"devops login --organization https://engineering-example.visualstudio.com",
 		"Requires --organization with a configured alias or collection URL.",
@@ -203,7 +203,7 @@ type nativeCommand struct {
 var nativeCommandNotes = map[string]string{
 	"route setup":    "Run on the host and under the account where the browser runs. For the web client’s Browser panel this is the T3 server. Setup uses the exact registered alias names, a local leaf certificate, hosts entries and a supervised loopback listener. System integration requires OS privileges. Rerun setup after interruption, or run route restore to undo it. See https://github.com/toolspell/tfsaz/blob/main/docs/user/browser-routing.md#what-setup-installs for what setup installs and needs on each platform.",
 	"route verify":   "Checks the local resolver and both loopback addresses on port 443 using the managed certificate. Open the printed alias URL in your intended browser and compare the address bar with the expected destination to confirm browser trust and routing.",
-	"route restore":  "Stop using alias links before restoring public name resolution. Uses the saved installation identity for the selected configuration. After removing or adding checkout aliases, or when the certificate expires, run restore and then setup.",
+	"route restore":  "Stop using alias links before restoring public name resolution. Uses the saved installation identity for the selected configuration. The installation ID comes from the configuration path, so when no installation matches it, restore lists the installations recorded in ~/.tfsaz/route-recovery and changes nothing; restore one with --installation ID. After removing or adding checkout aliases, or when the certificate expires, run restore and then setup.",
 	"route redirect": "Listens on 127.0.0.1 and ::1 (default port 443) and answers GET and HEAD for supported repository, PR, commit, work-item and build pages with a 302 to the real collection. The browser carries the #fragment to the destination. Fragments stay in the browser, so the redirector cannot validate them. The certificate must be an unexpired CA:FALSE serverAuth leaf whose DNS names are all exact generated aliases of active setups or profiles; wildcards, IP names and shared hosts such as dev.azure.com are refused. SNI and Host must name the same alias. Other names, methods, Git traffic, request bodies and Authorization headers are refused. Nothing is proxied or logged and no PAT is read. Each request rereads the configuration, so a restored setup stops redirecting at once. Map the alias to loopback with tfsaz route hosts and trust only this leaf. If port 443 needs elevated privileges, use a loopback port redirect to a high port and run TFSaz as the profile owner. See https://github.com/toolspell/tfsaz/blob/main/docs/user/browser-routing-manual.md for running the service yourself.",
 }
 
@@ -232,7 +232,7 @@ var nativeCommands = map[string]nativeCommand{
 		"profile logout --profile engineering",
 	},
 	"doctor": {
-		"Check TFSaz, collection profiles, credentials and current or specified checkout.",
+		"Check the shims on PATH, collection profiles, credentials, the collection API version and current or specified checkout.",
 		"[PATH] [--json]",
 		"doctor --json",
 	},
@@ -240,6 +240,11 @@ var nativeCommands = map[string]nativeCommand{
 		"Install az and git-remote-tfsaz in a directory on T3's PATH. Windows installs executable copies when symbolic links are unavailable.",
 		"--dir DIR",
 		"shim install --dir ./bin",
+	},
+	"shim uninstall": {
+		"Remove the az and git-remote-tfsaz shims from a directory. Removes only links to this TFSaz and, on Windows, copies of it; any other file stays in place and makes the command fail.",
+		"--dir DIR",
+		"shim uninstall --dir ./bin",
 	},
 	"repo setup": {
 		"Set up a checkout for T3. New setups preserve the original HTTPS or SSH transport. Use --managed-ssh for the SSH wrapper, and --ssh-url to override its native endpoint. --ssh-url also selects that mode on its own.",
@@ -252,7 +257,7 @@ var nativeCommands = map[string]nativeCommand{
 		"repo show ./checkout",
 	},
 	"repo verify": {
-		"Check managed Git settings and read access for one checkout or all registered checkouts.",
+		"Check managed Git settings, read access and the collection's API version for one checkout or all registered checkouts.",
 		"[PATH]",
 		"repo verify ./checkout",
 	},
@@ -262,9 +267,14 @@ var nativeCommands = map[string]nativeCommand{
 		"repo list",
 	},
 	"repo restore": {
-		"Restore the checkout's saved Git settings offline.",
-		"[PATH]",
+		"Restore the checkout's saved Git settings offline. If they have drifted from the record, --force prints each value it overwrites, current and recorded, then restores the recorded original values.",
+		"[PATH] [--force]",
 		"repo restore ./checkout",
+	},
+	"repo forget": {
+		"Remove the record of a deleted or moved checkout from the setup registry. Changes no checkout and refuses while the checkout or its Git directory still exists; run repo restore there instead.",
+		"PATH",
+		"repo forget /path/to/deleted-checkout",
 	},
 	"route setup": {
 		"Configure browser redirects for this configuration’s registered repository aliases on this machine.",
@@ -277,9 +287,9 @@ var nativeCommands = map[string]nativeCommand{
 		"route verify",
 	},
 	"route restore": {
-		"Remove the machine browser routing installed for this configuration.",
-		"",
-		"route restore",
+		"Remove the machine browser routing installed for this configuration, or for the installation with the ID that restore lists.",
+		"[--installation ID]",
+		"route restore --installation 0123456789abcdef",
 	},
 	"route explain": {
 		"Describe how TFSaz routes an Azure DevOps web link.",
@@ -377,7 +387,7 @@ var helpGroups = map[string]string{
 	"repos pr policy":   "Read pull request policy evaluations.",
 	"repos pr reviewer": "Manage pull request reviewers.",
 	"route":             "Route synthetic URLs to Azure DevOps Server.",
-	"shim":              "Install the az and git-remote-tfsaz shims for T3 and Git.",
+	"shim":              "Install or remove the az and git-remote-tfsaz shims for T3 and Git.",
 }
 
 func commandWords(args []string) int {

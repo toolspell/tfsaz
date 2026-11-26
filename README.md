@@ -26,7 +26,7 @@ This keeps T3 unmodified and keeps every credential pointed at the real server.
 - **Several collections:** one ordered list of collection profiles, each with its own PAT and optional private CA.
 - **Link routing:** open T3's synthetic URLs at the real collection through a local browser redirect, a desktop link handler, a Chromium extension or a Git launcher.
 - **Scripting:** `az devops invoke` and `az rest` reach any REST resource the collection advertises.
-- **Diagnostics:** `tfsaz doctor` checks PATH, configuration, PAT and checkout; `TFSAZ_TRACE=1` traces calls without secrets.
+- **Diagnostics:** `tfsaz doctor` checks PATH, configuration, PAT, server API version and checkout; `TFSAZ_TRACE=1` traces calls without secrets.
 
 ## Status
 

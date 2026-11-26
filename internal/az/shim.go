@@ -42,13 +42,29 @@ func sameBinary(path, executable string) bool {
 	return e1 == nil && e2 == nil && bytes.Equal(left, right)
 }
 
+var shimNames = []string{"az", "git-remote-tfsaz"}
+
+func shimPath(dir, name string) string {
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return filepath.Join(dir, name)
+}
+
 func (a app) runShim(args []string) error {
-	if len(args) != 3 || args[0] != "install" || args[1] != "--dir" || args[2] == "" {
-		return usageError{errors.New("expected shim install --dir DIR")}
+	if len(args) != 3 || args[0] != "install" && args[0] != "uninstall" || args[1] != "--dir" || args[2] == "" {
+		return usageError{errors.New("expected shim install --dir DIR or shim uninstall --dir DIR")}
 	}
 	executable, err := os.Executable()
 	if err != nil {
 		return err
+	}
+	if args[0] == "uninstall" {
+		dir, err := filepath.Abs(args[2])
+		if err != nil {
+			return err
+		}
+		return uninstallShimLinks(a.stdout, dir, executable)
 	}
 	// A package manager can replace a versioned executable on upgrade. Link
 	// to the stable "tfsaz" on PATH when it resolves to this same file.
@@ -72,11 +88,8 @@ func (a app) runShim(args []string) error {
 
 func installShimLinks(dir, executable string) (err error) {
 	var missing []string
-	for _, name := range []string{"az", "git-remote-tfsaz"} {
-		if runtime.GOOS == "windows" {
-			name += ".exe"
-		}
-		path := filepath.Join(dir, name)
+	for _, name := range shimNames {
+		path := shimPath(dir, name)
 		_, err := os.Lstat(path)
 		switch {
 		case errors.Is(err, os.ErrNotExist):
@@ -112,4 +125,70 @@ func installShimLinks(dir, executable string) (err error) {
 		created[path] = info
 	}
 	return nil
+}
+
+// Uninstall removes only what install creates: a link to this TFSaz, or on
+// Windows a copy of it. Any other file may be another tool's az.
+func uninstallShimLinks(w io.Writer, dir, executable string) error {
+	// Check every shim before removing any: the executable or a shim can be
+	// a link through the other shim, such as the az link on macOS.
+	var kept []error
+	var remove []string
+	for _, name := range shimNames {
+		path := shimPath(dir, name)
+		info, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			kept = append(kept, err)
+			continue
+		}
+		if reason := keepShimReason(path, info, executable); reason != "" {
+			kept = append(kept, fmt.Errorf("left %s in place: %s", path, reason))
+			continue
+		}
+		remove = append(remove, path)
+	}
+	removed := false
+	for _, path := range remove {
+		if err := os.Remove(path); err != nil {
+			kept = append(kept, err)
+			continue
+		}
+		removed = true
+		if _, err := fmt.Fprintf(w, "Removed %s\n", path); err != nil {
+			return err
+		}
+	}
+	if !removed && len(kept) == 0 {
+		if _, err := fmt.Fprintf(w, "Found no az or git-remote-tfsaz shim in %s.\n", dir); err != nil {
+			return err
+		}
+	}
+	return errors.Join(kept...)
+}
+
+func keepShimReason(path string, info os.FileInfo, executable string) string {
+	current, err := os.Stat(executable)
+	if err != nil {
+		return "the running TFSaz executable is unavailable: " + err.Error()
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		// Identical bytes elsewhere can be another TFSaz installation.
+		if target, err := os.Stat(path); err == nil && os.SameFile(target, current) {
+			return ""
+		}
+		return "it does not link to this TFSaz executable"
+	}
+	if os.SameFile(info, current) {
+		return "it is the running TFSaz executable itself"
+	}
+	if runtime.GOOS != "windows" || !info.Mode().IsRegular() {
+		return "it is not a link to this TFSaz executable"
+	}
+	if sameBinary(path, executable) {
+		return ""
+	}
+	return "it differs from this TFSaz executable; if it is a copy from an older TFSaz, delete it yourself"
 }

@@ -452,3 +452,32 @@ func validCatalogRouteValue(value string) bool {
 		value = decoded
 	}
 }
+
+// T3's adapter sends API 7.1 and 7.1-preview requests and nothing lower.
+var apiFloor = catalogVersion{7, 1}
+
+// checkAPIFloor reads the collection's API level from the catalog: the
+// highest maxVersion of the long-lived git/repositories resource.
+func checkAPIFloor(ctx context.Context, c *Client) (catalogVersion, error) {
+	catalog, err := c.reloadCatalog(ctx)
+	if err != nil {
+		return catalogVersion{}, fmt.Errorf("could not read the collection resource catalog to check its API version: %w", err)
+	}
+	var level catalogVersion
+	found := false
+	for _, location := range catalog.locations {
+		if !strings.EqualFold(location.Area, "git") || !strings.EqualFold(location.ResourceName, "repositories") {
+			continue
+		}
+		if version, ok := catalogVersionBound(location.MaxVersion); ok && (!found || compareCatalogVersions(version, level) > 0) {
+			level, found = version, true
+		}
+	}
+	switch {
+	case !found:
+		return level, errors.New("the collection resource catalog lists no Git repositories resource, so its API version is unknown; TFSaz needs API 7.1")
+	case compareCatalogVersions(level, apiFloor) < 0:
+		return level, fmt.Errorf("the collection supports API %d.%d at most; TFSaz needs API 7.1 (Azure DevOps Server 2022.1 or later)", level.major, level.minor)
+	}
+	return level, nil
+}

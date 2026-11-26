@@ -29,7 +29,7 @@ func preserveTestRepo(t *testing.T) (managerTestCLI, setupCheckout, string, stri
 	}
 	root := t.TempDir()
 	bin := testExecutable(filepath.Join(root, "tfsaz"))
-	if output, err := exec.Command("go", "build", "-o", bin, "../..").CombinedOutput(); err != nil {
+	if output, err := exec.Command("go", "build", "-tags", "tfsaztest", "-o", bin, "../..").CombinedOutput(); err != nil {
 		t.Fatalf("build tfsaz: %v\n%s", err, output)
 	}
 	copyTestExecutable(t, bin, testExecutable(filepath.Join(root, "git-remote-tfsaz")))
@@ -184,7 +184,15 @@ esac
 		t.Fatal(err)
 	}
 	managerTestRun(t, a, "show", linked)
-	managerTestRun(t, a, "restore", linked)
+	managerTestGit(t, c.repo, "config", setupBindingKey, "manual binding")
+	if err := a.runRepo(t.Context(), []string{"restore", linked}); err == nil || !strings.Contains(err.Error(), "repo restore --force") {
+		t.Fatalf("restore of a drifted binding returned %v", err)
+	}
+	managerTestRun(t, a, "restore", "--force", linked)
+	if got := a.stdout.String(); !strings.Contains(got, "  "+setupBindingKey+"\n    current:  manual binding\n    recorded: (unset)\n") ||
+		strings.Contains(got, setupSSHKey) {
+		t.Fatalf("force restore output = %q", got)
+	}
 	managerTestState(t, c, setupGitState{url: origin, ssh: sshCommand})
 	if records := managerTestRecords(t); len(records) != 0 {
 		t.Fatalf("restored repository still registered: %+v", records)

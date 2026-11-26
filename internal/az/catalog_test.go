@@ -1,6 +1,7 @@
 package az
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -289,5 +290,51 @@ func TestResolveResourceSelectsMatchingLocation(t *testing.T) {
 	path, _, err = resolveResource([]resourceLocation{item, list}, "testarea", "resource", "5.0", nil)
 	if err != nil || !slices.Equal(path, []string{"_apis", "TestArea", "Resource"}) {
 		t.Fatalf("resolve catalog list route = %q, %v", path, err)
+	}
+}
+
+// serveTestCatalog answers a catalog request with one Git repositories
+// location whose maxVersion is level.
+func serveTestCatalog(w io.Writer, level string) {
+	serveTestf(w, `{"count":1,"value":[{"area":"git","resourceName":"repositories","routeTemplate":"{project}/_apis/{area}/{resource}/{repositoryId}","minVersion":"1.0","maxVersion":%q,"releasedVersion":"6.0","resourceVersion":1}]}`, level)
+}
+
+func TestCheckAPIFloor(t *testing.T) {
+	location := func(area, resource, maxVersion string) string {
+		return `{"area":"` + area + `","resourceName":"` + resource + `","routeTemplate":"_apis/{area}/{resource}","minVersion":"1.0","maxVersion":"` + maxVersion + `","releasedVersion":"5.0","resourceVersion":1}`
+	}
+	tests := []struct {
+		name      string
+		locations []string
+		want      catalogVersion
+		err       string
+	}{
+		{"floor", []string{location("git", "repositories", "7.1")}, catalogVersion{7, 1}, ""},
+		{"preview only counts", []string{location("Git", "Repositories", "7.1")}, catalogVersion{7, 1}, ""},
+		{"newer server", []string{location("git", "repositories", "7.2")}, catalogVersion{7, 2}, ""},
+		{"highest location wins", []string{location("git", "repositories", "7.1"), location("git", "repositories", "6.0")}, catalogVersion{7, 1}, ""},
+		{"other resources are ignored", []string{location("core", "projects", "7.1"), location("git", "repositories", "7.0")}, catalogVersion{7, 0}, "supports API 7.0 at most"},
+		{"server 2020", []string{location("git", "repositories", "6.0")}, catalogVersion{6, 0}, "supports API 6.0 at most; TFSaz needs API 7.1"},
+		{"no git repositories", []string{location("core", "projects", "7.1")}, catalogVersion{}, "lists no Git repositories resource"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				serveTestBody(w, `{"value":[`+strings.Join(tc.locations, ",")+`]}`)
+			}))
+			defer server.Close()
+			level, err := checkAPIFloor(t.Context(), newClientForTest(t, clientTestProfile(t, server, "/Collection")))
+			if level != tc.want || (err == nil) != (tc.err == "") || (err != nil && !strings.Contains(err.Error(), tc.err)) {
+				t.Fatalf("checkAPIFloor = %v, %v; want %v, %q", level, err, tc.want, tc.err)
+			}
+		})
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	if _, err := checkAPIFloor(t.Context(), newClientForTest(t, clientTestProfile(t, server, "/Collection"))); err == nil ||
+		!strings.Contains(err.Error(), "could not read the collection resource catalog") {
+		t.Fatalf("checkAPIFloor on a failing catalog = %v", err)
 	}
 }

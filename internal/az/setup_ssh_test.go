@@ -132,7 +132,7 @@ func TestSetupSSHGitLSRemote(t *testing.T) {
 	record := sshTestRecord(t)
 	dir := t.TempDir()
 	bin := testExecutable(filepath.Join(dir, "tfsaz with ' spaces!")) // naming-allow: a binary name that needs quoting
-	build := exec.Command("go", "build", "-o", bin, "../..")
+	build := exec.Command("go", "build", "-tags", "tfsaztest", "-o", bin, "../..")
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build tfsaz: %v\n%s", err, output)
 	}
