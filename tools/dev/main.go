@@ -4,6 +4,7 @@
 //	go run ./tools/dev ready               full local suite, before a push
 //	go run ./tools/dev staged              staged-only checks, run by .githooks/pre-commit
 //	go run ./tools/dev setup [-tools]      prepare a fresh worktree
+//	go run ./tools/dev setup -undo         turn the hooks off again
 //	go run ./tools/dev ci-local            run the CI workflow with act in Docker
 //
 // ci-changes and ci-checks are the CI workflow's steps.
@@ -24,6 +25,7 @@ const usage = `usage: go run ./tools/dev <command>
   ready               full local suite, before a push
   staged              staged-only checks (the pre-commit hook)
   setup [-tools]      enable the hooks and download modules; -tools also builds the tools
+  setup -undo         turn the hooks off again (unset core.hooksPath)
   ci-local [-base main] [-context <docker context>] [-- <act args>]
                       run .github/workflows/test.yml with act in Docker
 
@@ -61,8 +63,17 @@ func main() {
 		ok = staged()
 	case "setup":
 		tools := flags.Bool("tools", false, "also build the pinned tools")
+		undo := flags.Bool("undo", false, "unset the core.hooksPath that setup sets")
 		_ = flags.Parse(os.Args[2:])
-		ok = setup(*tools)
+		switch {
+		case *undo && *tools:
+			fmt.Fprintln(os.Stderr, "setup: -undo and -tools cannot be combined")
+			os.Exit(2)
+		case *undo:
+			ok = undoSetup()
+		default:
+			ok = setup(*tools)
+		}
 	case "ci-changes":
 		base := flags.String("base", "", "the commit before the change; empty runs the tests")
 		_ = flags.Parse(os.Args[2:])
