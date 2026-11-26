@@ -401,13 +401,24 @@ func (a app) logoutProfile(id string) error {
 }
 
 func (a app) removeProfile(id string) error {
-	return withProfileConfigLock(false, func(path, target string) error {
+	return withProfileConfigLock(false, func(path, target string) (err error) {
 		original, p, i, err := findProfile(path, target, id,
 			errors.New("profile remove requires a configured profile ID; add --collection or --service to remove a keyring entry that no profile uses"))
 		if err != nil {
 			return err
 		}
-		records, err := readSetupRecords()
+		// Hold the registry through the configuration update, so a concurrent
+		// repo setup cannot register a checkout for the profile in between.
+		registry, err := setupRegistryPath()
+		if err != nil {
+			return err
+		}
+		release, err := acquireSetupLock(registry + ".lock")
+		if err != nil {
+			return err
+		}
+		defer func() { err = errors.Join(err, release()) }()
+		records, err := readSetupRegistry(registry)
 		if err != nil {
 			return err
 		}

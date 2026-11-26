@@ -161,7 +161,7 @@ func TestProfileOnboardingAndLogout(t *testing.T) {
 	if len(store.values) != 1 || store.values["shared"] != legacy {
 		t.Fatal("profile remove kept its PAT or deleted another one")
 	}
-	for _, leftover := range []string{path + ".lock", list, filepath.Dir(list)} {
+	for _, leftover := range []string{path + ".lock", setupRegistryForConfig(path) + ".lock", list, filepath.Dir(list)} {
 		if _, err := os.Lstat(leftover); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("profile commands left %s: %v", leftover, err)
 		}
@@ -461,7 +461,19 @@ func TestProfileRemoveFindsStrandedKeyringEntries(t *testing.T) {
 		}
 	}
 
-	// A profile with a managed checkout stays until the checkout is restored.
+	// A profile with a managed checkout stays until the checkout is restored,
+	// also while a concurrent repo setup holds the registry.
+	registry := setupRegistryForConfig(path)
+	lock := flock.New(registry + ".lock")
+	if locked, err := lock.TryLock(); err != nil || !locked {
+		t.Fatalf("test registry lock: %v", err)
+	}
+	if _, err := run("profile", "remove", "--profile", "renamed"); err == nil || !strings.Contains(err.Error(), "repository setup transaction") {
+		t.Fatalf("profile remove ignored a running repo setup: %v", err)
+	}
+	if err := lock.Close(); err != nil {
+		t.Fatal(err)
+	}
 	cfg, err := loadConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -476,7 +488,6 @@ func TestProfileRemoveFindsStrandedKeyringEntries(t *testing.T) {
 	if data, err = json.Marshal([]setupRecord{record}); err != nil {
 		t.Fatal(err)
 	}
-	registry := setupRegistryForConfig(path)
 	managerTestWrite(t, registry, string(data))
 	if _, err := run("profile", "remove", "--profile", "renamed"); err == nil || !strings.Contains(err.Error(), "repo restore") {
 		t.Fatalf("removed a profile with a managed checkout: %v", err)
