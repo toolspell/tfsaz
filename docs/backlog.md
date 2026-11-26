@@ -17,6 +17,7 @@ Deferred work, so any session or worktree can pick it up.
   - leftovers such as large or stray files.
 
   If something turns up, the history has to be rewritten. That is easiest before anyone else clones the repo.
+- **Naming guidelines:** check or create them. tfsaz stands for itself but has no product name yet, and it shims the `az` CLI command, so a guideline on how to write and refer to tfsaz, the `az` shim, `git-remote-tfsaz` and Microsoft's Azure CLI is important. Pointers: Toolspell `docs/internals/naming.md`, `scripts/check-naming.ts`.
 - **License decision and CONTRIBUTING.md:** the README has only placeholders, and GitHub shows no license.
 - **SECURITY.md:** threat model and reporting path, covering PAT handling, the redirect listener and the hosts and trust-store changes. The repo has none. Pointer: Toolspell `SECURITY.md`.
 - **CI path filter:** skip the 3-OS test matrix (about 5 minutes) on docs-only changes, using affected detection. Pointer: Toolspell `scripts/ci-changes.ts`.
@@ -71,6 +72,15 @@ Deferred work, so any session or worktree can pick it up.
   - Secret Service availability for go-keyring inside WSL.
   - Git and SSH transport across the WSL/Windows boundary.
   - T3's own adapter already mentions "Windows az running in WSL" (`AzureDevOpsCli.ts`, scope detection and `@-` stdin text): check which side's `az` T3 runs in that setup.
+- **Platform parity gaps** the docs reveal:
+  - Linux is documented and tested only on Ubuntu (systemd, nftables, sudo, GIO).
+  - Firefox needs manual trust on every OS.
+  - The manual trust table covers only Chromium on Ubuntu.
+  - Live PR and Boards writes were tested only with a macOS backend.
+  - There is no opt-in systemd live test (launchd and Task Scheduler have one).
+  - External links from the Windows T3 app are unverified.
+  - Credential-store setup on Linux and Windows is described only as a test workaround.
+  - Hosts-edit recovery is documented only for Windows.
 
 ## Docs and process
 
