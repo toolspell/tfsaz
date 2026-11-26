@@ -74,8 +74,7 @@ Deferred work, so any session or worktree can pick it up.
   - T3's own adapter already mentions "Windows az running in WSL" (`AzureDevOpsCli.ts`, scope detection and `@-` stdin text): check which side's `az` T3 runs in that setup.
 - **Platform parity gaps** the docs reveal:
   - Linux is documented and tested only on Ubuntu (systemd, nftables, sudo, GIO).
-  - Firefox needs manual trust on every OS.
-  - The manual trust table covers only Chromium on Ubuntu.
+  - Browser trust coverage per OS: check Chrome/Chromium (and Edge) on macOS, Windows and Linux as well as Firefox. Managed setup trusts automatically only in some combinations; Firefox needs manual trust everywhere; the manual trust table covers only Chromium on Ubuntu.
   - Live PR and Boards writes were tested only with a macOS backend.
   - There is no opt-in systemd live test (launchd and Task Scheduler have one).
   - External links from the Windows T3 app are unverified.
