@@ -1,17 +1,27 @@
 # Browser routing for registered aliases
 
-Use `tfsaz route setup` to open a managed Azure-style link directly in a browser, including T3’s built-in Browser panel. The local service redirects the browser to the real collection. It serves exact `tfsaz-<24 hex>.visualstudio.com` names registered by `tfsaz init` or `tfsaz repo setup`, including a matching alias explicitly configured on a profile.
+Use `tfsaz route setup` to open a managed Azure-style link directly in a browser, including T3’s built-in Browser panel. The local service redirects the browser to the real collection, where browser sign-in takes place. It serves exact `tfsaz-<24 hex>.visualstudio.com` names registered by `tfsaz init` or `tfsaz repo setup`, including a matching alias explicitly configured on a profile. For links an app hands to the OS default browser, the [desktop link handler](desktop-link-handler.md) is an alternative that needs no administrator access.
 
 ## Managed browser routing
 
-Run the following on the machine that runs your browser. Its tfsaz configuration or local checkout registry must contain the exact alias used in the link and the real collection URL. The redirector needs no PAT. For the T3 web client's Browser panel, use the account that runs the T3 server. Use a tfsaz binary at a permanent path. If an upgrade moves or removes the installed binary, rerun `tfsaz route setup` from the new installation to refresh the supervised service, then run `tfsaz route verify`.
+Configure the machine **where the browser runs**:
+
+- For T3 Desktop and an external browser, this is the workstation.
+- For the web client’s server-hosted Browser panel, it is the T3 server, under the account that runs the T3 server and launches Chromium.
+- If the browser runs on another host, configure the same alias and native collection on that host as well. Its tfsaz configuration or local checkout registry must contain the exact alias used in the link and the real collection URL.
+
+The redirector needs no PAT. Use a tfsaz binary at a permanent path. If an upgrade moves or removes the installed binary, rerun `tfsaz route setup` from the new installation to refresh the supervised service, then run `tfsaz route verify`.
 
 ```sh
 tfsaz route setup
 tfsaz route verify
 ```
 
+### Certificate and recovery
+
 Setup creates one 90-day certificate for the current set of exact registered aliases. It stores the certificate, private key and installation identity beside the selected configuration in `<config-file>.browser-route`. It reuses that identity on retry. If setup stops partway through, rerun it under the same account and configuration to finish, or run `tfsaz route restore` to undo the completed steps. A second copy of the public certificate in `~/.tfsaz/route-recovery` lets restore identify OS settings if the config directory is deleted. Browser sign-in is handled by the native collection, which needs its own trusted certificate.
+
+### What setup installs
 
 | Platform | What setup installs | What the operator needs |
 | --- | --- | --- |
@@ -19,17 +29,27 @@ Setup creates one 90-day certificate for the current set of exact registered ali
 | Ubuntu | A systemd user service, trusted-peer entries in existing Chromium NSS databases, hosts entries and a dedicated nftables table with a boot-time unit. | A systemd user session, sudo access, nftables and `certutil` from `libnss3-tools`. Start Chromium once so its NSS database exists. |
 | Windows 11 | A per-user logon task on port 443, the exact leaf in the current user’s trust store and hosts entries. | A desktop session for certificate confirmation and elevation for the hosts edit. |
 
+### Requirements and side effects
+
 Use a configuration file in your private user directory. The redirector needs both loopback addresses and available port 443. On Ubuntu the port-forwarding rule matches loopback HTTPS connections opened by the installing user. It can also affect that user’s other connections to local HTTPS servers on port 443. Restore the route before repurposing that port. The browser also needs to trust the native collection. Firefox profiles and clients with independent CA stores may require a separate trust entry.
 
-Use `tfsaz route verify 'AZURE_STYLE_PR_URL'` to check a particular link. The CLI checks local resolution, makes a HEAD request through each loopback address on port 443, verifies the exact managed certificate and compares the redirect with the configured destination. Open the printed URL in the browser you actually use and compare the address bar with the expected URL. This last step checks that browser's trust and proxy configuration.
+### Check a link
 
-Stop opening alias links before running `tfsaz route restore`. Restore uses the saved identity and works after a checkout or collection profile has been removed. Rerun restore if the OS cleanup is interrupted. After changing the set of registered names or before the 90-day certificate expires, run restore followed by setup. Clones and worktrees sharing an existing alias can reuse the current certificate. Public DNS can resolve the synthetic names between those commands.
+Use `tfsaz route verify 'AZURE_STYLE_PR_URL'` to check a particular link. The CLI checks local resolution, makes a HEAD request through each loopback address on port 443, verifies the exact managed certificate and compares the redirect with the configured destination. Open the printed URL in the browser you actually use and compare the address bar with the expected URL. It should show the real collection, including the query and fragment. This last step checks that browser's trust and proxy configuration.
+
+### Refresh or remove
+
+Stop opening alias links before running `tfsaz route restore`, which removes the managed installation. Restore uses the saved identity and works after a checkout or collection profile has been removed. Rerun restore if the OS cleanup is interrupted. After adding or retiring aliases, or before the 90-day certificate expires, run restore followed by setup to refresh the certificate and hosts entries. Clones and worktrees sharing an existing alias can reuse the current certificate. Public DNS can resolve the synthetic names between those commands.
+
+### Troubleshooting
 
 If a T3 tab reports a certificate authority error immediately after setup, run `tfsaz route verify` and try the link in a fresh tab. This succeeded on the test Mac. If the error persists, check which hostname the browser rejected. The alias leaf and the native collection certificate establish trust for two separate connections.
 
 On Windows, setup and restore edit the hosts file in place. During the edit, `hosts.tfsaz-journal` beside it records the original and intended contents. After an interruption, rerun the same command. If tfsaz reports a conflicting edit, it keeps both files. Review the journal, preserve the wanted hosts entries, then remove the journal and retry.
 
 ## What it does and refuses
+
+Why tfsaz redirects instead of proxying is explained in [Routing compared with a proxy](../internals/architecture.md#routing-compared-with-a-proxy).
 
 | Aspect | Behavior |
 | --- | --- |
@@ -112,9 +132,9 @@ sudo pfctl -E    # prints a token; keep it for removal
 
 Remove with `sudo pfctl -a com.apple/tfsaz-redirect -F all` and `sudo pfctl -X TOKEN`. The stock `/etc/pf.conf` evaluates `com.apple/*` anchors, so no edit to that file is needed.
 
-For a supervised installation on any of the three platforms, use [managed browser routing](#managed-browser-routing). If you supervise a manual listener yourself, keep the executable, config, certificate and key at stable paths and run the service under the intended user account.
+For a supervised installation on any of the three platforms, use [managed browser routing](#managed-browser-routing). Its live checks are recorded in [Browser routing verification](../verification/browser-routing.md). If you supervise a manual listener yourself, keep the executable, config, certificate and key at stable paths and run the service under the intended user account.
 
-## Verify
+## Verify the manual setup
 
 Use an actual PR URL from the managed checkout. A repository-bound alias only accepts paths belonging to that project and repository. Set `pr_url` to the full HTTPS URL and run these commands from the directory containing your manual certificate.
 
@@ -127,7 +147,7 @@ curl --noproxy '*' --cacert alias.pem -sSI -X POST "$pr_url"
 
 Expect HTTP 302 on both address families and HTTP 405 for POST. The 302 Location should match the resolved URL up to the fragment. The browser carries the fragment itself. The curl probes explicitly trust the leaf. Open the same URL in the intended browser to check its normal trust and compare the full destination in its address bar.
 
-## Remove
+## Remove the manual setup
 
 1. Stop using the alias in browsers and other clients. Once the hosts entry is removed, public DNS can resolve the name to Azure again. Stop the service and its supervisor entry.
 2. Remove the alias lines from the hosts file.

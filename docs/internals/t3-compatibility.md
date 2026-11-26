@@ -1,14 +1,33 @@
 # T3 compatibility
 
+T3's invocation of `az` is the compatibility contract. This page records where that contract is defined and what the stock adapter can do with tfsaz.
+
 ## References
 
-- Use the sibling `../t3code` checkout as the source and documentation reference. The initial investigation used commit `c478fde9fe`. Check the actual adapter and its tests when implementing a command.
-- Start with `packages/source-control-azure-devops/src/shared/definition.ts` for remote and PR URL recognition, `src/server/AzureDevOpsCli.ts` in that package for argument rewriting, and `src/server/AzureDevOpsPullRequestCli.ts` and `AzureDevOpsPullRequestProvider.ts` for the JSON and exit behavior T3 consumes. The source-control user guide is `docs/user/source-control.md`.
-- Local sibling checkouts `../azure-cli` and `../azure-devops-cli-extension` are behavioral references. The extension's `azure-devops/azext_devops/dev/common/identities.py` illustrates the collection connection-data lookup.
+Use a T3 Code source checkout ([upstream](https://github.com/pingdotgg/t3code)) as the source and documentation reference. The initial investigation used commit `c478fde9fe`. Check the actual adapter and its tests when implementing a command.
+
+In T3's `packages/source-control-azure-devops` package, start with these files:
+
+| File | What it defines |
+| --- | --- |
+| `src/shared/definition.ts` | Remote and PR URL recognition |
+| `src/server/AzureDevOpsCli.ts` | Argument rewriting |
+| `src/server/AzureDevOpsPullRequestCli.ts` and `src/server/AzureDevOpsPullRequestProvider.ts` | The JSON and exit behavior T3 consumes |
+
+T3's source-control user guide is `docs/user/source-control.md` in that checkout.
+
+Microsoft's [Azure CLI](https://github.com/Azure/azure-cli) and [Azure DevOps CLI extension](https://github.com/Azure/azure-devops-cli-extension) are behavioral references. The extension's `azure-devops/azext_devops/dev/common/identities.py` illustrates the collection connection-data lookup.
+
+## Adding a command
+
+- Follow the actual CLI calls the adapter makes and the API versions the target server supports.
+- Match the adapter's output shapes and errors, using fixtures stripped of identities, internal URLs and secrets.
+- Cover T3's explicit organization flags as well as checkout-derived scope.
+- T3 groups some viewer reads by host. Verify “my PRs” with distinct recognized host aliases.
 
 ## Feature coverage at this T3 revision
 
-The command table above lists implemented commands. The table below shows how the stock adapter uses those commands and which capabilities its Azure provider exposes. The audit compared the stock source-control, PR and issue providers and their tests with the CLI dispatcher. The live PR and Boards write checks used the macOS backend against both collections. Windows and Ubuntu also ran the write regression fixtures and live Git, worktree and browser-routing checks described above.
+The [command table](../user/az-compatibility.md#commands-t3-calls) lists implemented commands. The table below shows how the stock adapter uses those commands and which capabilities its Azure provider exposes. The audit compared the stock source-control, PR and issue providers and their tests with the CLI dispatcher. The live PR and Boards write checks used the macOS backend against both collections. Windows and Ubuntu also ran the write regression fixtures and live Git, worktree and browser-routing checks described in the [live results](../verification/live-t3-2026-11.md).
 
 | Feature | What works or is missing |
 | --- | --- |

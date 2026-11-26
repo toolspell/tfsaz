@@ -1,5 +1,7 @@
 # Browser routing verification
 
+Dated live checks of the routing described in [Browser routing](../user/browser-routing.md).
+
 ## T3 desktop browser verification
 
 In the installed T3 Nightly desktop app, a disposable Electron profile mapped one exact generated alias to the redirector’s high loopback port and trusted the corresponding leaf certificate for that origin. Opening the raw alias reached the real Azure DevOps Server PR 118 authentication page with the expected query and fragment. After the redirector stopped, a fresh navigation failed with `ERR_CONNECTION_REFUSED`. This test used a process-local hostname mapping.

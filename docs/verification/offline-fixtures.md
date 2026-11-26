@@ -1,5 +1,7 @@
 # Offline fixture and native suite results
 
+What the offline stock-adapter fixture and the native suites cover, and where they passed. How to run them is in [Development](../operations/development.md). Live results are recorded separately in [Live T3 results](live-t3-2026-11.md).
+
 At T3 revision `c478fde9fe`, the offline adapter test exercises viewer, default branch, authored PR list, link identity and two pages of policies. Two successive summary reads observe a queued fixture policy becoming approved. The fixture also exercises managed alias recognition, comment and label reads, a paginated diff, batched ZIP blobs and per-file content fallback. The Go suite covers distinct users, rejected credentials, unavailable collections, and profile isolation. T3's own Azure provider package passed all 200 upstream tests in an isolated copy of that revision.
 
 The same fixture runs T3’s issue tracker against a collection under `/tfs/`. It covers filtered and empty searches, result order and pagination, linked PRs, comment reactions and continuation tokens, update history spanning two pages, and tag and assignee candidates. The adapter also updates a PR description via stdin and posts a work-item comment via a temporary JSON file. The fixture checks the exact multiline Unicode text, API version and destination of both writes.

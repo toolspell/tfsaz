@@ -8,12 +8,23 @@ tfsaz repo show /path/to/checkout
 tfsaz doctor /path/to/checkout
 ```
 
-After `doctor` verifies the checkout and PAT, open the checkout in T3 and view an existing PR. To open its Azure-style URL inside the browser, follow [Route synthetic HTTPS URLs](routing.md).
+After `doctor` verifies the checkout and PAT, open the checkout in T3 and view an existing PR. To open its Azure-style URL inside the browser, set up [browser routing](browser-routing.md). For other clients, see [Route synthetic HTTPS URLs](routing.md).
 
-**New setups keep the checkout’s existing Git transport on macOS, Windows and Linux.** T3 sees an Azure-style repository URL. Git sees `remote.origin.vcs=tfsaz` and invokes `git-remote-tfsaz` for operations on that remote. The helper reads the bound native target from the checkout’s common Git configuration. An HTTPS origin continues using Git’s HTTPS credentials and trust settings. An SSH origin continues using the native SSH endpoint and Git’s SSH settings. Ordinary Git commands in an already-managed checkout need the helper on PATH and can run with T3 closed and `TFSAZ_CONFIG` unset. Clients using a separate Git implementation must support configured remote helpers.
+## How the transport is preserved
+
+**New setups keep the checkout’s existing Git transport on macOS, Windows and Linux.** T3 sees an Azure-style repository URL. Git sees `remote.origin.vcs=tfsaz` and invokes `git-remote-tfsaz` for operations on that remote. The helper reads the bound native target from the checkout’s common Git configuration.
+
+- An HTTPS origin continues using Git’s HTTPS credentials and trust settings.
+- An SSH origin continues using the native SSH endpoint and Git’s SSH settings.
+- Ordinary Git commands in an already-managed checkout need the helper on PATH and can run with T3 closed and `TFSAZ_CONFIG` unset.
+- Clients using a separate Git implementation must support configured remote helpers.
+
+## Manage checkouts
 
 - **Inspect or verify.** `tfsaz repo show PATH` displays the saved origin, native Git target, transport and profile offline. `repo verify PATH` also checks current configuration and live read access. Use `tfsaz repo list` for the registry and `repo verify` to check all managed checkouts. Setup refuses conflicting fetch/push destinations. Git credentials for the native collection are separate from the PAT used for CLI API calls.
 - **Select the mode.** Use `--preserve-transport` to select the default per-remote helper explicitly. `--managed-ssh` selects the wrapper explicitly on all platforms, and `--ssh-url URL` selects it with a native SSH endpoint override for an HTTPS origin. The wrapper manages the checkout’s `core.sshCommand` and checks public-key access. Use `--profile ID` if the native SSH URL could identify more than one collection.
 - **Restore or change modes.** Running setup again on an already-managed checkout retains its recorded mode and rejects a conflicting mode flag. To switch modes, restore the checkout and run setup for the desired mode. Both modes journal setup and restore and check for drift. Recover from interruption by rerunning the operation. Restore recovers the saved origin offline.
 - **Linked worktrees.** Run setup once per clone from any of its worktrees. Repositories in the same collection reuse one profile and PAT. Each project/repository pair gets its own stable hostname, shared by clones using the same profile and collection. Existing worktrees and ones created later by Git or T3 share the origin mapping. Restore from any surviving worktree to return all of them to the original remote. If the worktree used for setup is removed or moved with Git, `repo list` and `repo verify` can locate another checkout registered under the same Git common directory.
 - **Fresh clones.** A per-remote setting takes effect after the checkout exists. To clone directly from a synthetic HTTPS URL, use `tfsaz route run -- git clone URL`. You can also clone from the native server with plain Git, then run `repo setup`.
+
+If something fails, see [Diagnose a CLI or checkout](diagnose.md).
