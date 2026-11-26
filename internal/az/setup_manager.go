@@ -145,16 +145,29 @@ func acquireSetupLock(path string) (func() error, error) {
 // while its path still names the locked file: a process that opened the file
 // before the previous holder removed it would otherwise lock a deleted file.
 func acquireLockFile(path string, busy error) (func() error, error) {
+	lock, err := tryLockFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if lock == nil {
+		return nil, busy
+	}
+	return func() error { return releaseSetupLock(lock) }, nil
+}
+
+// tryLockFile returns a nil lock when another process holds the file or the
+// path no longer names the file it locked.
+func tryLockFile(path string, opts ...flock.Option) (*flock.Flock, error) {
 	if _, err := setupFileExists(path); err != nil {
 		return nil, err
 	}
-	lock := flock.New(path)
+	lock := flock.New(path, opts...)
 	ok, err := lock.TryLock()
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("lock %s: %w", path, err), lock.Close())
 	}
 	if !ok {
-		return nil, errors.Join(busy, lock.Close())
+		return nil, lock.Close()
 	}
 	held, err := lock.Stat()
 	if err == nil {
@@ -164,9 +177,9 @@ func acquireLockFile(path string, busy error) (func() error, error) {
 		}
 	}
 	if err != nil {
-		return nil, errors.Join(busy, lock.Close())
+		return nil, lock.Close()
 	}
-	return func() error { return releaseSetupLock(lock) }, nil
+	return lock, nil
 }
 
 func syncSetupDir(path string) error {
