@@ -220,9 +220,10 @@ func missingSetupCheckoutError(ctx context.Context, registry, path string, cause
 // setupCommandPath quotes a path for a command the user copies from an error,
 // in the quoting of the platform's usual shell.
 func setupCommandPath(path string) string {
-	if !strings.ContainsFunc(path, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/\\:._-+", r))
-	}) {
+	plain := func(r rune) bool {
+		return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/\\:._-+", r)
+	}
+	if !strings.ContainsFunc(path, func(r rune) bool { return !plain(r) }) {
 		return path
 	}
 	if runtime.GOOS == "windows" {
