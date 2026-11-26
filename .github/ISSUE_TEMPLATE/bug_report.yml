@@ -78,7 +78,7 @@ body:
     id: os
     attributes:
       label: Operating system of the T3 backend
-      description: tfsaz runs where the T3 backend runs, which is the T3 server for a remote web client.
+      description: TFSaz runs where the T3 backend runs, which is the T3 server for a remote web client.
       options:
         - macOS
         - Windows
@@ -99,7 +99,7 @@ body:
   - type: input
     id: tfsaz-version
     attributes:
-      label: tfsaz version
+      label: TFSaz version
       description: Output of `tfsaz --version` or `az --version`, plus the commit if you built from source.
       placeholder: tfsaz 0.1.0 (main @ abc1234)
     validations:

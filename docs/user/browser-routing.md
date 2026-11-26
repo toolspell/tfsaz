@@ -13,9 +13,9 @@ Configure the machine **where the browser runs**:
 
 - For T3 Desktop and an external browser, this is the workstation.
 - For the web client's server-hosted Browser panel, it is the T3 server, under the account that runs the T3 server and launches Chromium.
-- If the browser runs on another host, configure the same alias and native collection on that host as well. Its tfsaz configuration or local checkout registry must contain the exact alias used in the link and the real collection URL.
+- If the browser runs on another host, configure the same alias and native collection on that host as well. Its TFSaz configuration or local checkout registry must contain the exact alias used in the link and the real collection URL.
 
-The redirector needs no PAT. Use a tfsaz binary at a permanent path. If an upgrade moves or removes the installed binary, rerun `tfsaz route setup` from the new installation to refresh the supervised service, then run `tfsaz route verify`.
+The redirector needs no PAT. Use a TFSaz binary at a permanent path. If an upgrade moves or removes the installed binary, rerun `tfsaz route setup` from the new installation to refresh the supervised service, then run `tfsaz route verify`.
 
 ```sh
 tfsaz route setup
@@ -26,7 +26,7 @@ tfsaz route verify
 
 | Platform | What setup installs | What the operator needs |
 | --- | --- | --- |
-| macOS | Two on-demand user LaunchAgents. Launchd owns the IPv4 and IPv6 loopback sockets on port 443 and passes each socket to tfsaz. Setup adds hostname-scoped SSL trust in the login keychain and the alias hosts entries. | A logged-in desktop session for the agents and Keychain approval, plus administrator access to edit hosts. |
+| macOS | Two on-demand user LaunchAgents. Launchd owns the IPv4 and IPv6 loopback sockets on port 443 and passes each socket to TFSaz. Setup adds hostname-scoped SSL trust in the login keychain and the alias hosts entries. | A logged-in desktop session for the agents and Keychain approval, plus administrator access to edit hosts. |
 | Windows 11 | A per-user logon task on port 443, the exact leaf in the current user's trust store and hosts entries. | A desktop session for certificate confirmation and elevation for the hosts edit. |
 | Ubuntu | A systemd user service, trusted-peer entries in existing Chromium NSS databases, hosts entries and a dedicated nftables table with a boot-time unit. | A systemd user session, sudo access, nftables and `certutil` from `libnss3-tools`. Start Chromium once so its NSS database exists. |
 
@@ -62,7 +62,7 @@ Setup creates one 90-day certificate for the current set of exact registered ali
 
 ### Check a link
 
-Use `tfsaz route verify 'AZURE_STYLE_PR_URL'` to check a particular link. tfsaz checks local resolution, makes a HEAD request through each loopback address on port 443, verifies the exact managed certificate and compares the redirect with the configured destination.
+Use `tfsaz route verify 'AZURE_STYLE_PR_URL'` to check a particular link. TFSaz checks local resolution, makes a HEAD request through each loopback address on port 443, verifies the exact managed certificate and compares the redirect with the configured destination.
 
 Then open the printed URL in the browser you actually use and compare the address bar with the expected URL. It should show the real collection, including the query and fragment. This last step checks that browser's trust and proxy configuration.
 
@@ -81,11 +81,11 @@ Then open the printed URL in the browser you actually use and compare the addres
 
 **Certificate authority error in a T3 tab right after setup.** Run `tfsaz route verify` and try the link in a fresh tab ([observed on macOS](../verification/browser-routing.md#managed-installer-verification)). If the error persists, check which hostname the browser rejected. The alias leaf and the native collection certificate establish trust for two separate connections.
 
-**Interrupted hosts edit on Windows.** On Windows, setup and restore edit the hosts file in place. During the edit, `hosts.tfsaz-journal` beside it records the original and intended contents. After an interruption, rerun the same command. If tfsaz reports a conflicting edit, it keeps both files. Review the journal, preserve the wanted hosts entries, then remove the journal and retry.
+**Interrupted hosts edit on Windows.** On Windows, setup and restore edit the hosts file in place. During the edit, `hosts.tfsaz-journal` beside it records the original and intended contents. After an interruption, rerun the same command. If TFSaz reports a conflicting edit, it keeps both files. Review the journal, preserve the wanted hosts entries, then remove the journal and retry.
 
 ## What the redirector does and refuses
 
-The redirector sends the browser to the real collection instead of serving the collection itself. The browser therefore signs in at the real server, in its own session. Why tfsaz redirects instead of proxying is explained in [Routing compared with a proxy](../internals/architecture.md#routing-compared-with-a-proxy).
+The redirector sends the browser to the real collection instead of serving the collection itself. The browser therefore signs in at the real server, in its own session. Why TFSaz redirects instead of proxying is explained in [Routing compared with a proxy](../internals/architecture.md#routing-compared-with-a-proxy).
 
 | Aspect | Behavior |
 | --- | --- |

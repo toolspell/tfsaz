@@ -94,7 +94,7 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 | Shims | Delete `az` and `git-remote-tfsaz` from the test shim directory, and remove it from PATH. | `command -v az` (PowerShell: `Get-Command az`) no longer finds them. |
 | Temporary configuration | Delete the temp `TFSAZ_CONFIG` file with any `.repo-setups.json`, `.browser-route`, `.run` and `.lock` siblings, and unset the variable. A killed `route run` leaves `git-*` directories in `.run`. | The temp directory is gone. |
 
-- Live gates (`TFSAZ_LIVE_LAUNCHD`, `TFSAZ_LIVE_TASK_SCHEDULER`, `TFSAZ_T3_ROOT`) remove what they create when they finish. After an aborted run, check with `launchctl print gui/$(id -u)` (macOS) or `Get-ScheduledTask` (Windows) for leftover tfsaz entries.
+- Live gates (`TFSAZ_LIVE_LAUNCHD`, `TFSAZ_LIVE_TASK_SCHEDULER`, `TFSAZ_T3_ROOT`) remove what they create when they finish. After an aborted run, check with `launchctl print gui/$(id -u)` (macOS) or `Get-ScheduledTask` (Windows) for leftover TFSaz entries.
 - Deleting a configuration first orphans its PATs and checkout registrations, so `profile logout` and `repo restore` can no longer find them.
 
 ## CI
@@ -112,7 +112,7 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 
 - **Gates** (Checks): gofmt; `go vet`, golangci-lint and govulncheck for darwin, linux and windows; `go mod tidy -diff` for the root and every tool module; actionlint; gitleaks over the full history; the repo checks. The test matrix gates too.
 - **Report** that never fails a run: deadcode for each system.
-- tfsaz has no cgo code, so vet, lint and govulncheck with `GOOS` set on Linux see what native runs would see. Only the tests need the three runners.
+- TFSaz has no cgo code, so vet, lint and govulncheck with `GOOS` set on Linux see what native runs would see. Only the tests need the three runners.
 - Checks and the test matrix run on the Go version in `go.mod`: govulncheck judges the standard library of the Go it runs on, and that version is the minimum every build uses.
 - All three systems need the race detector; Windows x64 needs a compatible MinGW-w64 C compiler on PATH, which GitHub's runner has. [Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements)
 
@@ -189,7 +189,7 @@ go run ./tools/syncrepos -latest         # pins next to the latest release tags,
 - For each entry it clones or fetches only the pinned commit, applies the sparse paths, checks out that commit, resets local edits and stray files, and verifies the HEAD, the sparse patterns, a clean tree and that every listed path exists. A second run that finds everything in place downloads nothing.
 - Tests and CI never need it; `go test ./...` skips the folder.
 
-To bump a pin, follow the skill `.agents/skills/update-references`: it finds the latest releases with `-latest`, diffs the old and new pin in the paths tfsaz depends on, classifies the impact, re-pins and puts required tfsaz changes in the [backlog](../backlog.md#code). The sync fails if a listed path no longer exists at the new commit. The `t3code` pin moves together with the T3 revision in [T3 compatibility](../internals/t3-compatibility.md#keeping-coverage-current); what each entry is for is in the skills `.agents/skills/reference-t3code` and `.agents/skills/reference-azure-cli`.
+To bump a pin, follow the skill `.agents/skills/update-references`: it finds the latest releases with `-latest`, diffs the old and new pin in the paths TFSaz depends on, classifies the impact, re-pins and puts required TFSaz changes in the [backlog](../backlog.md#code). The sync fails if a listed path no longer exists at the new commit. The `t3code` pin moves together with the T3 revision in [T3 compatibility](../internals/t3-compatibility.md#keeping-coverage-current); what each entry is for is in the skills `.agents/skills/reference-t3code` and `.agents/skills/reference-azure-cli`.
 
 ### Agent skills
 

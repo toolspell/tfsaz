@@ -68,7 +68,7 @@ For each name on your certificate, copy its IPv4 and IPv6 lines from `tfsaz rout
 | Windows | `tfsaz route redirect --cert alias.pem --key alias-key.pem`. Pick another approach if IIS or another service already holds port 443. |
 | Linux | If the host permits unprivileged binding, run the listener directly on port 443. Otherwise run on a free high port such as `--port 8443` and forward loopback traffic. The manual test used `sudo iptables -t nat -A OUTPUT -o lo -p tcp -d 127.0.0.1 --dport 443 -j REDIRECT --to-ports 8443` plus the matching `ip6tables` rule for `::1` (remove them with `-D` instead of `-A`). |
 
-The macOS example below sends all port 443 connections for the two listed loopback addresses to tfsaz until you remove the rule. Check for other local HTTPS services before installing it. On macOS the rule lasts until removal or reboot.
+The macOS example below sends all port 443 connections for the two listed loopback addresses to TFSaz until you remove the rule. Check for other local HTTPS services before installing it. On macOS the rule lasts until removal or reboot.
 
 ```sh
 printf '%s\n' \

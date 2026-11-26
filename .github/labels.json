@@ -27,7 +27,7 @@
   {
     "name": "invalid",
     "color": "e4e669",
-    "description": "Not a problem with tfsaz, or not actionable."
+    "description": "Not a problem with TFSaz, or not actionable."
   },
   {
     "name": "wontfix",

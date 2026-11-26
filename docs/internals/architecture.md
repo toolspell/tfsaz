@@ -1,6 +1,6 @@
 # Architecture
 
-tfsaz is a standalone Go CLI that lets an unmodified T3 Code use Azure DevOps Server. T3's invocation of `az` is the compatibility contract; see [T3 compatibility](t3-compatibility.md). The backend is the on-premises REST API, called directly; how tfsaz resolves its routes and which API version it targets is in [REST API](rest-api.md).
+TFSaz is a standalone Go CLI that lets an unmodified T3 Code use Azure DevOps Server. T3's invocation of `az` is the compatibility contract; see [T3 compatibility](t3-compatibility.md). The backend is the on-premises REST API, called directly; how TFSaz resolves its routes and which API version it targets is in [REST API](rest-api.md).
 
 ## Authentication and routing rules
 
@@ -38,7 +38,7 @@ These rules hold for every command. Change them only deliberately, and update [S
 
 ### Azure-style aliases instead of native URLs
 
-Stock T3 enables its Azure provider only for a remote on `dev.azure.com` or `*.visualstudio.com`. The server's native HTTPS or SSH URL alone does not enable it. tfsaz therefore gives T3 an Azure-style alias and keeps the native URL for everything that talks to the server.
+Stock T3 enables its Azure provider only for a remote on `dev.azure.com` or `*.visualstudio.com`. The server's native HTTPS or SSH URL alone does not enable it. TFSaz therefore gives T3 an Azure-style alias and keeps the native URL for everything that talks to the server.
 
 - T3 groups some viewer reads by host. Several collections need distinct recognized hostnames, or "my PRs" mixes them up.
 - Each project/repository pair gets its own stable hostname. A repository-bound alias accepts only paths of that project and repository.
@@ -46,9 +46,9 @@ Stock T3 enables its Azure provider only for a remote on `dev.azure.com` or `*.v
 
 ### Git keeps the native transport
 
-A managed checkout keeps the synthetic origin for T3 and sets `remote.origin.vcs=tfsaz`, so Git runs `git-remote-tfsaz`. The helper reads the bound native target from the checkout's common Git configuration, not from the tfsaz config.
+A managed checkout keeps the synthetic origin for T3 and sets `remote.origin.vcs=tfsaz`, so Git runs `git-remote-tfsaz`. The helper reads the bound native target from the checkout's common Git configuration, not from the TFSaz config.
 
-- Plain Git must keep working with T3 closed and `TFSAZ_CONFIG` unset. Do not make the helper depend on the tfsaz config or the keyring.
+- Plain Git must keep working with T3 closed and `TFSAZ_CONFIG` unset. Do not make the helper depend on the TFSaz config or the keyring.
 - Storing the target in the common Git directory makes linked worktrees, including ones created later by Git or T3, share one mapping.
 - Git authenticates with its own HTTPS or SSH credentials. Git does not receive the profile's PAT.
 
@@ -63,7 +63,7 @@ Browser routing redirects to the real collection instead of proxying it. The [us
 | Approach | Tradeoff |
 | --- | --- |
 | Redirect (this service) | The browser ends up on the real origin, so its address bar, cookies, sign-in and same-origin checks all belong to the real server. Needs a hosts entry, a running service, port 443 and local trust for one leaf. |
-| Reverse proxy | Would serve the collection under the synthetic origin. tfsaz would have to carry session cookies or credentials, rewrite absolute links and reconcile the server's origin checks. tfsaz deliberately does not do this. |
+| Reverse proxy | Would serve the collection under the synthetic origin. TFSaz would have to carry session cookies or credentials, rewrite absolute links and reconcile the server's origin checks. TFSaz deliberately does not do this. |
 | Desktop link handler | Needs no certificate or service but only sees links the OS hands off, not typed URLs or in-browser clicks. |
 | Chromium extension | Per profile and Chromium only, with no TLS involved. Covers in-browser clicks in that profile. |
 | PAC / SOCKS refusal | Blocks registered names for clients that consult the proxy setting but does not redirect them. |
@@ -72,4 +72,4 @@ The redirector rereads the config and repo registry on every request, so a resto
 
 ### System edits must be recoverable
 
-`route setup`, `route restore`, `repo setup` and `repo restore` change state outside tfsaz (hosts file, trust stores, services, Git config). Each is journaled or keeps a recovery record, and rerunning the same command after an interruption finishes or undoes it. The Windows hosts file is edited in place: an earlier installer replaced the file and changed its NTFS file ID, so the writer now keeps the original file, its security descriptor and file ID.
+`route setup`, `route restore`, `repo setup` and `repo restore` change state outside TFSaz (hosts file, trust stores, services, Git config). Each is journaled or keeps a recovery record, and rerunning the same command after an interruption finishes or undoes it. The Windows hosts file is edited in place: an earlier installer replaced the file and changed its NTFS file ID, so the writer now keeps the original file, its security descriptor and file ID.

@@ -6,9 +6,9 @@ These are the `az` calls used by the stock T3 adapter at revision `c478fde9fe`. 
 
 | Command | Behavior |
 | --- | --- |
-| `az --version` | Prints the tfsaz version before configuration or authentication. |
+| `az --version` | Prints the TFSaz version before configuration or authentication. |
 | `az account show --query user.name -o tsv` | Prints the first verified login in profile order. Fails if none verify. |
-| `az account show --query user` | Returns the verified login for the selected collection as JSON. If connection data gives a bare account, tfsaz queries the same collection for its qualified login. |
+| `az account show --query user` | Returns the verified login for the selected collection as JSON. If connection data gives a bare account, TFSaz queries the same collection for its qualified login. |
 | `az repos create --project P --name NAME` | Creates a Git repository in the selected project. |
 | `az repos show` | Returns repository details, including clone URLs and default branch. |
 | `az repos pr show --id N` | Returns the PR with its web link on the Azure-style alias. |
@@ -53,11 +53,11 @@ az devops invoke --area build --resource definitions --route-parameters 'project
 az rest --method get --url '/_apis/projects?api-version=7.1' --query 'value[].name' -o tsv
 ```
 
-For generic `devops invoke` calls, tfsaz requests `OPTIONS _apis?allHostTypes=true` from the collection, resolves the advertised route, and negotiates the requested version (default 5.0). Supply placeholders with `--route-parameters key=value` and query values with `--query-parameters key=value`. Stock T3’s existing PR and Boards calls retain their specialized handling for file contents, workflow states and links. Supply IDs that occur between fixed route segments. If multiple templates still match, use `az rest` with the explicit collection API URL.
+For generic `devops invoke` calls, TFSaz requests `OPTIONS _apis?allHostTypes=true` from the collection, resolves the advertised route, and negotiates the requested version (default 5.0). Supply placeholders with `--route-parameters key=value` and query values with `--query-parameters key=value`. Stock T3’s existing PR and Boards calls retain their specialized handling for file contents, workflow states and links. Supply IDs that occur between fixed route segments. If multiple templates still match, use `az rest` with the explicit collection API URL.
 
 ## Call REST directly
 
-`az rest --url` accepts a configured collection’s real HTTPS URL, its Azure-style alias, or a collection-relative API path in a recognized checkout. tfsaz routes REST (`_apis`), Analytics (`_odata`) and Artifacts (`_packaging`) paths directly to the configured collection and refuses redirects. Both REST commands default to GET and accept explicit HEAD, OPTIONS, POST, PUT, PATCH and DELETE. Write requests operate with the selected PAT’s permissions.
+`az rest --url` accepts a configured collection’s real HTTPS URL, its Azure-style alias, or a collection-relative API path in a recognized checkout. TFSaz routes REST (`_apis`), Analytics (`_odata`) and Artifacts (`_packaging`) paths directly to the configured collection and refuses redirects. Both REST commands default to GET and accept explicit HEAD, OPTIONS, POST, PUT, PATCH and DELETE. Write requests operate with the selected PAT’s permissions.
 
 ### Request bodies, headers and output
 

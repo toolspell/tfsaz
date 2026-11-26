@@ -1,16 +1,16 @@
-# tfsaz
+# TFSaz
 
-tfsaz lets stock T3 Code work with Git repositories, pull requests and work items in an on-premises Azure DevOps Server collection. T3 needs no patch or fork: tfsaz answers the `az` calls T3 already makes.
+TFSaz lets stock T3 Code work with Git repositories, pull requests and work items in an on-premises Azure DevOps Server collection. T3 needs no patch or fork: TFSaz answers the `az` calls T3 already makes.
 
 ## Why it is needed
 
-T3 Code's Azure DevOps integration is built for Azure DevOps Services in the cloud. It enables itself only for Git remotes on `dev.azure.com` or `*.visualstudio.com`, derives a cloud organization URL from the remote, and runs Microsoft's Azure CLI (`az`) with the `azure-devops` extension against that URL. A checkout cloned from an on-premises server is not recognized, and Microsoft's Azure CLI would talk to the cloud instead of the server. tfsaz closes both gaps without changing T3. Details: [T3 compatibility](docs/internals/t3-compatibility.md#why-stock-t3-cannot-reach-azure-devops-server).
+T3 Code's Azure DevOps integration is built for Azure DevOps Services in the cloud. It enables itself only for Git remotes on `dev.azure.com` or `*.visualstudio.com`, derives a cloud organization URL from the remote, and runs Microsoft's Azure CLI (`az`) with the `azure-devops` extension against that URL. A checkout cloned from an on-premises server is not recognized, and Microsoft's Azure CLI would talk to the cloud instead of the server. TFSaz closes both gaps without changing T3. Details: [T3 compatibility](docs/internals/t3-compatibility.md#why-stock-t3-cannot-reach-azure-devops-server).
 
 ## How it works
 
-T3 Code talks to Azure DevOps by running the `az` command. tfsaz is a single Go executable that runs as `az` on the T3 **backend's** PATH and talks directly to the configured collection over HTTPS, using the collection's REST API and a personal access token (PAT) from the OS keyring.
+T3 Code talks to Azure DevOps by running the `az` command. TFSaz is a single Go executable that runs as `az` on the T3 **backend's** PATH and talks directly to the configured collection over HTTPS, using the collection's REST API and a personal access token (PAT) from the OS keyring.
 
-Stock T3 turns on its Azure DevOps features only for repositories whose remote looks like an Azure cloud URL. tfsaz therefore gives each checkout an Azure-style alias (a generated `*.visualstudio.com` alias host). T3 sees the alias; Git reaches the real server over the checkout's original HTTPS or SSH transport through the Git remote helper `git-remote-tfsaz`. Links T3 opens under the alias can be routed to the real collection, where the browser signs in as usual.
+Stock T3 turns on its Azure DevOps features only for repositories whose remote looks like an Azure cloud URL. TFSaz therefore gives each checkout an Azure-style alias (a generated `*.visualstudio.com` alias host). T3 sees the alias; Git reaches the real server over the checkout's original HTTPS or SSH transport through the Git remote helper `git-remote-tfsaz`. Links T3 opens under the alias can be routed to the real collection, where the browser signs in as usual.
 
 This keeps T3 unmodified and keeps every credential pointed at the real server.
 
@@ -37,7 +37,7 @@ Early alpha. Version 0.1.0, no release and no prebuilt binaries yet: build it fr
 | T3 Code | The `az` calls follow T3's stock Azure DevOps adapter at revision `c478fde9fe`; the adapter is unchanged up to `v0.1.13-nightly.20261125.5258`. Live tests used T3 Code `v0.1.12-nightly.20261125.5230`. Other T3 versions may call `az` differently. |
 | Operating systems | macOS, Windows and Linux. Tested on macOS ARM64, Windows 11 x64 and Ubuntu 26.04 ARM64. |
 | Scope of `az` | Only the subset T3 uses, plus generic REST calls. No `az login` for Azure cloud and no extension installation. Keep Microsoft's Azure CLI in a separate directory if you also need it. |
-| Install location | tfsaz runs on the machine that runs the T3 backend, which is the T3 server for a remote web client. |
+| Install location | TFSaz runs on the machine that runs the T3 backend, which is the T3 server for a remote web client. |
 
 ## Documentation
 
@@ -46,7 +46,7 @@ Early alpha. Version 0.1.0, no release and no prebuilt binaries yet: build it fr
 | Operators | [Getting started](docs/user/getting-started.md) · [Install](docs/user/install.md) · [Configure collections and PATs](docs/user/configure.md) · [Set up a checkout](docs/user/checkout-setup.md) · [What works in T3](docs/user/t3-features.md) · [Diagnose](docs/user/diagnose.md) · [Route synthetic HTTPS URLs](docs/user/routing.md) · [Browser routing](docs/user/browser-routing.md) · [Manual browser routing](docs/user/browser-routing-manual.md) · [Desktop link handler](docs/user/desktop-link-handler.md) |
 | Script authors | [Azure CLI compatibility and REST calls](docs/user/az-compatibility.md) |
 | Maintainers and agents | [AGENTS.md](AGENTS.md) · [Architecture](docs/internals/architecture.md) · [T3 compatibility](docs/internals/t3-compatibility.md) · [REST API](docs/internals/rest-api.md) · [Naming](docs/internals/naming.md) · [Development](docs/operations/development.md) · [Backlog](docs/backlog.md) |
-| Security | [SECURITY.md](SECURITY.md): what tfsaz protects, what is out of scope, how to report a vulnerability |
+| Security | [SECURITY.md](SECURITY.md): what TFSaz protects, what is out of scope, how to report a vulnerability |
 | Verification records | [Offline fixtures and native suites](docs/verification/offline-fixtures.md) · [Live T3 results, November 2026](docs/verification/live-t3-2026-11.md) · [Browser routing](docs/verification/browser-routing.md) |
 
 ## Contributing

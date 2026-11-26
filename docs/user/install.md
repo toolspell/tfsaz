@@ -1,12 +1,12 @@
-# Install tfsaz
+# Install TFSaz
 
-Install tfsaz on the machine running the T3 backend, whether you use the installed desktop app or connect to a remote T3 server. You do not need a T3 source checkout. For the shortest path, see [Getting started](getting-started.md).
+Install TFSaz on the machine running the T3 backend, whether you use the installed desktop app or connect to a remote T3 server. You do not need a T3 source checkout. For the shortest path, see [Getting started](getting-started.md).
 
 ## Build and install the shim
 
-Build with Go 1.26.11 or newer, or use an installed tfsaz executable. The minimum is a patch release because Go ships standard library security fixes in patch releases.
+Build with Go 1.26.11 or newer, or use an installed TFSaz executable. The minimum is a patch release because Go ships standard library security fixes in patch releases.
 
-**macOS and Linux.** From the tfsaz source directory, build tfsaz, create the two shims and enable them in the current shell.
+**macOS and Linux.** From the TFSaz source directory, build TFSaz, create the two shims and enable them in the current shell.
 
 ```sh
 mkdir -p "$HOME/.local/bin"
@@ -15,7 +15,7 @@ go build -o "$HOME/.local/bin/tfsaz" .
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-**Windows.** Run these commands from PowerShell in the tfsaz source directory.
+**Windows.** Run these commands from PowerShell in the TFSaz source directory.
 
 ```powershell
 $bin = Join-Path $env:LOCALAPPDATA 'tfsaz\bin'
@@ -31,15 +31,15 @@ The shim installer creates `az` and `git-remote-tfsaz` and refuses to overwrite 
 
 Both examples set PATH for the current shell only. Put the same directory first on the PATH used by T3 Desktop, the remote backend service or the job that launches Git. Fully quit and reopen the app or restart the service after changing its environment.
 
-`tfsaz doctor` checks that the `az` selected on its own PATH matches the running tfsaz binary. If you also use Microsoft's Azure CLI, keep its installation in a separate directory and choose PATH order per process.
+`tfsaz doctor` checks that the `az` selected on its own PATH matches the running TFSaz binary. If you also use Microsoft's Azure CLI, keep its installation in a separate directory and choose PATH order per process.
 
 ## Upgrade
 
-After upgrading tfsaz, remove the two old **copies** from your dedicated shim directory and rerun `shim install`. If you use managed browser routing and the upgrade moved or removed the installed binary, rerun `tfsaz route setup` as described in [Browser routing](browser-routing.md#managed-browser-routing).
+After upgrading TFSaz, remove the two old **copies** from your dedicated shim directory and rerun `shim install`. If you use managed browser routing and the upgrade moved or removed the installed binary, rerun `tfsaz route setup` as described in [Browser routing](browser-routing.md#managed-browser-routing).
 
 ## Uninstall
 
-Undo the parts you set up, in this order, then remove tfsaz itself. Run each command with the configuration it was set up with.
+Undo the parts you set up, in this order, then remove TFSaz itself. Run each command with the configuration it was set up with.
 
 | Step | What to do |
 | --- | --- |

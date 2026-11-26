@@ -1,16 +1,16 @@
 # Getting started
 
-Run these steps on the machine running the T3 backend: the machine with T3 Desktop, or the T3 server if you use the web client. You need Go 1.26.11 or newer ([why a patch release](install.md)), the tfsaz source directory, an existing clone from your Azure DevOps Server collection, and a PAT for that collection.
+Run these steps on the machine running the T3 backend: the machine with T3 Desktop, or the T3 server if you use the web client. You need Go 1.26.11 or newer ([why a patch release](install.md)), the TFSaz source directory, an existing clone from your Azure DevOps Server collection, and a PAT for that collection.
 
-## When you need tfsaz
+## When you need TFSaz
 
-You need tfsaz when your repositories live on an on-premises Azure DevOps Server and you want T3's pull request and work item features for them. Stock T3 only recognizes Azure DevOps Services (cloud) remotes and runs Microsoft's Azure CLI against the cloud. For repositories in Azure DevOps Services, use Microsoft's Azure CLI with the `azure-devops` extension instead.
+You need TFSaz when your repositories live on an on-premises Azure DevOps Server and you want T3's pull request and work item features for them. Stock T3 only recognizes Azure DevOps Services (cloud) remotes and runs Microsoft's Azure CLI against the cloud. For repositories in Azure DevOps Services, use Microsoft's Azure CLI with the `azure-devops` extension instead.
 
 What changes for you:
 
-| Area | With tfsaz |
+| Area | With TFSaz |
 | --- | --- |
-| `az` on the T3 backend | `az` is tfsaz. If you also use Microsoft's Azure CLI, keep it in a separate directory and choose PATH order per process. See [Install](install.md#put-the-shim-on-t3s-path). |
+| `az` on the T3 backend | `az` is TFSaz. If you also use Microsoft's Azure CLI, keep it in a separate directory and choose PATH order per process. See [Install](install.md#put-the-shim-on-t3s-path). |
 | Sign-in | A PAT per collection in the OS keyring instead of `az login`. If T3 asks you to run `az login` or `az devops login`, run `tfsaz devops login --organization URL`. See [Configure](configure.md). |
 | Your checkout's `origin` | `repo setup` replaces it with a synthetic URL on a generated `tfsaz-<24 hex>.visualstudio.com` alias host, which T3 recognizes. Git still reaches the real server over the original HTTPS or SSH transport. `repo restore` brings back the original URL. See [Set up a checkout](checkout-setup.md). |
 | Links T3 opens | Links use the alias host. Without [routing](routing.md), public DNS resolves that host to Azure, not to your server. |
@@ -19,7 +19,7 @@ What changes for you:
 
 ### macOS and Linux
 
-From the tfsaz source directory:
+From the TFSaz source directory:
 
 ```sh
 mkdir -p "$HOME/.local/bin"
@@ -33,7 +33,7 @@ tfsaz doctor /path/to/checkout
 
 ### Windows
 
-From PowerShell in the tfsaz source directory:
+From PowerShell in the TFSaz source directory:
 
 ```powershell
 $bin = Join-Path $env:LOCALAPPDATA 'tfsaz\bin'

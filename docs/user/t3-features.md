@@ -1,6 +1,6 @@
 # What works in T3
 
-This page lists which T3 Code features work with tfsaz at T3 revision `c478fde9fe`, the revision of the stock Azure DevOps adapter tfsaz follows. The `az` commands behind them are listed in [Azure CLI compatibility](az-compatibility.md#commands-t3-calls).
+This page lists which T3 Code features work with TFSaz at T3 revision `c478fde9fe`, the revision of the stock Azure DevOps adapter TFSaz follows. The `az` commands behind them are listed in [Azure CLI compatibility](az-compatibility.md#commands-t3-calls).
 
 | Feature | What works or is missing |
 | --- | --- |
@@ -17,7 +17,7 @@ This page lists which T3 Code features work with tfsaz at T3 revision `c478fde9f
 
 | Area | Checked by |
 | --- | --- |
-| Commands and output shapes | An audit of T3's stock source-control, PR and issue providers and their tests against the tfsaz dispatcher, plus the [offline adapter fixture](../verification/offline-fixtures.md). |
+| Commands and output shapes | An audit of T3's stock source-control, PR and issue providers and their tests against the TFSaz dispatcher, plus the [offline adapter fixture](../verification/offline-fixtures.md). |
 | Clone transports, the six PR activity resources, PR and Boards writes | Exercised live. The live PR and Boards write checks used the macOS backend against both collections. Windows and Ubuntu ran the write regression fixtures and live Git, worktree and browser-routing checks. See [Live T3 results](../verification/live-t3-2026-11.md). |
 | PR templates and same-repository checkout | Upstream T3 code and tests only. |
 | Watch notifications, mobile surfaces and agent tools | Not independently exercised end to end. |

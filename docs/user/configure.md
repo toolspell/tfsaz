@@ -1,6 +1,6 @@
 # Configure collections and PATs
 
-tfsaz keeps an ordered list of collection profiles. The nonsecret configuration holds URLs, aliases and profile order. PATs live in the OS keyring.
+TFSaz keeps an ordered list of collection profiles. The nonsecret configuration holds URLs, aliases and profile order. PATs live in the OS keyring.
 
 ## Create a profile
 
@@ -20,7 +20,7 @@ Use **Settings → Source control & issues → Rescan** to confirm discovery in 
 
 ## Configuration file
 
-Alternatively, create `tfsaz/config.json` under your OS user configuration directory, or set `TFSAZ_CONFIG` to the absolute path of your configuration file for both manual tfsaz runs and T3. For T3 Desktop launched from Finder, the default location avoids relying on a custom variable reaching its backend.
+Alternatively, create `tfsaz/config.json` under your OS user configuration directory, or set `TFSAZ_CONFIG` to the absolute path of your configuration file for both manual TFSaz runs and T3. For T3 Desktop launched from Finder, the default location avoids relying on a custom variable reaching its backend.
 
 | OS | Default configuration directory |
 | --- | --- |
@@ -71,13 +71,13 @@ New profiles use `credentialVersion: 2`, which scopes the keyring service to the
 
 ### Remove a profile
 
-tfsaz has no command that removes a profile from the configuration. To remove one:
+TFSaz has no command that removes a profile from the configuration. To remove one:
 
 1. Run `tfsaz repo restore PATH` for each checkout of that collection in `tfsaz repo list`.
 2. Run `tfsaz profile logout --profile ID`.
 3. Delete the profile from the configuration file.
 
-Run `profile logout` before you change a profile's ID, `collectionUrl` or `credentialVersion`, or delete the configuration file. Otherwise the old PAT stays in the keyring, where tfsaz no longer finds it. Remove such an entry with your OS's password manager: Keychain Access on macOS, Credential Manager on Windows, or Passwords and Keys (Seahorse) on Linux. tfsaz entries use a service starting with `tfsaz` and the profile ID as account.
+Run `profile logout` before you change a profile's ID, `collectionUrl` or `credentialVersion`, or delete the configuration file. Otherwise the old PAT stays in the keyring, where TFSaz no longer finds it. Remove such an entry with your OS's password manager: Keychain Access on macOS, Credential Manager on Windows, or Passwords and Keys (Seahorse) on Linux. TFSaz entries use a service starting with `tfsaz` and the profile ID as account.
 
 `profile list` does not show whether a PAT is stored. `tfsaz doctor` checks each profile's PAT against its collection.
 

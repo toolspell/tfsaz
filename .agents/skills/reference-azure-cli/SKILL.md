@@ -1,16 +1,16 @@
 ---
 name: reference-azure-cli
-description: Read Microsoft's Azure CLI, its azure-devops extension and the knack framework, the behavioral references for tfsaz's az compatibility, before changing argument parsing, --query or -o output, error texts and exit codes, account show, rest, devops invoke, devops login, devops team, repos, repos pr or boards work-item behavior, or the connection-data and identity lookups.
+description: Read Microsoft's Azure CLI, its azure-devops extension and the knack framework, the behavioral references for TFSaz's Azure CLI compatibility, before changing argument parsing, --query or -o output, error texts and exit codes, account show, rest, devops invoke, devops login, devops team, repos, repos pr or boards work-item behavior, or the connection-data and identity lookups.
 ---
 
 # Reference: Azure CLI and the DevOps extension
 
-tfsaz answers as `az`, so it mimics Microsoft's Azure CLI and its `azure-devops` extension: their command surface, argument parsing, output formats, errors and exit codes, and some internals such as the connection-data and identity lookups. These are behavioral references, not templates: implement the behavior in Go, in tfsaz's own way, and copy no code. Where T3's adapter (skill `reference-t3code`) and Microsoft's Azure CLI differ, T3's actual calls win.
+TFSaz answers as `az`, so it mimics Microsoft's Azure CLI and its `azure-devops` extension: their command surface, argument parsing, output formats, errors and exit codes, and some internals such as the connection-data and identity lookups. These are behavioral references, not templates: implement the behavior in Go, in TFSaz's own way, and copy no code. Where T3's adapter (skill `reference-t3code`) and Microsoft's Azure CLI differ, T3's actual calls win.
 
 ## Get the source
 
 - Run `go run ./tools/syncrepos --repo azure-cli`, `--repo azure-devops-cli-extension` and `--repo knack` from the repository root, or `go run ./tools/syncrepos` for all entries. Each lands as a verified sparse checkout of its pinned release in the gitignored `.reference-apps/`.
-- Read them only there, never from an installed `az` or another checkout on this machine.
+- Read them only there, never from an installed Azure CLI or another checkout on this machine.
 - Pins and sparse paths are in `tools/syncrepos/main.go`. Test directories are excluded.
 
 ## Where to look
@@ -38,7 +38,7 @@ Each command module's `commands.py` and `arguments.py` define the public command
 
 ## New releases
 
-Re-pin deliberately, for example when the behavior tfsaz mirrors changed upstream. The skill `update-references` runs the whole bump for all entries, including the impact check. In short:
+Re-pin deliberately, for example when the behavior TFSaz mirrors changed upstream. The skill `update-references` runs the whole bump for all entries, including the impact check. In short:
 
 1. Find the latest release tag and its commit with `git ls-remote --tags <url>` (azure-cli tags are `azure-cli-X.Y.Z`; the extension uses date tags). Pin knack to the version azure-cli's `src/azure-cli-core/pyproject.toml` requires.
 2. Update the entry, run the sync; it fails if a sparse path no longer exists.

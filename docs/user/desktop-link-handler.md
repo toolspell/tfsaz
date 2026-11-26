@@ -2,7 +2,7 @@
 
 Run `tfsaz route handler-export DESTINATION BROWSER` on the desktop where links open. The handler starts on demand, translates links on registered Azure-style aliases, and passes ordinary HTTP and HTTPS links through to your chosen browser. Unsupported paths on registered aliases are refused. Browser sign-in takes place at the real collection. Use this option for links an app hands to the OS default browser. It requires no extension, background service or administrator access. For a raw alias opened inside T3’s Browser panel or typed into a browser, see [managed browser routing](browser-routing.md#managed-browser-routing).
 
-Export using a permanent tfsaz installation. Choose a new export destination. The handler captures the paths to tfsaz and its config file and reads that config and the repo registry on each click. Restore your usual default browser before removing the handler. tfsaz only writes the export; the registration and the default-browser choice are steps you take, and you undo them the same way. There is no tfsaz command that checks the handler; your OS's default-apps settings show whether it is selected. If you move tfsaz or its config, or choose a different target browser, export a new handler.
+Export using a permanent TFSaz installation. Choose a new export destination. The handler captures the paths to TFSaz and its config file and reads that config and the repo registry on each click. Restore your usual default browser before removing the handler. TFSaz only writes the export; the registration and the default-browser choice are steps you take, and you undo them the same way. There is no TFSaz command that checks the handler; your OS's default-apps settings show whether it is selected. If you move TFSaz or its config, or choose a different target browser, export a new handler.
 
 ## macOS
 
@@ -15,7 +15,7 @@ For Firefox, use `org.mozilla.firefox` as the browser bundle ID. Try the handler
 
 ## Windows 11
 
-From PowerShell, export a package for your installed browser and run its per-user installer. This example uses Edge. Windows expands percent signs in protocol commands, so choose tfsaz, browser and config paths without a literal `%`.
+From PowerShell, export a package for your installed browser and run its per-user installer. This example uses Edge. Windows expands percent signs in protocol commands, so choose TFSaz, browser and config paths without a literal `%`.
 
 ```powershell
 $handler = Join-Path $env:LOCALAPPDATA 'tfsaz Links'

@@ -9,13 +9,13 @@ Report it privately. Do not open a public issue, PR or discussion about it.
 
 Include the commit you tested, the boundary below that the finding crosses, the operating system, and the shortest steps or test that show it. Until there are releases, only the latest `main` is supported.
 
-The rest of this file is for agents and maintainers auditing tfsaz or triaging a report. The reasons behind the rules are in [Architecture](docs/internals/architecture.md).
+The rest of this file is for agents and maintainers auditing TFSaz or triaging a report. The reasons behind the rules are in [Architecture](docs/internals/architecture.md).
 
 ## The model in one paragraph
 
-tfsaz runs as the OS user that runs the T3 backend, as the `az` shim and as `git-remote-tfsaz`. Its one secret is a PAT per collection, kept in the OS keyring. Security work here is about where a PAT can travel, which identity a command acts as, and what the routing features change on the machine: they edit the hosts file, trust a local certificate and run a loopback service so a synthetic URL reaches the real collection.
+TFSaz runs as the OS user that runs the T3 backend, as the `az` shim and as `git-remote-tfsaz`. Its one secret is a PAT per collection, kept in the OS keyring. Security work here is about where a PAT can travel, which identity a command acts as, and what the routing features change on the machine: they edit the hosts file, trust a local certificate and run a loopback service so a synthetic URL reaches the real collection.
 
-## What tfsaz protects
+## What TFSaz protects
 
 | Asset | Rule | Where it is enforced |
 | --- | --- | --- |
@@ -27,9 +27,9 @@ tfsaz runs as the OS user that runs the T3 backend, as the `az` shim and as `git
 | Git credentials | `git-remote-tfsaz` and the `route run` Git HTTPS helper never read the keyring. They map the synthetic URL to the native URL and hand over to Git, which authenticates with its own credentials. | `preserve_git.go`, `https_git.go` |
 | Trace output | `TFSAZ_TRACE=1` prints the command name, profile ID, selection reason, HTTP status and elapsed time. It omits arguments, URLs, identities, headers and bodies. | `trace.go` |
 
-## What tfsaz changes on the machine
+## What TFSaz changes on the machine
 
-Besides its configuration file, `<config>.repo-setups.json` and `<config>.browser-route`, tfsaz changes only the state below. Each change is deliberate and needs the user's command; [Reversible and verifiable system changes](AGENTS.md#reversible-and-verifiable-system-changes) is the rule, and the [backlog](docs/backlog.md#reversibility-and-verify-gaps) lists where undo or check is still missing.
+Besides its configuration file, `<config>.repo-setups.json` and `<config>.browser-route`, TFSaz changes only the state below. Each change is deliberate and needs the user's command; [Reversible and verifiable system changes](AGENTS.md#reversible-and-verifiable-system-changes) is the rule, and the [backlog](docs/backlog.md#reversibility-and-verify-gaps) lists where undo or check is still missing.
 
 | Change | Why | Undo | Check |
 | --- | --- | --- | --- |
@@ -42,7 +42,7 @@ Besides its configuration file, `<config>.repo-setups.json` and `<config>.browse
 | Lock files `<config>.lock`, `<config>.repo-setups.json.lock`, `tfsaz-repo-setup.lock` in a clone's Git directory and `<id>.pem.lock` in `~/.tfsaz/route-recovery` | Serialize concurrent edits | Removed when the command ends; delete leftovers after a kill | Directory listing |
 | Exported files only (`route handler-export`, `route browser-export`) | The user registers the handler, picks the default browser and loads the extension | The documented removal steps | `route browser-verify` for the extension files |
 
-Hosts entries and PAC settings from `route hosts` and `route pac` are copied in by the user; tfsaz only prints them. `route proxy`, `route sink` and `route redirect` run in the foreground and change nothing persistent.
+Hosts entries and PAC settings from `route hosts` and `route pac` are copied in by the user; TFSaz only prints them. `route proxy`, `route sink` and `route redirect` run in the foreground and change nothing persistent.
 
 ## Routing features
 
@@ -103,15 +103,15 @@ Whoever holds the key can impersonate the alias hosts to this user's browsers, w
 
 | Not a finding | Why |
 | --- | --- |
-| Anything that needs the user's own OS account or an administrator | That user owns the keyring, the configuration, the trust stores and the T3 backend. Another process running as that user can read the alias key and, once the keyring is unlocked, usually its entries too; tfsaz does not defend against that. |
-| The Azure DevOps Server itself, its PAT scopes and its TLS setup | tfsaz is a client. A PAT acts with the permissions the server grants it. |
-| T3 Code | Bugs in T3, its adapter or its Browser panel belong to T3. tfsaz's contract is the `az` calls T3 makes. |
-| Microsoft's Azure CLI | tfsaz does not run or modify it. |
-| Git, OpenSSH and Git credential helpers | tfsaz hands Git transport to them. |
+| Anything that needs the user's own OS account or an administrator | That user owns the keyring, the configuration, the trust stores and the T3 backend. Another process running as that user can read the alias key and, once the keyring is unlocked, usually its entries too; TFSaz does not defend against that. |
+| The Azure DevOps Server itself, its PAT scopes and its TLS setup | TFSaz is a client. A PAT acts with the permissions the server grants it. |
+| T3 Code | Bugs in T3, its adapter or its Browser panel belong to T3. TFSaz's contract is the `az` calls T3 makes. |
+| Microsoft's Azure CLI | TFSaz does not run or modify it. |
+| Git, OpenSSH and Git credential helpers | TFSaz hands Git transport to them. |
 | Public DNS resolving an alias host to Azure when no routing is set up | Documented; routing is opt-in. The hosts entries, PAC refusal and sink exist for it. |
 | Clients that bypass the hosts file, the PAC or the inherited Git environment | Documented limits of each routing method. |
 
-A real finding crosses a boundary above: a PAT reaching another host or appearing in a file, argument or log; a command acting as another collection's identity; an authenticated redirect being followed; the redirector serving or forwarding something it should refuse; or any command changing more than [What tfsaz changes on the machine](#what-tfsaz-changes-on-the-machine) lists.
+A real finding crosses a boundary above: a PAT reaching another host or appearing in a file, argument or log; a command acting as another collection's identity; an authenticated redirect being followed; the redirector serving or forwarding something it should refuse; or any command changing more than [What TFSaz changes on the machine](#what-tfsaz-changes-on-the-machine) lists.
 
 ## How to audit and triage
 

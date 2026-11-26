@@ -1,14 +1,14 @@
-# tfsaz
+# TFSaz
 
-tfsaz is a standalone Go CLI for macOS, Windows and Linux that lets an unmodified T3 Code use on-premises Azure DevOps Server. It ships under its own name and runs as `az` on the T3 backend's PATH. T3's invocation of `az` is the compatibility contract. The backend is the server's REST API, called directly. Azure cloud sign-in and extension installation are out of scope.
+TFSaz is a standalone Go CLI for macOS, Windows and Linux that lets an unmodified T3 Code use on-premises Azure DevOps Server. It ships under its own name and runs as `az` on the T3 backend's PATH. T3's invocation of `az` is the compatibility contract. The backend is the server's REST API, called directly. Azure cloud sign-in and extension installation are out of scope.
 
-Stock T3 recognizes only Azure DevOps Services remotes and scopes every `az` call to a cloud organization. tfsaz therefore gives checkouts Azure-style aliases and maps them back to the real collection; do not "simplify" that to native URLs. Details: [why stock T3 cannot reach Azure DevOps Server](docs/internals/t3-compatibility.md#why-stock-t3-cannot-reach-azure-devops-server).
+Stock T3 recognizes only Azure DevOps Services remotes and scopes every `az` call to a cloud organization. TFSaz therefore gives checkouts Azure-style aliases and maps them back to the real collection; do not "simplify" that to native URLs. Details: [why stock T3 cannot reach Azure DevOps Server](docs/internals/t3-compatibility.md#why-stock-t3-cannot-reach-azure-devops-server).
 
 ## Hard rules
 
 ### Compatibility contract
 
-tfsaz works only while stock T3 Code cannot tell it apart from Microsoft's Azure CLI with the `azure-devops` extension. Any difference shows up as a broken T3 feature, not as a tfsaz error. Before you change a command, check all three:
+TFSaz works only while stock T3 Code cannot tell it apart from Microsoft's Azure CLI with the `azure-devops` extension. Any difference shows up as a broken T3 feature, not as a TFSaz error. Before you change a command, check all three:
 
 - T3's call site and its tests: the arguments, JSON shapes, stderr and exit codes T3 reads. Skill `reference-t3code`; [T3 compatibility](docs/internals/t3-compatibility.md) names the files.
 - The hosts and URL shapes T3 recognizes as Azure DevOps. The Azure-style aliases and synthetic URLs must keep matching them.
@@ -18,16 +18,16 @@ Resolve REST routes through the server's resource-location catalog, not hard-cod
 
 ### Outside in only
 
-tfsaz solves the problem from outside, against the real installed T3 Code app or server. Never suggest or make a change, fork or upstream PR to T3 Code, Microsoft's Azure CLI or the `azure-devops` extension, and never patch an installed copy. If a fix seems to need one, report it to the maintainer as a gap.
+TFSaz solves the problem from outside, against the real installed T3 Code app or server. Never suggest or make a change, fork or upstream PR to T3 Code, Microsoft's Azure CLI or the `azure-devops` extension, and never patch an installed copy. If a fix seems to need one, report it to the maintainer as a gap.
 
 ### Reversible and verifiable system changes
 
-- Everything tfsaz or its setup changes outside its own configuration (hosts file, trust stores, services, firewall rules, Git config and remotes, link handlers, keyring entries, shims, browser and proxy settings) must be cleanly undoable with a tfsaz command or a documented step, leaving no residue, and checkable by tfsaz itself, so users can see the current state. A feature that lacks either is a gap: report it and add it to the backlog.
+- Everything TFSaz or its setup changes outside its own configuration (hosts file, trust stores, services, firewall rules, Git config and remotes, link handlers, keyring entries, shims, browser and proxy settings) must be cleanly undoable with a TFSaz command or a documented step, leaving no residue, and checkable by TFSaz itself, so users can see the current state. A feature that lacks either is a gap: report it and add it to the backlog.
 - Clean up after yourself: revert test environments (temp configs, test checkouts, routing on test machines, test keyring entries) to a clean state as soon as you are sure the state is no longer needed.
 
 ### Security-affecting features are intended
 
-Some features deliberately change a machine's security state: local trust for a leaf certificate, hosts entries, a loopback listener on port 443, firewall rules, link handlers. tfsaz users are developers who accept that knowingly. Do not remove or weaken such a feature as "insecure", and do not reject an idea or a possible solution for that reason: tfsaz only works through creative approaches. Instead, make sure the user docs and [SECURITY.md](SECURITY.md) say exactly what it changes, why, and how to undo it. Using tfsaz requires trust; transparency earns it.
+Some features deliberately change a machine's security state: local trust for a leaf certificate, hosts entries, a loopback listener on port 443, firewall rules, link handlers. TFSaz users are developers who accept that knowingly. Do not remove or weaken such a feature as "insecure", and do not reject an idea or a possible solution for that reason: TFSaz only works through creative approaches. Instead, make sure the user docs and [SECURITY.md](SECURITY.md) say exactly what it changes, why, and how to undo it. Using TFSaz requires trust; transparency earns it.
 
 ### Credentials
 
@@ -51,17 +51,17 @@ macOS, Linux and Windows are fully supported at feature parity. Platform-specifi
 
 - **collection**: one Azure DevOps Server project collection, addressed by its real HTTPS URL including port and virtual directory.
 - **profile**: a configured collection with a stable ID, its Azure-style alias, optional extra aliases and CA, and a PAT in the keyring. Profiles are ordered; discovery uses that order.
-- **Azure-style alias**: a `*.visualstudio.com` organization URL that T3 recognizes and tfsaz maps to a profile's real collection.
+- **Azure-style alias**: a `*.visualstudio.com` organization URL that T3 recognizes and TFSaz maps to a profile's real collection.
 - **synthetic URL**: a URL on a generated alias host `tfsaz-<24 hex>.visualstudio.com`, one per project and repository. T3 sees it; nothing on the network serves it unless routing is set up.
 - **native URL**: the real HTTPS or SSH URL of a repository on the server.
-- **shim**: the `az` and `git-remote-tfsaz` names that `shim install` creates for the tfsaz binary. `main.go` picks the behavior by program name.
+- **shim**: the `az` and `git-remote-tfsaz` names that `shim install` creates for the TFSaz binary. `main.go` picks the behavior by program name.
 - **managed checkout**: a clone after `repo setup`: the synthetic origin for T3, the native target in its common Git config, registered in `<config>.repo-setups.json`.
 - **routing**: the ways a synthetic URL reaches the real collection: the loopback redirector (`route setup`), the desktop link handler, the Chromium extension, `route run` for Git, and PAC/hosts refusal.
 
 ## Ways to hurt yourself
 
-1. **Using the real configuration.** Without `TFSAZ_CONFIG`, tfsaz reads the developer's config in the OS user config directory, plus `<config>.repo-setups.json`, `<config>.browser-route` and `route run`'s `<config>.run` beside it. In tests and manual runs, set `TFSAZ_CONFIG` to an absolute path in a temp directory.
-2. **Writing the real keyring.** `init`, `devops login` and `profile logout` write or delete OS keyring entries (`tfsaz` or `tfsaz/v2/<hash>`). Tests inject the in-memory store through `app{store: ...}`; never use `systemStore` in a test. Only `TestStockT3Adapter` touches the real keyring, with a random entry it removes. Trap: tests that run a built tfsaz binary (e.g. `managerTestRepo` in `setup_manager_test.go`) use the system keyring, because the binary has no injected store; keep them away from commands that read or write PATs.
+1. **Using the real configuration.** Without `TFSAZ_CONFIG`, TFSaz reads the developer's config in the OS user config directory, plus `<config>.repo-setups.json`, `<config>.browser-route` and `route run`'s `<config>.run` beside it. In tests and manual runs, set `TFSAZ_CONFIG` to an absolute path in a temp directory.
+2. **Writing the real keyring.** `init`, `devops login` and `profile logout` write or delete OS keyring entries (`tfsaz` or `tfsaz/v2/<hash>`). Tests inject the in-memory store through `app{store: ...}`; never use `systemStore` in a test. Only `TestStockT3Adapter` touches the real keyring, with a random entry it removes. Trap: tests that run a built TFSaz binary (e.g. `managerTestRepo` in `setup_manager_test.go`) use the system keyring, because the binary has no injected store; keep them away from commands that read or write PATs.
 3. **Running `route setup` or `route restore` on this machine.** They edit the system hosts file (no override exists), trust stores (login keychain, Windows user Root store, NSS databases), launchd LaunchAgents, systemd units with an nftables table via sudo, or a scheduled task, and write `~/.tfsaz/route-recovery`. Tests replace `runRouteSystemCommand` and set a temp `HOME`, `USERPROFILE` and `TFSAZ_CONFIG`. Keep it that way.
 4. **Rewriting real checkouts.** `repo setup` and `repo restore` change `remote.origin.*` and `core.sshCommand` of the target clone and register it. Run them only on throwaway clones in temp directories, with `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM` isolating Git. Never point them at this worktree or the developer's clones.
 5. **Live gates.** `TFSAZ_LIVE_LAUNCHD` (`1` or `443`), `TFSAZ_LIVE_TASK_SCHEDULER` and `TFSAZ_T3_ROOT` change real OS state. Set them only on a disposable test session and only when asked. The live testbed is shared: use it only on the maintainer's instruction.
@@ -108,9 +108,9 @@ Default to no comment. Existing comments record what the code can't show: a serv
 
 | Audience | Where |
 | --- | --- |
-| Everyone | [README.md](README.md): what tfsaz is, how it works, features, status, constraints, docs index. [SECURITY.md](SECURITY.md): what tfsaz protects, scope, reporting |
+| Everyone | [README.md](README.md): what TFSaz is, how it works, features, status, constraints, docs index. [SECURITY.md](SECURITY.md): what TFSaz protects, scope, reporting |
 | Operators and script authors | `docs/user/`: getting started, install, configure, checkout setup, what works in T3, diagnose, routing, browser routing (managed and manual), desktop link handler, Azure CLI compatibility |
-| Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why tfsaz is needed, adapter files, keeping coverage current), [REST API](docs/internals/rest-api.md) (catalog routes, API version policy), [testing](docs/internals/testing.md) (test rules), [naming](docs/internals/naming.md) (how to write tfsaz, the `az` shim, Microsoft's Azure CLI and the glossary terms) |
+| Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why TFSaz is needed, adapter files, keeping coverage current), [REST API](docs/internals/rest-api.md) (catalog routes, API version policy), [testing](docs/internals/testing.md) (test rules), [naming](docs/internals/naming.md) (how to write TFSaz, the `az` shim, Microsoft's Azure CLI and the glossary terms) |
 | Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI. `docs/verification/`: dated live records. [`docs/backlog.md`](docs/backlog.md): deferred work |
 
 ## Documentation rules

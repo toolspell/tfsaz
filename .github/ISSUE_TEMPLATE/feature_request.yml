@@ -9,7 +9,7 @@ body:
     attributes:
       value: |
         Search existing issues first and keep the request to one idea.
-        tfsaz targets on-premises Azure DevOps Server for an unmodified T3 Code. Azure cloud
+        TFSaz targets on-premises Azure DevOps Server for an unmodified T3 Code. Azure cloud
         sign-in and Azure CLI extension installation are out of scope.
         Replace real hostnames, collection URLs and internal names with placeholders.
 
@@ -25,7 +25,7 @@ body:
     id: proposal
     attributes:
       label: Proposal
-      description: How tfsaz could solve it. Describe the behavior, not the implementation. If T3 Code calls an `az` command tfsaz does not answer, name the command and the T3 version.
+      description: How TFSaz could solve it. Describe the behavior, not the implementation. If T3 Code calls an `az` command TFSaz does not answer, name the command and the T3 version.
     validations:
       required: true
 
@@ -39,7 +39,7 @@ body:
     id: platforms
     attributes:
       label: Platforms
-      description: tfsaz keeps feature parity across macOS, Windows and Linux. Tick the platforms you need this on.
+      description: TFSaz keeps feature parity across macOS, Windows and Linux. Tick the platforms you need this on.
       options:
         - label: macOS
         - label: Windows
