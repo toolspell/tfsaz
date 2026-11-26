@@ -351,3 +351,123 @@ func TestPreserveHelperProbeDeadline(t *testing.T) {
 		t.Fatalf("expired helper probe returned %v", err)
 	}
 }
+
+// The helper reads the binding from the checkout's Git config, so a binding
+// whose target names another project or repository must not route.
+func TestPreserveBindingDestination(t *testing.T) {
+	const collection = "https://server.invalid/tfs/Collection"
+	valid := preserveBinding{
+		ProfileID: "fixture", CollectionURL: collection, Project: "Team Project", Repository: "Tool Kit",
+		Target: collection + "/Team%20Project/_git/Tool%20Kit",
+	}
+	host := setupHost("fixture", collection, "Team Project", "Tool Kit")
+	for _, tc := range []struct {
+		name   string
+		change func(*preserveBinding)
+		alias  string
+	}{
+		{"HTTPS", func(*preserveBinding) {}, "https://" + host + "/Team%20Project/_git/Tool%20Kit"},
+		{"SSH", func(b *preserveBinding) {
+			b.Target = "ssh://git@server.invalid:22/tfs/Collection/Team%20Project/_git/Tool%20Kit"
+		}, "ssh://git@" + setupSyntheticSSHHost + "/v3/" + strings.TrimSuffix(host, ".visualstudio.com") + "/Team%20Project/Tool%20Kit"},
+		{"names differ only in case", func(b *preserveBinding) {
+			b.Target = collection + "/team%20project/_git/tool%20kit"
+		}, "https://" + host + "/Team%20Project/_git/Tool%20Kit"},
+		{"collection without a path", func(b *preserveBinding) { b.CollectionURL = "https://server.invalid" }, ""},
+		{"invalid profile ID", func(b *preserveBinding) { b.ProfileID = "no spaces" }, ""},
+		{"invalid project", func(b *preserveBinding) { b.Project = ".." }, ""},
+		{"target for another repository", func(b *preserveBinding) { b.Target = collection + "/Team%20Project/_git/Other" }, ""},
+		{"target in another project", func(b *preserveBinding) { b.Target = collection + "/Other/_git/Tool%20Kit" }, ""},
+		{"cloud target", func(b *preserveBinding) { b.Target = "https://dev.azure.com/fixture/Team%20Project/_git/Tool%20Kit" }, ""},
+		{"no target", func(b *preserveBinding) { b.Target = "" }, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := valid
+			tc.change(&b)
+			target, alias, err := b.destination()
+			if tc.alias == "" {
+				if err == nil {
+					t.Fatalf("accepted %+v as %s, %s", b, target, alias)
+				}
+				return
+			}
+			if err != nil || target.String() != b.Target || alias != tc.alias {
+				t.Fatalf("got %v, %q, %v; want %s, %q", target, alias, err, b.Target, tc.alias)
+			}
+		})
+	}
+	record := setupRecord{
+		ProfileID: valid.ProfileID, CollectionURL: valid.CollectionURL, Project: valid.Project, Repository: valid.Repository,
+		OriginalURL: valid.Target, Transport: "https", RemoteURL: "https://" + host + "/Team%20Project/_git/Tool%20Kit", Host: host,
+	}
+	if err := validatePreserveSetupRecord(record); err != nil {
+		t.Fatalf("valid record: %v", err)
+	}
+	for name, change := range map[string]func(*setupRecord){
+		"transport":  func(r *setupRecord) { r.Transport = "ssh" },
+		"remote URL": func(r *setupRecord) { r.RemoteURL += "Extra" },
+		"host":       func(r *setupRecord) { r.Host = setupHost("other", r.CollectionURL, r.Project, r.Repository) },
+	} {
+		r := record
+		change(&r)
+		if err := validatePreserveSetupRecord(r); err == nil {
+			t.Errorf("record with another %s passed validation", name)
+		}
+	}
+}
+
+func TestPreserveSetupAccessHTTPSErrors(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ok/info/refs":
+			w.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
+			// Smart discovery for an empty repository.
+			serveTestBody(w, "001e# service=git-upload-pack\n00000000")
+		case "/auth/info/refs":
+			w.Header().Set("WWW-Authenticate", `Basic realm="fixture"`)
+			w.WriteHeader(http.StatusUnauthorized)
+		case "/forbidden/info/refs":
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	root := t.TempDir()
+	trusted := filepath.Join(root, "trusted.pem")
+	managerTestWrite(t, trusted, string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})))
+	// Every httptest server shares one certificate, so trust another one.
+	untrusted, _, _ := writeRedirectTestCert(t, t.TempDir(), redirectTestCert{names: []string{"example.invalid"}, ca: true})
+	global := filepath.Join(root, "gitconfig")
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("NO_PROXY", "127.0.0.1")
+	repo := filepath.Join(root, "checkout")
+	managerTestGit(t, root, "init", "--quiet", repo)
+	managerTestGit(t, repo, "config", "--global", "http.schannelUseSSLCAInfo", "true")
+	c := setupCheckout{repo: repo}
+	for _, tc := range []struct{ name, path, ca, want string }{
+		{"readable", "/ok", trusted, ""},
+		{"untrusted certificate", "/ok", untrusted, "could not verify TLS"},
+		{"authentication required", "/auth", trusted, "authentication failed"},
+		{"access denied", "/forbidden", trusted, "authentication failed"},
+		{"missing repository", "/missing", trusted, "read failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GIT_SSL_CAINFO", tc.ca)
+			err := checkPreserveSetupAccess(t.Context(), c, setupRecord{Transport: "https"}, server.URL+tc.path)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %v, want an error with %q", err, tc.want)
+			}
+		})
+	}
+}
