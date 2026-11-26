@@ -69,6 +69,14 @@ func TestWindowsTaskXML(t *testing.T) {
 			t.Errorf("script lacks %s:\n%s", want, script)
 		}
 	}
+	if stop := windowsStopScript(p); !strings.Contains(stop, `Contains('"C:\Users\a b\r\cert.pem"')`) {
+		t.Errorf("stop script does not match the redirector by its certificate:\n%s", stop)
+	}
+	// Restore without a recorded configuration path must not stop the
+	// redirectors of other installations.
+	if stop := windowsStopScript(routeSystemPlan{id: routeTestID}); strings.Contains(stop, "route redirect") {
+		t.Errorf("ID-only stop script matches every redirector:\n%s", stop)
+	}
 	p.configFile = `C:\Users\100%\cfg.json`
 	if checkWindowsPaths(p) == nil {
 		t.Fatal("accepted a cmd metacharacter")

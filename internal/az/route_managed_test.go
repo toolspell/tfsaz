@@ -21,7 +21,7 @@ func TestManagedRouteRetryAndOfflineRestore(t *testing.T) {
 	t.Setenv("TFSAZ_CONFIG", file)
 	var fingerprint string
 	installCalls, restoreCalls := 0, 0
-	system := func(ctx context.Context, install bool, dir, configFile, cert, key, sha string, aliases []string) error {
+	system := func(ctx context.Context, install bool, _, dir, configFile, cert, key, sha string, aliases []string) error {
 		if configFile != file || !slices.Equal(aliases, []string{alias}) || len(sha) != 64 {
 			t.Fatal("wrong configuration, alias or certificate")
 		}
@@ -87,7 +87,7 @@ func TestManagedRouteRestoreAcceptsEquivalentConfigPath(t *testing.T) {
 	sep := string(filepath.Separator)
 	t.Setenv("TFSAZ_CONFIG", filepath.Dir(file)+sep+"."+sep+filepath.Base(file))
 	var installed, restored string
-	system := func(_ context.Context, install bool, _, _, _, _, sha string, _ []string) error {
+	system := func(_ context.Context, install bool, _, _, _, _, _, sha string, _ []string) error {
 		if install {
 			installed = sha
 		} else {
@@ -104,6 +104,132 @@ func TestManagedRouteRestoreAcceptsEquivalentConfigPath(t *testing.T) {
 	}
 }
 
+// Restore under another configuration path lists the recorded installations
+// and changes nothing; --installation restores the chosen one.
+func TestManagedRouteRestoreOtherConfigInstallation(t *testing.T) {
+	for _, recorded := range []bool{true, false} {
+		t.Run(map[bool]string{true: "recorded path", false: "older installation"}[recorded], func(t *testing.T) {
+			file, _, alias, _ := redirectTestSetup(t)
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
+			t.Setenv("TFSAZ_CONFIG", file)
+			id := routeSystemID(file)
+			type call struct {
+				install            bool
+				id, dir, file, sha string
+				aliases            []string
+			}
+			var calls []call
+			system := func(_ context.Context, install bool, id, dir, configFile, _, _, sha string, aliases []string) error {
+				calls = append(calls, call{install, id, dir, configFile, sha, aliases})
+				return nil
+			}
+			run := func(args ...string) (string, error) {
+				var out strings.Builder
+				err := runManagedRoute(t.Context(), args, &out, system)
+				return out.String(), err
+			}
+			if _, err := run("setup"); err != nil {
+				t.Fatal(err)
+			}
+			recovery := filepath.Join(home, ".tfsaz", "route-recovery")
+			record := filepath.Join(recovery, id+routeConfigRecordSuffix)
+			if got, err := readRouteConfigRecord(recovery, id); err != nil || got != file {
+				t.Fatalf("recorded configuration %q, err %v", got, err)
+			}
+			if !recorded {
+				if err := os.Remove(record); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("TFSAZ_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+			configLine := "configuration: " + file
+			if !recorded {
+				configLine = "configuration: not recorded"
+			}
+			leaf, err := readRouteRecoveryLeaf(filepath.Join(recovery, id+".pem"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := run("restore")
+			for _, want := range []string{routeNothingRecorded, id, configLine, "aliases: " + alias, "created: " + leaf.NotBefore.Local().Format(time.DateOnly), "--installation"} {
+				if !strings.Contains(out, want) {
+					t.Errorf("listing lacks %q:\n%s", want, out)
+				}
+			}
+			if err != nil || len(calls) != 1 {
+				t.Fatalf("listing restore: err %v, OS calls %d", err, len(calls))
+			}
+			for _, args := range [][]string{{"restore", "--installation"}, {"restore", "--installation", "ABC"}, {"restore", "--id", id}} {
+				if _, err := run(args...); ExitCode(err) != 2 {
+					t.Errorf("%v: got %v", args, err)
+				}
+			}
+			out, err = run("restore", "--installation", id)
+			if err != nil || len(calls) != 2 || !strings.Contains(out, "Restored browser routing.") {
+				t.Fatalf("restore by ID: err %v, OS calls %d, output %s", err, len(calls), out)
+			}
+			got, want := calls[1], call{false, id, file + ".browser-route", file, calls[0].sha, []string{alias}}
+			if !recorded {
+				want.dir, want.file = "", ""
+			}
+			if got.install != want.install || got.id != want.id || got.dir != want.dir || got.file != want.file || got.sha != want.sha || !slices.Equal(got.aliases, want.aliases) {
+				t.Fatalf("restore by ID passed %+v, want %+v", got, want)
+			}
+			if !recorded {
+				// The route directory beside the unrecorded path stays until
+				// restore runs with that configuration.
+				if !strings.Contains(out, ".browser-route") {
+					t.Errorf("restore without a recorded path does not mention the route directory:\n%s", out)
+				}
+				t.Setenv("TFSAZ_CONFIG", file)
+				if _, err := run("restore"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, path := range []string{file + ".browser-route", filepath.Join(home, ".tfsaz")} {
+				if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("%s after restore: %v", path, err)
+				}
+			}
+		})
+	}
+}
+
+func TestRouteInstallationListingFlagsInvalidRecord(t *testing.T) {
+	file, _, _, _ := redirectTestSetup(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("TFSAZ_CONFIG", file)
+	system := func(context.Context, bool, string, string, string, string, string, string, []string) error {
+		return nil
+	}
+	if err := runManagedRoute(t.Context(), []string{"setup"}, io.Discard, system); err != nil {
+		t.Fatal(err)
+	}
+	id := routeSystemID(file)
+	recovery := filepath.Join(home, ".tfsaz", "route-recovery")
+	// A record naming another configuration must not redirect restore to it.
+	other, err := json.Marshal(routeConfigRecord{ConfigFile: filepath.Join(t.TempDir(), "config.json")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerTestWrite(t, filepath.Join(recovery, id+routeConfigRecordSuffix), string(other))
+	t.Setenv("TFSAZ_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	var out strings.Builder
+	if err := runManagedRoute(t.Context(), []string{"restore"}, &out, system); err != nil || !strings.Contains(out.String(), "invalid configuration record") {
+		t.Fatalf("listing with an invalid record: %v\n%s", err, out.String())
+	}
+	if err := runManagedRoute(t.Context(), []string{"restore", "--installation", id}, io.Discard, system); err == nil || !strings.Contains(err.Error(), "invalid configuration record") {
+		t.Fatalf("restore with an invalid record: %v", err)
+	}
+	if _, err := os.Stat(file + ".browser-route"); err != nil {
+		t.Fatalf("route directory after a refused restore: %v", err)
+	}
+}
+
 func TestManagedRouteUnsupportedSystemWritesNothing(t *testing.T) {
 	file, _, _, _ := redirectTestSetup(t)
 	home := t.TempDir()
@@ -113,7 +239,7 @@ func TestManagedRouteUnsupportedSystemWritesNothing(t *testing.T) {
 	saved := routeSystemPlatform
 	t.Cleanup(func() { routeSystemPlatform = saved })
 	routeSystemPlatform = func() error { return errRouteSystemUnsupported }
-	system := func(context.Context, bool, string, string, string, string, string, []string) error {
+	system := func(context.Context, bool, string, string, string, string, string, string, []string) error {
 		return errRouteSystemUnsupported
 	}
 	for _, action := range []string{"setup", "restore"} {
@@ -135,7 +261,7 @@ func TestManagedRouteRefusesDriftAndForeignFiles(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("TFSAZ_CONFIG", file)
 	calls := 0
-	system := func(context.Context, bool, string, string, string, string, string, []string) error {
+	system := func(context.Context, bool, string, string, string, string, string, string, []string) error {
 		calls++
 		return nil
 	}
@@ -175,7 +301,9 @@ func TestManagedRouteMissingInstallAndChangedAliasSet(t *testing.T) {
 	t.Setenv("TFSAZ_CONFIG", file)
 	run := func(action string) error {
 		return runManagedRoute(t.Context(), []string{action}, io.Discard,
-			func(context.Context, bool, string, string, string, string, string, []string) error { return nil })
+			func(context.Context, bool, string, string, string, string, string, string, []string) error {
+				return nil
+			})
 	}
 	if err := run("verify"); err == nil {
 		t.Fatal("absent route verified")
@@ -222,7 +350,7 @@ func TestRestoreAfterDeletingConfigDirectory(t *testing.T) {
 	t.Setenv("TFSAZ_CONFIG", file)
 	var fingerprint string
 	restored := false
-	system := func(_ context.Context, install bool, _, _, _, _, sha string, aliases []string) error {
+	system := func(_ context.Context, install bool, _, _, _, _, _, sha string, aliases []string) error {
 		if install {
 			fingerprint = sha
 		} else {

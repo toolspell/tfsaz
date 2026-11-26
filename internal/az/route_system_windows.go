@@ -269,14 +269,20 @@ func windowsSupervisorMarker(id string) string {
 func windowsStopScript(p routeSystemPlan) string {
 	// Ending the console host can leave PowerShell behind in a disconnected
 	// session. Stop the supervisor before its child, including while it sleeps.
-	return `$ErrorActionPreference = 'Stop'
+	script := `$ErrorActionPreference = 'Stop'
 $marker = ` + psQuote(windowsSupervisorMarker(p.id)) + `
 Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | ForEach-Object {
   if ($_.ProcessId -ne $PID -and $_.CommandLine -match ' -EncodedCommand\s+"?([a-zA-Z0-9+/=]+)"?\s*$') {
     try { $script = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($Matches[1])) } catch { return }
     if ($script.StartsWith($marker, [StringComparison]::Ordinal)) { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   }
-}
+}`
+	// Without a recorded configuration path the child's certificate path is
+	// unknown, and an empty one would match every installation's redirector.
+	if p.certFile == "" {
+		return script
+	}
+	return script + `
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains(' route redirect ') -and $_.CommandLine.Contains(` +
 		psQuote(`"`+p.certFile+`"`) + `) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
 }

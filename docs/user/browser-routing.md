@@ -50,7 +50,7 @@ tfsaz route verify
 Setup creates one 90-day certificate for the current set of exact registered aliases. It stores the certificate, private key and installation identity beside the selected configuration in `<config-file>.browser-route`. It reuses that identity on retry.
 
 - If setup stops partway through, rerun it under the same account and configuration to finish, or run `tfsaz route restore` to undo the completed steps.
-- A second copy of the public certificate in `~/.tfsaz/route-recovery` lets restore identify OS settings if the config directory is deleted.
+- A second copy of the public certificate in `~/.tfsaz/route-recovery` lets restore identify OS settings if the config directory is deleted. Beside it, `ID.config.json` records the configuration path, so restore can find the installation from another configuration path.
 - Browser sign-in is handled by the native collection, which needs its own trusted certificate.
 
 ### Requirements and side effects
@@ -69,7 +69,9 @@ Then open the printed URL in the browser you actually use and compare the addres
 ### Refresh or remove
 
 - Stop opening alias links before running `tfsaz route restore`, which removes the managed installation: the service, the trust entries, the hosts lines and, on Linux, the boot unit, nftables table and port reservation.
-- Restore uses the saved identity and works after a checkout or collection profile has been removed, and after the configuration file is deleted. Run it with the same configuration path (`TFSAZ_CONFIG` or the default) as setup: the installation ID comes from that path, and under another path restore reports "No installation recorded" and changes nothing. Rerun restore if the OS cleanup is interrupted.
+- Restore uses the saved identity and works after a checkout or collection profile has been removed, and after the configuration file is deleted. Rerun restore if the OS cleanup is interrupted.
+- The installation ID comes from the configuration path (`TFSAZ_CONFIG` or the default). Under another path, including a symlinked spelling of the same file, restore reports "No installation recorded", lists the installations recorded in `~/.tfsaz/route-recovery` with their ID, configuration path, aliases and creation date, and changes nothing. Restore one of them with `tfsaz route restore --installation ID`.
+- For an installation set up before TFSaz recorded the configuration path, the list shows only the ID, aliases and date. Restoring it by ID removes its OS entries but not its `<config-file>.browser-route` directory; run `tfsaz route restore` with that configuration to remove the directory.
 - Restore keeps files you added to `<config-file>.browser-route` and stops with a message; move them out and rerun it.
 - On Windows, restore removes the leaf only from the current user's Root store. If a copy is also in the Local Machine store, restore stops and asks you to remove it from an elevated prompt.
 - Once `route restore` has succeeded for every configuration that used routing, `~/.tfsaz` is gone as well.
