@@ -11,7 +11,8 @@ Deferred work, so any session or worktree can pick it up.
 - **Browser-redirect TLS key on disk:** move the leaf private key `alias-key.pem` in `<config>.browser-route`, written by `internal/az/route_managed.go`, into the OS secret store, or decide otherwise.
 - **History rewrite before going public:** the audit on 26.11.2026 (gitleaks v8.30.1 over all refs, plus greps over the full history and commit messages) found no secrets, hosts, IPs, collection URLs or accounts. Two things should still go:
   - the developer's machine path to the T3 checkout in AGENTS.md (added in `89e90eb`, removed in `a8e2385`);
-  - research pointers to a private repository in the same commits.
+  - research pointers to a private repository in the same commits;
+  - a sentence about a deferred integration in the AGENTS.md intro, from `89e90eb` until its removal on 26.11.2026. It's not repo content.
 
   Do it last, right before the switch, so later commits can't bring in new problems:
   1. Re-run the audit on the commits made since.
