@@ -60,11 +60,15 @@ func catalogCacheDir(configFile string) string {
 	return filepath.Clean(configFile) + ".cache"
 }
 
+func catalogCachePath(dir string, collection url.URL) string {
+	return filepath.Join(dir, fmt.Sprintf("catalog-%x.json", sha256.Sum256([]byte(collection.String()))))
+}
+
 func (c *Client) catalogCacheFile() string {
 	if c.catalogCache == "" {
 		return ""
 	}
-	return filepath.Join(c.catalogCache, fmt.Sprintf("catalog-%x.json", sha256.Sum256([]byte(c.collection.String()))))
+	return catalogCachePath(c.catalogCache, c.collection)
 }
 
 // withCatalogRoute resolves res and passes its collection path and negotiated

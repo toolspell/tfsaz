@@ -3,13 +3,16 @@ package az
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -31,6 +34,21 @@ func profileTestInput(t *testing.T, pat string) *os.File {
 		t.Fatal(err)
 	}
 	return r
+}
+
+// testKeyringList keeps the keyring entry list out of the real home directory.
+func testKeyringList(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(t.TempDir(), ".tfsaz", "keyring-entries.json")
+}
+
+func readTestKeyringList(t *testing.T, path string) []keyringEntry {
+	t.Helper()
+	entries, err := readKeyringList(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return entries
 }
 
 func TestProfileOnboardingAndLogout(t *testing.T) {
@@ -74,7 +92,8 @@ func TestProfileOnboardingAndLogout(t *testing.T) {
 	store := &memoryStore{values: map[string]string{"shared": rand.Text()}}
 	legacy := store.values["shared"]
 	var out bytes.Buffer
-	a := app{cwd: filepath.Dir(ca), stdout: &out, stderr: &out, store: store}
+	list := testKeyringList(t)
+	a := app{cwd: filepath.Dir(ca), stdout: &out, stderr: &out, store: store, keyringList: list}
 	run := func(args ...string) string {
 		t.Helper()
 		out.Reset()
@@ -121,7 +140,7 @@ func TestProfileOnboardingAndLogout(t *testing.T) {
 	if err != nil || !bytes.Equal(before, after) || bytes.Contains(after, []byte(firstPAT)) {
 		t.Fatal("an equivalent retry changed the saved configuration or saved a PAT")
 	}
-	wantList := fmt.Sprintf("%s\t%s\t%s\n%s\t%s\t%s\n",
+	wantList := fmt.Sprintf("%s\t%s\t%s\tPAT stored\n%s\t%s\t%s\tno PAT\n",
 		first.ID, first.Organization, first.CollectionURL, second.ID, second.Organization, second.CollectionURL)
 	if got := run("profile", "list"); got != wantList {
 		t.Fatalf("profile list = %q, want %q", got, wantList)
@@ -142,8 +161,23 @@ func TestProfileOnboardingAndLogout(t *testing.T) {
 	if store.values["shared"] != legacy || secondRequests.Load() != 2 {
 		t.Fatal("logout changed credentials outside the selected profile")
 	}
-	if _, err := os.Lstat(path + ".lock"); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("profile commands left the configuration lock: %v", err)
+	data, err := os.ReadFile(list)
+	if err != nil || bytes.Contains(data, []byte(secondPAT)) ||
+		!slices.Equal(readTestKeyringList(t, list), []keyringEntry{profileEntry(second)}) {
+		t.Fatalf("keyring entry list after logout = %s, %v", data, err)
+	}
+	run("profile", "remove", "--profile", second.ID)
+	cfg, err = loadConfig()
+	if err != nil || len(cfg.Profiles) != 1 || cfg.Profiles[0].ID != first.ID {
+		t.Fatalf("profile remove left %v, %v", cfg.Profiles, err)
+	}
+	if len(store.values) != 1 || store.values["shared"] != legacy {
+		t.Fatal("profile remove kept its PAT or deleted another one")
+	}
+	for _, leftover := range []string{path + ".lock", setupRegistryForConfig(path) + ".lock", list, filepath.Dir(list)} {
+		if _, err := os.Lstat(leftover); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("profile commands left %s: %v", leftover, err)
+		}
 	}
 }
 
@@ -167,7 +201,7 @@ func TestProfileConfigFilesCanReuseIDForDifferentEndpoints(t *testing.T) {
 	}))
 	defer server.Close()
 	ca := clientTestProfile(t, server, "/First").CAFile
-	a := app{stdout: io.Discard, stderr: io.Discard, store: &memoryStore{}}
+	a := app{stdout: io.Discard, stderr: io.Discard, store: &memoryStore{}, keyringList: testKeyringList(t)}
 	run := func(args ...string) error {
 		return a.run(t.Context(), args)
 	}
@@ -288,7 +322,7 @@ func TestProfileAddCredentialFailureAndRetry(t *testing.T) {
 	t.Setenv("TFSAZ_CONFIG", path)
 	store := &failingProfileStore{memoryStore: &memoryStore{}}
 	var out bytes.Buffer
-	a := app{stdout: &out, stderr: &out, store: store}
+	a := app{stdout: &out, stderr: &out, store: store, keyringList: testKeyringList(t)}
 	args := []string{"init", "--collection", p.CollectionURL, "--id", p.ID, "--ca-file", p.CAFile}
 	a.stdin = profileTestInput(t, rand.Text())
 	if err := a.run(t.Context(), args); !errors.Is(err, errRejectedPAT) {
@@ -359,5 +393,240 @@ func TestProfileAddSerializesConfigurationChanges(t *testing.T) {
 	}
 	if _, err := os.Lstat(path + ".lock"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("profile add left the configuration lock: %v", err)
+	}
+}
+
+func TestProfileRemoveFindsStrandedKeyringEntries(t *testing.T) {
+	pat := rand.Text()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, sent, _ := r.BasicAuth(); sent != pat || r.URL.Path != "/One/_apis/connectionData" {
+			http.Error(w, "invalid", http.StatusUnauthorized)
+			return
+		}
+		serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"fixture@example.invalid"}}`, repoTestViewerID)
+	}))
+	defer server.Close()
+	ca := clientTestProfile(t, server, "/One").CAFile
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("TFSAZ_CONFIG", path)
+	store := &memoryStore{values: map[string]string{}}
+	list := testKeyringList(t)
+	var out bytes.Buffer
+	a := app{stdout: &out, stderr: io.Discard, store: store, keyringList: list}
+	run := func(args ...string) (string, error) {
+		t.Helper()
+		out.Reset()
+		err := a.run(t.Context(), args)
+		return out.String(), err
+	}
+
+	a.stdin = profileTestInput(t, pat)
+	if _, err := run("init", "--id", "original", "--collection", server.URL+"/One", "--ca-file", ca); err != nil {
+		t.Fatal(err)
+	}
+	stranded := keyringEntry{credentialService(Profile{CollectionURL: server.URL + "/One", CredentialVersion: collectionCredentialVersion}), "original"}
+	if got := readTestKeyringList(t, list); !slices.Equal(got, []keyringEntry{stranded}) {
+		t.Fatalf("login recorded %v", got)
+	}
+	// Renaming the profile in the file strands the PAT saved for the old ID.
+	renamed := Profile{ID: "renamed", Organization: "https://one-example.visualstudio.com", CollectionURL: server.URL + "/One", CAFile: ca, CredentialVersion: collectionCredentialVersion}
+	data, err := json.Marshal(config{Profiles: []Profile{renamed}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerTestWrite(t, path, string(data))
+	want := fmt.Sprintf("renamed\t%s\t%s\tno PAT\n\nKeyring entries that no profile in this configuration uses:\noriginal\t%s\tPAT stored\n",
+		renamed.Organization, renamed.CollectionURL, stranded.Service)
+	if got, err := run("profile", "list"); err != nil || !strings.HasPrefix(got, want) {
+		t.Fatalf("profile list = %q, %v; want prefix %q", got, err, want)
+	}
+
+	for _, args := range [][]string{
+		{"profile", "remove"},
+		{"profile", "remove", "--profile", "original", "--collection", server.URL + "/One", "--service", "tfsaz"},
+		{"profile", "remove", "--profile", "original", "--service", "tfsaz/v2/unknown"},
+		{"profile", "remove", "--profile", "original", "--service", "other"},
+		{"profile", "remove", "--profile", "original", "--collection", "http://ado.example.invalid/One"},
+	} {
+		if _, err := run(args...); ExitCode(err) != 2 {
+			t.Errorf("%v: expected a usage error, got %v", args, err)
+		}
+	}
+	for _, args := range [][]string{
+		{"profile", "remove", "--profile", "original"},
+		{"profile", "remove", "--profile", "renamed", "--collection", server.URL + "/One/"},
+	} {
+		if _, err := run(args...); err == nil || len(store.values) != 1 {
+			t.Errorf("%v removed the entry of an unknown profile or a configured one: %v", args, err)
+		}
+	}
+	// A concurrent profile change cannot add a profile for the entry in between.
+	configLock := flock.New(path + ".lock")
+	if locked, err := configLock.TryLock(); err != nil || !locked {
+		t.Fatalf("test configuration lock: %v", err)
+	}
+	if _, err := run("profile", "remove", "--profile", "original", "--service", stranded.Service); err == nil || !strings.Contains(err.Error(), "configuration lock") || len(store.values) != 1 {
+		t.Fatalf("explicit removal ignored a running profile change: %v", err)
+	}
+	if err := configLock.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := run("profile", "remove", "--profile", "original", "--service", stranded.Service); err != nil || got != "Removed keyring entry "+stranded.Service+" for original\n" {
+		t.Fatalf("remove recorded entry = %q, %v", got, err)
+	}
+	if len(store.values) != 0 || readTestKeyringList(t, list) != nil {
+		t.Fatal("removal kept the stranded entry or its name")
+	}
+
+	// An entry written before the list existed is found by ID and collection.
+	unrecorded := Profile{ID: "old", CollectionURL: server.URL + "/Two", CredentialVersion: collectionCredentialVersion}
+	if err := store.Set(credentialService(unrecorded), unrecorded.ID, rand.Text()); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Removed", "No"} {
+		if got, err := run("profile", "remove", "--profile", "old", "--collection", server.URL+"/Two/"); err != nil || !strings.HasPrefix(got, want+" keyring entry") {
+			t.Fatalf("remove by collection = %q, %v", got, err)
+		}
+	}
+	// Removal also works after the whole configuration directory is deleted.
+	if err := store.Set(credentialService(unrecorded), unrecorded.ID, rand.Text()); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(t.TempDir(), "gone", "deeper", "config.json")
+	t.Setenv("TFSAZ_CONFIG", gone)
+	if got, err := run("profile", "remove", "--profile", "old", "--collection", server.URL+"/Two"); err != nil || !strings.HasPrefix(got, "Removed keyring entry") {
+		t.Fatalf("remove without a configuration = %q, %v", got, err)
+	}
+	if _, err := os.Lstat(filepath.Dir(filepath.Dir(gone))); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("removal left the configuration directories its lock created: %v", err)
+	}
+	t.Setenv("TFSAZ_CONFIG", path)
+
+	// A profile with a managed checkout stays until the checkout is restored,
+	// also while a concurrent repo setup holds the registry.
+	registry := setupRegistryForConfig(path)
+	lock := flock.New(registry + ".lock")
+	if locked, err := lock.TryLock(); err != nil || !locked {
+		t.Fatalf("test registry lock: %v", err)
+	}
+	if _, err := run("profile", "remove", "--profile", "renamed"); err == nil || !strings.Contains(err.Error(), "repository setup transaction") {
+		t.Fatalf("profile remove ignored a running repo setup: %v", err)
+	}
+	if err := lock.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkout := setupCheckout{repo: t.TempDir()}
+	checkout.gitDir = filepath.Join(checkout.repo, ".git")
+	record, err := makePreserveSetupRecord(cfg, checkout, renamed.CollectionURL+"/Project/_git/Repo", renamed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Phase = setupPhaseActive
+	if data, err = json.Marshal([]setupRecord{record}); err != nil {
+		t.Fatal(err)
+	}
+	managerTestWrite(t, registry, string(data))
+	if _, err := run("profile", "remove", "--profile", "renamed"); err == nil || !strings.Contains(err.Error(), "repo restore") {
+		t.Fatalf("removed a profile with a managed checkout: %v", err)
+	}
+	if err := os.Remove(registry); err != nil {
+		t.Fatal(err)
+	}
+	collection, err := url.Parse(renamed.CollectionURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := catalogCachePath(catalogCacheDir(path), *collection)
+	// A cache that cannot be deleted keeps the profile, so a retry finds it.
+	if err := os.MkdirAll(filepath.Join(cache, "blocker"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run("profile", "remove", "--profile", "renamed"); err == nil || !strings.Contains(err.Error(), "catalog cache") {
+		t.Fatalf("remove with an undeletable cache = %v", err)
+	}
+	if cfg, err := loadConfig(); err != nil || len(cfg.Profiles) != 1 {
+		t.Fatalf("a failed cache removal dropped the profile: %v", err)
+	}
+	if err := os.RemoveAll(cache); err != nil {
+		t.Fatal(err)
+	}
+	managerTestWrite(t, cache, "{}")
+	if got, err := run("profile", "remove", "--profile", "renamed"); err != nil || got != "Removed profile renamed\n" {
+		t.Fatalf("remove = %q, %v", got, err)
+	}
+	if _, err := os.Lstat(filepath.Dir(cache)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("profile remove left the catalog cache of its collection: %v", err)
+	}
+	if got, err := run("profile", "list"); err != nil || got != "No collection profiles configured\n" {
+		t.Fatalf("after removing every profile: %q, %v", got, err)
+	}
+	if _, err := os.Lstat(filepath.Dir(list)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("an empty list left its directory: %v", err)
+	}
+}
+
+func TestLegacyKeyringEntryStaysUntilExplicitRemoval(t *testing.T) {
+	pat, legacyPAT := rand.Text(), rand.Text()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, sent, _ := r.BasicAuth(); sent != pat {
+			http.Error(w, "invalid", http.StatusUnauthorized)
+			return
+		}
+		serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"fixture@example.invalid"}}`, repoTestViewerID)
+	}))
+	defer server.Close()
+	legacy := clientTestProfile(t, server, "/Legacy")
+	legacy.Organization = "https://legacy-example.visualstudio.com"
+	moved := legacy
+	moved.CredentialVersion = collectionCredentialVersion
+	shared := profileEntry(legacy)
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		version int  // credentialVersion of the profile afterwards; -1 when it is gone
+		stored  bool // whether the per-collection entry holds the new PAT
+	}{
+		{"login", []string{"devops", "login", "--organization", legacy.Organization}, collectionCredentialVersion, true},
+		{"logout", []string{"profile", "logout", "--profile", legacy.ID}, collectionCredentialVersion, false},
+		{"remove", []string{"profile", "remove", "--profile", legacy.ID}, -1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setConfig(t, legacy)
+			// The per-collection entry of an interrupted earlier login.
+			movedKey := memoryCredentialKey(credentialService(moved), moved.ID)
+			store := &memoryStore{values: map[string]string{legacy.ID: legacyPAT, movedKey: rand.Text()}}
+			list := testKeyringList(t)
+			var out, diag bytes.Buffer
+			a := app{stdout: &out, stderr: &diag, stdin: profileTestInput(t, pat), store: store, keyringList: list}
+			if err := a.run(t.Context(), []string{"profile", "remove", "--profile", legacy.ID, "--service", "tfsaz"}); err == nil {
+				t.Fatal("removed the legacy entry while a legacy profile uses it")
+			}
+			if err := a.run(t.Context(), tc.args); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := readConfigFile(os.Getenv("TFSAZ_CONFIG"))
+			if err != nil || (tc.version < 0) != (len(cfg.Profiles) == 0) || (tc.version >= 0 && cfg.Profiles[0].CredentialVersion != tc.version) {
+				t.Fatalf("profiles afterwards: %v, %v", cfg.Profiles, err)
+			}
+			wantList := []keyringEntry{shared}
+			if tc.stored {
+				wantList = append(wantList, profileEntry(moved))
+			}
+			if stored, ok := store.values[movedKey]; store.values[legacy.ID] != legacyPAT || (stored == pat) != tc.stored || ok != tc.stored ||
+				!slices.Equal(readTestKeyringList(t, list), wantList) || !strings.Contains(diag.String(), "--service "+keyringService) {
+				t.Fatalf("legacy entry not kept and shown: list %v, note %q", readTestKeyringList(t, list), diag.String())
+			}
+			out.Reset()
+			if err := a.run(t.Context(), []string{"profile", "remove", "--profile", legacy.ID, "--service", "tfsaz"}); err != nil || !strings.HasPrefix(out.String(), "Removed") {
+				t.Fatalf("explicit removal = %q, %v", out.String(), err)
+			}
+			if _, ok := store.values[legacy.ID]; ok || !slices.Equal(readTestKeyringList(t, list), wantList[1:]) {
+				t.Fatal("explicit removal kept the legacy entry or its name")
+			}
+		})
 	}
 }
