@@ -96,7 +96,7 @@ When implementing a command, read the T3 adapter and its tests first; [T3 compat
 - `docs/operations/`: maintainer runbooks. `docs/verification/`: dated live results, kept in full.
 - When a documented fact changes, rewrite or remove the old text. Do not append a second account.
 - Code and docs in English. No em dashes in markdown.
-- Some CLI help and error texts point at doc paths; when moving a doc, grep `*.go` for its path.
+- CLI help and error texts link to docs by GitHub URL. `TestDocLinks` checks those URLs and all relative links and anchors in the docs; run `go test ./...` after moving a doc or renaming a heading.
 
 ## Plans and work artifacts
 
