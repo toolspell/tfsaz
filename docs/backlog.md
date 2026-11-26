@@ -48,11 +48,13 @@ Deferred work, so any session or worktree can pick it up.
   - a ruleset on `main` with required checks, the strict up-to-date rule and no force push;
   - secret scanning with push protection, private vulnerability reporting and the org security configuration.
 - **CodeQL default setup for Go plus Copilot Autofix**, both free for public repositories.
+- **Vouch and contribution triage** for outside contributors. Pointers: Toolspell `.github/workflows/vouch.yml`, `.github/VOUCHED.td`, `.agents/skills/contribution-triage/`.
 - **Agent context budget** (decided): measured AGENTS.md bytes in a JSON file, a Go test that keeps it exact, an AGENTS.md rule, and a label-gated CI check. Pointers: Toolspell `scripts/agent-context-budget.json`, `scripts/agent-docs.test.ts`, `.github/workflows/agent-context-budget.yml`.
 
 ## Later
 
 - **Release pipeline:** signed or checksummed binaries for macOS, Windows and Linux (for example with goreleaser). The README states there is no release yet.
+- **Worktree setup script**, run as the T3 project's "Setup Worktree" script when a worktree is created, so new agent worktrees are ready to use. For Go probably just `go mod download` plus enabling the hooks path. Pointer: Toolspell `scripts/setup-worktree.ts`.
 
 ## Code
 
