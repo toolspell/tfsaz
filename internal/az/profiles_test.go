@@ -443,6 +443,17 @@ func TestProfileRemoveFindsStrandedKeyringEntries(t *testing.T) {
 			t.Errorf("%v removed the entry of an unknown profile or a configured one: %v", args, err)
 		}
 	}
+	// A concurrent profile change cannot add a profile for the entry in between.
+	configLock := flock.New(path + ".lock")
+	if locked, err := configLock.TryLock(); err != nil || !locked {
+		t.Fatalf("test configuration lock: %v", err)
+	}
+	if _, err := run("profile", "remove", "--profile", "original", "--service", stranded.Service); err == nil || !strings.Contains(err.Error(), "configuration lock") || len(store.values) != 1 {
+		t.Fatalf("explicit removal ignored a running profile change: %v", err)
+	}
+	if err := configLock.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if got, err := run("profile", "remove", "--profile", "original", "--service", stranded.Service); err != nil || got != "Removed keyring entry "+stranded.Service+" for original\n" {
 		t.Fatalf("remove recorded entry = %q, %v", got, err)
 	}
@@ -460,6 +471,19 @@ func TestProfileRemoveFindsStrandedKeyringEntries(t *testing.T) {
 			t.Fatalf("remove by collection = %q, %v", got, err)
 		}
 	}
+	// Removal also works after the whole configuration directory is deleted.
+	if err := store.Set(credentialService(unrecorded), unrecorded.ID, rand.Text()); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(t.TempDir(), "gone", "config.json")
+	t.Setenv("TFSAZ_CONFIG", gone)
+	if got, err := run("profile", "remove", "--profile", "old", "--collection", server.URL+"/Two"); err != nil || !strings.HasPrefix(got, "Removed keyring entry") {
+		t.Fatalf("remove without a configuration = %q, %v", got, err)
+	}
+	if _, err := os.Lstat(filepath.Dir(gone)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("removal created the configuration directory: %v", err)
+	}
+	t.Setenv("TFSAZ_CONFIG", path)
 
 	// A profile with a managed checkout stays until the checkout is restored,
 	// also while a concurrent repo setup holds the registry.

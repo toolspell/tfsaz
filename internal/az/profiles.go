@@ -450,23 +450,32 @@ func (a app) removeKeyringEntry(entry keyringEntry) error {
 		return err
 	}
 	var found bool
-	err = a.withKeyringList(func(list *keyringList) error {
-		// The list lock orders this check against a concurrent login.
-		cfg, err := readConfigFile(path)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		if cfg, err = validateConfig(cfg, path); err != nil {
-			return err
-		}
-		for _, p := range cfg.Profiles {
-			if profileEntry(p) == entry {
-				return fmt.Errorf("profile %s uses this keyring entry; run tfsaz profile logout or tfsaz profile remove --profile %s", p.ID, p.ID)
+	remove := func(path, target string) error {
+		return a.withKeyringList(func(list *keyringList) error {
+			cfg, err := readConfigFile(target)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
 			}
-		}
-		found, err = a.deleteCredential(list, entry)
-		return err
-	})
+			if cfg, err = validateConfig(cfg, path); err != nil {
+				return err
+			}
+			for _, p := range cfg.Profiles {
+				if profileEntry(p) == entry {
+					return fmt.Errorf("profile %s uses this keyring entry; run tfsaz profile logout or tfsaz profile remove --profile %s", p.ID, p.ID)
+				}
+			}
+			found, err = a.deleteCredential(list, entry)
+			return err
+		})
+	}
+	// The configuration lock keeps a profile from being added for the entry
+	// during the check. Without a configuration directory no profile exists,
+	// and taking the lock would create the directory.
+	if _, statErr := os.Lstat(filepath.Dir(path)); errors.Is(statErr, os.ErrNotExist) {
+		err = remove(path, path)
+	} else {
+		err = withProfileConfigLock(true, remove)
+	}
 	if err != nil {
 		return err
 	}
