@@ -7,7 +7,7 @@
 //	go run ./tools/dev setup -undo         turn the hooks off again
 //	go run ./tools/dev ci-local            run the CI workflow with act in Docker
 //
-// ci-changes and ci-checks are the CI workflow's steps.
+// ci-changes, ci-checks and ci-test are the CI workflow's steps.
 //
 // The tools are pinned in one module each under tools/<name>/go.mod; see
 // docs/operations/development.md.
@@ -32,6 +32,7 @@ const usage = `usage: go run ./tools/dev <command>
 CI workflow steps:
   ci-changes -base <rev>  print tests=true|false: whether the native test matrix must run
   ci-checks               whole-tree gates and reports
+  ci-test [-shard i/n]    the race tests, or the i-th of n parts of them
 `
 
 func main() {
@@ -81,6 +82,10 @@ func main() {
 	case "ci-checks":
 		_ = flags.Parse(os.Args[2:])
 		ok = ciChecks()
+	case "ci-test":
+		shard := flags.String("shard", "1/1", "run the i-th of n parts of the tests")
+		_ = flags.Parse(os.Args[2:])
+		ok = ciTest(*shard)
 	case "ci-local":
 		base := flags.String("base", "main", "simulate a push of the changes since the merge base with this ref")
 		context := flags.String("context", "", "docker context to run the containers in")
