@@ -18,7 +18,7 @@ A failed check produces a nonzero exit, including with JSON output.
 
 | Symptom | What to check |
 | --- | --- |
-| `credential store locked or unavailable` | On Linux, a desktop login may have no default persistent Secret Service collection; create or unlock one. On Windows, Credential Manager can reject writes from an SSH logon; use a logon with a loaded user profile. See [credential stores](../verification/live-t3-2026-11.md#windows-11-x64-and-ubuntu-2604-arm64). |
+| `credential store locked or unavailable` or `profile ID has no PAT` | The OS keyring of the user that runs T3. See [OS keyring requirements](configure.md#os-keyring-requirements). |
 | Git over SSH stalls on Windows | Use the OpenSSH bundled with Git for Windows and check a native `git ls-remote` first. See [Set up a checkout](checkout-setup.md). |
 | A Node client rejects the collection certificate | See [Node clients and TLS](routing.md#node-clients-and-tls). |
 | A browser shows a certificate error for an alias | See [browser routing troubleshooting](browser-routing.md#troubleshooting). |
