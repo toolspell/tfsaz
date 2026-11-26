@@ -134,13 +134,13 @@ The workflow also passes the base to `ci-checks`, which ignores it: every gate t
 
 `ci-changes` lists the files changed since the [change base](#change-base). The test matrix is skipped only when every file is outside the code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the review bot files `.macroscope/` and `.coderabbit.config.ts`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml`, `.golangci.yml` and the tool modules `tools/<tool>/`. Any other file runs the matrix, including every workflow and file types nobody listed yet. Without a base, or when the diff fails, the matrix runs and the log says why. The list is `testIrrelevant` in `tools/dev/ci.go`.
 
-Checks always runs, so a docs-only change still gets the doc link, em dash and pinned-action checks. Skipping the matrix matters in a private repository, where a macOS minute counts ten times and a Windows minute twice.
+Checks always runs, so a docs-only change still gets the doc link, em dash and pinned-action checks. Skipping the matrix saves the slowest jobs, the macOS and Windows runs, on changes that cannot affect them.
 
 The filter is a job, not `paths-ignore` on the trigger: a workflow that does not start reports no status, and a required check would wait forever. With the job, every run reports `Check`.
 
 ### Required check
 
-`Check` is the one CI status a ruleset should require, next to `PR title` and `Agent context budget` from [GitHub automation](#github-automation) (planned for the public switch, see the [backlog](../backlog.md#at-the-public--pr-switch)). It stays stable when jobs are renamed, added or skipped; requiring the individual matrix jobs would not.
+`Check` is the one CI status the ruleset on `main` requires, next to `PR title` and `Agent context budget` from [GitHub automation](#github-automation). It stays stable when jobs are renamed, added or skipped; requiring the individual matrix jobs would not.
 
 ### Caching
 
@@ -189,7 +189,7 @@ Macroscope reads [`.macroscope/`](../../.macroscope): `approvability.md` (what n
 
 ## GitHub workflows
 
-These are the rules for `main`; the ruleset that enforces them is applied at the public switch ([backlog](../backlog.md#at-the-public--pr-switch)). `main` takes only squash-merged PRs that are up to date and pass `Check`, `PR title` and `Agent context budget`. Bring a Dependabot PR up to date with a `@dependabot rebase` comment, not "Update branch": Dependabot stops rebasing a PR once someone else pushed to it.
+These are the rules for `main`, enforced by a ruleset. `main` takes only squash-merged PRs that are up to date and pass `Check`, `PR title` and `Agent context budget`. Bring a Dependabot PR up to date with a `@dependabot rebase` comment, not "Update branch": Dependabot stops rebasing a PR once someone else pushed to it.
 
 Every workflow that runs on PRs must also work for [stacked pull requests](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs):
 

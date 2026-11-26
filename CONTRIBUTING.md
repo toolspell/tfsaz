@@ -6,9 +6,8 @@ TFSaz has very little review capacity. Reviewing a PR usually takes more effort 
 so these rules keep review possible. The most useful contributions are bug reports with a good
 repro and focused fixes for bugs you hit yourself.
 
-**Not open yet:** the repository is private for now, so only maintainers can open issues and pull
-requests. This guide applies once that changes. Security reports follow
-[SECURITY.md](SECURITY.md).
+**Not open yet:** for now only maintainers can open issues and pull requests. This guide applies
+once that changes. Security reports already work, as [SECURITY.md](SECURITY.md) describes.
 
 ## Before you write code
 

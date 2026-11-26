@@ -2,10 +2,7 @@
 
 ## Report a vulnerability
 
-Report it privately. Do not open a public issue, PR or discussion about it.
-
-- If the repository's Security tab shows **Report a vulnerability**, use GitHub's private vulnerability reporting for this repository.
-- Otherwise, while the repository is private, report it to the maintainer directly and privately.
+Report it privately through [GitHub's private vulnerability reporting](https://github.com/toolspell/tfsaz/security/advisories/new), the **Report a vulnerability** button on the repository's Security tab. Do not open a public issue, PR or discussion about it.
 
 Include the commit you tested, the boundary below that the finding crosses, the operating system, and the shortest steps or test that show it. Until there are releases, only the latest `main` is supported.
 
