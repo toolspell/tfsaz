@@ -76,14 +76,14 @@ Login saves the PAT in the keyring of the OS user who runs it, and the T3 backen
 | OS | Keyring | What it needs |
 | --- | --- | --- |
 | macOS | Keychain | The login keychain, which macOS unlocks when you log in. Nothing to set up. |
-| Windows | Credential Manager | A password-backed logon with the user profile loaded, such as an interactive desktop session. Credential Manager can reject writes from an SSH logon; run login from such a session instead. |
+| Windows | Credential Manager | A password-backed logon with the user profile loaded, such as an interactive desktop session. Credential Manager can reject writes from an SSH logon; run login from an interactive desktop session as that user instead. |
 | Linux | Secret Service | A Secret Service provider, such as GNOME Keyring, on the session's D-Bus with an unlocked default collection. A desktop login may come without a default persistent collection; create one, for example in Passwords and Keys (Seahorse), and make it the default. A session without a desktop, such as SSH or a T3 server started by a service manager, needs a provider started and unlocked in that session. |
 
 When the keyring is missing or locked:
 
-- `init`, `devops login` and `profile logout` stop with `credential store locked or unavailable for profile ID` and save or remove nothing. Fix the session and run the command again. `init --no-login` still writes the profile without touching the keyring.
+- `init`, `devops login` and `profile logout` stop with `credential store locked or unavailable for profile ID`. `devops login` and `profile logout` change nothing. For a new profile, `init` has already saved the profile configuration and says the login can be retried. Fix the session and run the same command again. `init --no-login` still writes the profile without touching the keyring.
 - Commands T3 runs fail with the same message. If the keyring is reachable but holds no PAT for the profile, for example because login ran as another user or in another session's keyring, they report `profile ID has no PAT; use az devops login --organization URL`.
-- `tfsaz doctor` checks each profile's PAT; run it in the same environment as T3.
+- `tfsaz doctor` run from a directory outside Git checks the PAT of every profile; in a managed checkout it checks only that checkout's profile. Run it in the same environment as T3. See [Diagnose](diagnose.md#run-doctor).
 
 The setups tested so far are recorded in [Windows 11 and Ubuntu verification](../verification/live-t3-2026-11.md#windows-11-x64-and-ubuntu-2604-arm64).
 
