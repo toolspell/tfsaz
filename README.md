@@ -51,8 +51,8 @@ Early alpha. Version 0.1.0, no release and no prebuilt binaries yet: build it fr
 
 ## Contributing
 
-Contribution guidelines will follow.
+The repository is not open for outside contributions yet. [CONTRIBUTING.md](CONTRIBUTING.md) has the rules that apply once it is, and [SECURITY.md](SECURITY.md) how to report a vulnerability.
 
 ## License
 
-No license has been chosen yet.
+[MIT](LICENSE).

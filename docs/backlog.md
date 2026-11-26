@@ -10,7 +10,7 @@ Deferred work, so any session or worktree can pick it up.
 ## Before going public
 
 - **Browser-redirect TLS key on disk:** move the leaf private key `alias-key.pem` in `<config>.browser-route`, written by `internal/az/route_managed.go`, into the OS secret store, or decide otherwise.
-- **History rewrite before going public:** the audit on 26.11.2026 (gitleaks v8.30.1 over all refs, plus greps over the full history and commit messages) found no secrets, hosts, IPs, collection URLs or accounts. Two things should still go:
+- **History rewrite before going public:** the audit on 26.11.2026 (gitleaks v8.30.1 over all refs, plus greps over the full history and commit messages) found no secrets, hosts, IPs, collection URLs or accounts. Three things should still go:
   - the developer's machine path to the T3 checkout in AGENTS.md (added in `89e90eb`, removed in `a8e2385`);
   - research pointers to a private repository in the same commits;
   - a sentence about a deferred integration in the AGENTS.md intro, from `89e90eb` until its removal on 26.11.2026. It's not repo content.
@@ -23,7 +23,6 @@ Deferred work, so any session or worktree can pick it up.
 
   Testbed names in `docs/verification/` (PR numbers, collection names) were judged acceptable. Never push the local T3 checkpoint refs (`refs/t3/...`), so no `git push --mirror` or `--all`.
 - **Decide the product name:** tfsaz is a working name. A rename also changes persisted names (keyring services, `TFSAZ_` variables, `~/.tfsaz`, `tfsaz-<24 hex>` alias hosts, `remote.origin.vcs=tfsaz`, link handler IDs) and needs a migration. [Naming](internals/naming.md#tfsaz-is-a-working-name) lists them.
-- **License decision and CONTRIBUTING.md:** the README has only placeholders, and GitHub shows no license.
 - **Low-value comment analyzer** (optional): a custom analyzer as the Go equivalent of Toolspell's `no-low-value-comments`. Pointer: Toolspell `oxlint-plugin-toolspell/rules/`.
 - **Agent skills:** a testbed/VM verification skill in `.agents/skills/` (pairs with the test-environment runbook item).
 
@@ -68,7 +67,6 @@ Deferred work, so any session or worktree can pick it up.
 - **API version check in verify and doctor** ([REST API](internals/rest-api.md#what-the-server-reports-about-versions)): when `init`, `devops login`, `profile add` or `repo verify` verifies a profile and its PAT, or `doctor` runs, consider comparing the collection's supported versions with the 7.1 floor (and its previews) and reporting an incompatible server clearly. Source: the version ranges in the resource-location catalog, or `connectionData`.
 - **Doc text that breaks the [naming rules](internals/naming.md)** (d, docs only): `docs/user/routing.md` ("Long-running processes") says "Git starts its transport helper" for what is the Git HTTPS helper.
 - **Poll in `TestDesktopLinkHandlerGIOArguments`** (c; `internal/az/link_export_linux_test.go`): polls a trace file every 10 ms because `gio launch` starts the receiver detached. A FIFO as the trace file would give an event: the test blocks on reading it until the receiver writes and closes. Needs a Linux run to verify. The Windows live test's polls stay on purpose; their comments say why.
-
 
 ## Reversibility and verify gaps
 
