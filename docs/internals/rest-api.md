@@ -36,7 +36,7 @@ Where tfsaz builds routes itself today:
 
 ## What the server reports about versions
 
-Nothing uses this today. It is here for when tfsaz needs to detect what a server supports.
+Nothing uses this today. It is here for when tfsaz needs to detect what a server supports, such as the version check in the [backlog](../backlog.md#code).
 
 | Source | What it tells |
 | --- | --- |
