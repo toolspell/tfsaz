@@ -1,7 +1,13 @@
 package az
 
 import (
+	"crypto/rand"
+	"encoding/json"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -12,7 +18,7 @@ func TestSetupBindsRepositoryToCollection(t *testing.T) {
 	const remote = "ssh://git@server.invalid:2222/tfs/Second%20Collection/Team%20Project/_git/Tool%20Kit"
 	dir := t.TempDir()
 	bind := func(original, override, profile string) (setupRecord, error) {
-		return makeSetupRecord(t.Context(), cfg, dir, dir, original, override, profile, filepath.Join(dir, "managed.conf"))
+		return makeSetupRecord(t.Context(), &memoryStore{}, cfg, dir, dir, original, override, profile, filepath.Join(dir, "managed.conf"))
 	}
 	if _, err := bind(remote, "", ""); err == nil {
 		t.Fatal("SSH origin is ambiguous across collection listeners")
@@ -52,6 +58,31 @@ func TestSetupBindsRepositoryToCollection(t *testing.T) {
 	changed.Profiles[0].Aliases = []string{scope.Organization}
 	if err := changed.addSetupAliases([]setupRecord{r}); err == nil {
 		t.Fatal("stale binding reassigned to another profile")
+	}
+}
+
+func TestSetupReadsSSHURLWithInjectedStore(t *testing.T) {
+	var sshURL string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		checkClientTestAuth(t, r)
+		if got := r.URL.EscapedPath(); got != "/tfs/Collection/Project/_apis/git/repositories/Repository" {
+			t.Errorf("request path = %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"sshUrl": sshURL})
+	}))
+	defer server.Close()
+	p := clientTestProfile(t, server, "/tfs/Collection")
+	p.ID = "setup-ssh-" + rand.Text()
+	p.Organization = "https://setup-ssh.visualstudio.com"
+	sshURL = "ssh://git@" + server.Listener.Addr().(*net.TCPAddr).IP.String() + ":22/tfs/Collection/Project/_git/Repository"
+	store := &memoryStore{values: map[string]string{p.ID: clientTestPassword}}
+	dir := t.TempDir()
+	r, err := makeSetupRecord(t.Context(), store, config{Profiles: []Profile{p}}, dir, dir, p.CollectionURL+"/Project/_git/Repository", "", "", filepath.Join(dir, "managed.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(store.reads, p.ID) || r.SSHURL != sshURL {
+		t.Fatalf("SSH URL %q from reads %q, want %q from the injected store", r.SSHURL, store.reads, sshURL)
 	}
 }
 

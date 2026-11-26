@@ -191,6 +191,7 @@ func publishSetupFile(path string, data []byte, replace bool) error {
 type setupRegistry struct {
 	path    string
 	records []setupRecord
+	store   credentialStore
 }
 
 func (s *setupRegistry) update(r setupRecord, phase string) error {
@@ -728,7 +729,7 @@ func verifySetupGitState(ctx context.Context, c setupCheckout, r setupRecord) er
 	return nil
 }
 
-func verifySetup(ctx context.Context, c setupCheckout, r setupRecord, cfg config) error {
+func verifySetup(ctx context.Context, store credentialStore, c setupCheckout, r setupRecord, cfg config) error {
 	if err := verifySetupGitState(ctx, c, r); err != nil {
 		return err
 	}
@@ -747,7 +748,7 @@ func verifySetup(ctx context.Context, c setupCheckout, r setupRecord, cfg config
 	if strings.HasPrefix(strings.ToLower(r.OriginalURL), "https://") {
 		override = r.SSHURL
 	}
-	expected, err := makeSetupRecord(ctx, cfg, r.Repo, r.GitDir, r.OriginalURL, override, r.ProfileID, r.SSHConfig)
+	expected, err := makeSetupRecord(ctx, store, cfg, r.Repo, r.GitDir, r.OriginalURL, override, r.ProfileID, r.SSHConfig)
 	if err != nil {
 		return fmt.Errorf("repository setup routing has drifted: %w", err)
 	}
@@ -880,7 +881,7 @@ func (s *setupRegistry) prepare(ctx context.Context, c setupCheckout, cfg config
 	if exists, err := setupFileExists(sshPath); err != nil || exists {
 		return setupRecord{}, errors.Join(err, fmt.Errorf("SSH configuration path already exists or cannot be inspected: %s", sshPath))
 	}
-	r, err := makeSetupRecord(ctx, cfg, c.repo, c.gitDir, state.url, sshURL, profile, sshPath)
+	r, err := makeSetupRecord(ctx, s.store, cfg, c.repo, c.gitDir, state.url, sshURL, profile, sshPath)
 	if err != nil {
 		return setupRecord{}, err
 	}
@@ -951,7 +952,7 @@ func (s *setupRegistry) mutate(ctx context.Context, c setupCheckout, op repoSetu
 					return errors.New("repository already has a setup with a different SSH URL; restore it first")
 				}
 			}
-			return verifySetup(ctx, c, r, cfg)
+			return verifySetup(ctx, s.store, c, r, cfg)
 		} else {
 			err := s.gitTransaction(c, func(lock *setupGitLock) error {
 				return s.settleSetup(ctx, lock, r, restoreSetup)
@@ -1144,7 +1145,7 @@ func (a app) runRepo(ctx context.Context, args []string) (err error) {
 		return err
 	}
 	if mutate {
-		registry := setupRegistry{path: path, records: records}
+		registry := setupRegistry{path: path, records: records, store: a.store}
 		if err := registry.mutate(ctx, checkout, op); err != nil {
 			return err
 		}
@@ -1211,7 +1212,7 @@ func (a app) runRepo(ctx context.Context, args []string) (err error) {
 			err = errors.New("checkout Git directory has changed")
 		}
 		if err == nil {
-			err = verifySetup(ctx, c, r, cfg)
+			err = verifySetup(ctx, a.store, c, r, cfg)
 		}
 		if err != nil {
 			repo := r.Repo

@@ -101,7 +101,7 @@ func (a app) runDoctor(ctx context.Context, args []string) error {
 			add("checkout", status, "Git fetch remote does not identify a configured collection")
 		}
 		if idx := setupRecordIndex(records, checkout.gitDir); idx >= 0 {
-			if verifyErr := verifySetup(ctx, checkout, records[idx], cfg); verifyErr != nil {
+			if verifyErr := verifySetup(ctx, a.store, checkout, records[idx], cfg); verifyErr != nil {
 				add("repo verify", "error", verifyErr.Error())
 			} else {
 				add("repo verify", "ok", "managed Git configuration and read access verified")

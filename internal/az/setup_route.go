@@ -199,7 +199,7 @@ func setupScope(cfg config, u *url.URL, profileID string) (*Profile, Scope, erro
 	return selected, scope, nil
 }
 
-func makeSetupRecord(ctx context.Context, cfg config, repo, gitDir, originalURL, overrideSSH, profileID, sshConfigPath string) (setupRecord, error) {
+func makeSetupRecord(ctx context.Context, store credentialStore, cfg config, repo, gitDir, originalURL, overrideSSH, profileID, sshConfigPath string) (setupRecord, error) {
 	var r setupRecord
 	original, err := nativeSetupURL(originalURL)
 	if err != nil {
@@ -214,7 +214,7 @@ func makeSetupRecord(ctx context.Context, cfg config, repo, gitDir, originalURL,
 		if original.Scheme == "ssh" {
 			sshURL = original.String()
 		} else {
-			client, err := (app{store: systemStore{}}).client(*p)
+			client, err := (app{store: store}).client(*p)
 			if err != nil {
 				return r, fmt.Errorf("resolve the SSH clone URL (or supply --ssh-url): %w", err)
 			}

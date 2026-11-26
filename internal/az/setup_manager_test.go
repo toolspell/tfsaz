@@ -477,7 +477,7 @@ func TestRepoSetupRollsBackWhenAnIncludeActivates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := makeSetupRecord(t.Context(), cfg, c.repo, c.gitDir, managerTestOrigin, "", "", setupSSHPath(path, c.gitDir))
+	r, err := makeSetupRecord(t.Context(), &memoryStore{}, cfg, c.repo, c.gitDir, managerTestOrigin, "", "", setupSSHPath(path, c.gitDir))
 	if err != nil {
 		t.Fatal(err)
 	}
