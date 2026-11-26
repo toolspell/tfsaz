@@ -143,6 +143,9 @@ func TestShimInstallTarget(t *testing.T) {
 		stable func(t *testing.T, path string) bool
 	}{
 		{"PATH has this executable", func(t *testing.T, path string) bool {
+			if runtime.GOOS == "windows" {
+				t.Skip("Windows cannot delete a hard link to the running test executable")
+			}
 			if err := os.Link(exe, path); err != nil {
 				t.Skip("hard links unavailable:", err)
 			}
