@@ -2,29 +2,55 @@
 
 Build a standalone Go CLI for macOS, Windows and Linux that lets an unmodified T3 Code use Azure DevOps Server. Ship it under its own name. Treat T3's invocation of `az` as the compatibility contract. The initial backend is the on-premises REST API directly. Azure cloud sign-in and extension installation are outside the product scope.
 
-## References
+## Hard rules for credentials
 
-- Use the sibling `../t3code` checkout as the source and documentation reference. The initial investigation used commit `c478fde9fe`. Check the actual adapter and its tests when implementing a command.
-- Start with `packages/source-control-azure-devops/src/shared/definition.ts` for remote and PR URL recognition, `src/server/AzureDevOpsCli.ts` in that package for argument rewriting, and `src/server/AzureDevOpsPullRequestCli.ts` and `AzureDevOpsPullRequestProvider.ts` for the JSON and exit behavior T3 consumes. The source-control user guide is `docs/user/source-control.md`.
-- Local sibling checkouts `../azure-cli` and `../azure-devops-cli-extension` are behavioral references. The extension's `azure-devops/azext_devops/dev/common/identities.py` illustrates the collection connection-data lookup.
-- Keep changes for this product in this checkout.
+- Never put a PAT in command arguments, logs, fixtures or configuration files. PATs live only in the OS keyring.
+- Send a PAT only to its configured collection. Map an Azure-style alias to the real collection before sending credentials.
+- Redirects on authenticated requests fail closed.
+- A failed credential in one collection must never select another collection's identity.
 
-## Authentication and routing
+Details and the remaining routing rules: [Architecture](docs/internals/architecture.md).
 
-- Keep an ordered list of collection profiles. Each has a stable ID, an Azure-style organization alias, and its full, real HTTPS collection URL. Preserve collection path prefixes, ports, and names containing spaces. Treat LAN and Tailscale addresses as aliases for a profile only when explicitly configured. Support the OS trust store and a profile-specific CA for private TLS.
-- Use `github.com/zalando/go-keyring` for PAT storage under a service name and stable profile ID. Keep URLs, aliases and profile order in nonsecret configuration. Provide secret input by hidden prompt or stdin. Keep PATs out of command arguments, logs, fixtures and configuration files. Report a locked or unavailable credential store to the caller.
-- The global discovery probe reports the first verified PAT user's login in configured order. Exit nonzero if none can be verified. For repository commands or viewer lookups in a known checkout, select the requested collection and use only its PAT. Preserve the distinction between rejected credentials and an unreachable server in diagnostics. Read the authenticated identity from the collection itself.
-- Map the recognized Azure-style organization to its real collection before sending credentials. Send a PAT only to the configured collection and guard redirects accordingly. Return PR web links under the same Azure-style repository identity that T3 used to select the checkout.
+## Ways to hurt yourself
 
-## First proof
+1. **Using the real configuration.** Without `TFSAZ_CONFIG`, tfsaz reads the developer's config in the OS user config directory, plus `<config>.repo-setups.json` and `<config>.browser-route` beside it. In tests and manual runs, set `TFSAZ_CONFIG` to an absolute path in a temp directory.
+2. **Writing the real keyring.** `init`, `devops login` and `profile logout` write or delete OS keyring entries (`tfsaz` or `tfsaz/v2/<hash>`). Tests inject the in-memory store through `app{store: ...}`; never use `systemStore` in a test. Only `TestStockT3Adapter` touches the real keyring, with a random entry it removes. Trap: managed-SSH `repo setup` on an HTTPS origin without `--ssh-url` reads the system keyring (`internal/az/setup_route.go`).
+3. **Running `route setup` or `route restore` on this machine.** They edit the system hosts file (no override exists), trust stores (login keychain, Windows user Root store, NSS databases), launchd LaunchAgents, systemd units with an nftables table via sudo, or a scheduled task, and write `~/.tfsaz/route-recovery`. Tests replace `runRouteSystemCommand` and set a temp `HOME`, `USERPROFILE` and `TFSAZ_CONFIG`. Keep it that way.
+4. **Rewriting real checkouts.** `repo setup` and `repo restore` change `remote.origin.*` and `core.sshCommand` of the target clone and register it. Run them only on throwaway clones in temp directories, with `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM` isolating Git. Never point them at this worktree or the developer's clones.
+5. **Live gates.** `TFSAZ_LIVE_LAUNCHD` (`1` or `443`), `TFSAZ_LIVE_TASK_SCHEDULER` and `TFSAZ_T3_ROOT` change real OS state. Set them only on a disposable test session and only when asked. The live testbed is shared: use it only on the maintainer's instruction.
 
-1. Match T3's `az --version`, `az account show --query user.name -o tsv`, and JSON `az account show --query user` probes. Cover T3's explicit organization flags as well as checkout-derived scope.
-2. Implement `az repos pr show` and paginated `az repos pr policy list`. Add repository or list reads that the real flow calls. Match the adapter's output shapes and errors using fixtures stripped of identities, internal URLs and secrets.
-3. On the testbed, verify two collections with different users, including a collection URL without a virtual directory. Prove that a failed credential in one cannot select the other's identity. Observe a real policy transition on the same linked PR in stock T3 without an agent issuing a refresh command. T3 groups some viewer reads by host, so verify “my PRs” with distinct recognized host aliases before choosing a permanent alias scheme.
-4. Separate offline fixture results from live results. When a test needs a PAT, request it through T3's secret input. Use a disposable test credential for revocation. Later features such as diffs and work items should follow the actual CLI calls and API versions supported by the target server.
+## Tests and fixtures
 
-## Agent workflow
+- Strip identities, internal URLs and secrets from fixtures.
+- Keep offline fixture results separate from live results.
+- When a live test needs a PAT, request it through T3's secret input. Use a disposable credential for revocation tests.
 
-Use Codex Astra at standard speed for architecture, ambiguous behavior and integration decisions. Use Codex Sol for bounded implementation and tests. Start with low effort for mechanical work or medium for debugging. A limited trial of Sol Fast is welcome. Keep Astra on the default tier and Opus Fast off.
+## Verify
 
-Use Claude Code Opus through the T3 bridge for focused review of meaningful code changes. Medium effort is a reasonable default. Give it the diff, the behavior under review, and the verification already performed. Batch related work so reviews and speculative parallel agents do not spend either subscription on duplicate work.
+```sh
+go vet ./...
+go test -count=1 ./...
+go test -race -count=1 ./...   # what CI runs; Windows x64 needs MinGW-w64
+TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter -v ./internal/az
+```
+
+The last one is opt-in and needs a T3 checkout with dependencies installed. Details: [Development](docs/operations/development.md).
+
+## Docs map
+
+| Audience | Where |
+| --- | --- |
+| Everyone | [README.md](README.md): what tfsaz is, quickstart, docs index |
+| Operators and script authors | `docs/user/`: install, configure, checkout setup, diagnose, routing, browser routing, desktop link handler, Azure CLI compatibility |
+| Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (adapter files and feature coverage) |
+| Maintainers | `docs/operations/development.md`: test runbook. `docs/verification/`: dated live records |
+
+When implementing a command, read the T3 adapter and its tests first; [T3 compatibility](docs/internals/t3-compatibility.md) names the files.
+
+## Doc rules
+
+- `docs/user/` tells operators how to do a task. No dated test logs there; link to the record instead.
+- Dated live results go to `docs/verification/`, kept in full.
+- Design rules and their reasons go to `docs/internals/`; runbooks to `docs/operations/`.
+- Code and docs in English. No em dashes in markdown.
+- Some CLI help and error texts point at doc paths; when moving a doc, grep `*.go` for its path.
