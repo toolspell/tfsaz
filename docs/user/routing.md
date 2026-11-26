@@ -7,9 +7,19 @@ A managed checkout gives T3 an Azure-style URL with a synthetic hostname. Choose
 | Browser, including T3’s Browser panel | Run `tfsaz route setup` and `tfsaz route verify` on the machine where the browser runs. See [Browser routing](browser-routing.md). |
 | Desktop handoffs where you cannot change the hosts file | The per-user [desktop link handler](desktop-link-handler.md) can open links using the selected system browser. |
 | Human or script | `tfsaz route explain URL` shows the action, collection profile and destination. For a one-off link, `tfsaz route resolve URL` prints the real URL for a shell client. Check its exit status before using the output. Supply the client's normal authentication for that destination. |
-| Optional in-browser routing for Chromium | Run `tfsaz route browser-export NEW_DIRECTORY`. In the intended Chromium profile, enable developer mode and load the unpacked directory. Supported repository, PR, commit, work-item and build links navigate to the real origin, where browser sign-in applies. The extension blocks other requests to the registered alias spellings it recognizes. Use `tfsaz route browser-verify DIRECTORY` to compare the files with the current configuration. After a profile change or repo restore, remove the old extension and load a fresh export. Removing the extension disables browser routing for that profile. |
+| Optional in-browser routing for Chromium | Load the exported extension into the intended Chromium profile. See [Chromium extension](#chromium-extension). |
 | Git or stock T3 server | Use `tfsaz route run -- git clone URL`, `tfsaz route run -- t3 serve`, or launch an entire shell with `tfsaz route run -- zsh`. Processes in that tree inherit a private Git HTTPS helper. The original Git helper contacts the real collection and uses Git's TLS and credential settings. Git retains the synthetic origin for T3 detection. A process that discards the inherited Git environment can bypass the helper. Closing the launched process ends the override. A separately started service needs its own launch configuration. |
-| Unattended job | Run the job under `tfsaz route run --` with Git credentials configured for the real collection under the job's OS account. The launcher disables Git terminal and Git Credential Manager interaction when stdin is not a terminal. Choose a non-interactive credential helper for the job. Git does not automatically receive the CLI's Keychain PAT. |
+| Unattended job | Run the job under `tfsaz route run --` with Git credentials configured for the real collection under the job's OS account. The launcher disables Git terminal and Git Credential Manager interaction when stdin is not a terminal. Choose a non-interactive credential helper for the job. Git does not automatically receive the PAT the CLI keeps in the OS keyring. |
+
+## Chromium extension
+
+Run `tfsaz route browser-export NEW_DIRECTORY`. In the intended Chromium profile, enable developer mode and load the unpacked directory.
+
+- Supported repository, PR, commit, work-item and build links navigate to the real origin, where browser sign-in applies.
+- The extension blocks other requests to the registered alias spellings it recognizes.
+- Use `tfsaz route browser-verify DIRECTORY` to compare the files with the current configuration.
+- After a profile change or repo restore, remove the old extension and load a fresh export.
+- Removing the extension disables browser routing for that profile.
 
 ## Optional hosts-file, connection refusal and proxy settings
 
@@ -54,7 +64,7 @@ The hosts-file block and installed browser rules persist while tfsaz is stopped.
 | OS | Supervisor |
 | --- | --- |
 | macOS | A per-user launchd LaunchAgent with an absolute executable path, an explicit `TFSAZ_CONFIG`, and `KeepAlive`. |
-| Ubuntu | A systemd user service running the same command with `Restart=on-failure`. |
 | Windows | A Task Scheduler logon trigger for the current user with the restart-on-failure setting, a permanent executable path and a user configuration accessible to the task. |
+| Ubuntu | A systemd user service running the same command with `Restart=on-failure`. |
 
 Restarting the process restores PAC availability. The hostname mapping provides a separate fallback during the restart for clients resolving locally. A service launched before user login needs its own account, environment and supervision. [Apple launchd jobs](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html) · [systemd restart settings](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html) · [Windows Task Scheduler restarts](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-restartonfailure-settingstype-element)

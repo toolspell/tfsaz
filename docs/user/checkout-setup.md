@@ -27,4 +27,6 @@ After `doctor` verifies the checkout and PAT, open the checkout in T3 and view a
 - **Linked worktrees.** Run setup once per clone from any of its worktrees. Repositories in the same collection reuse one profile and PAT. Each project/repository pair gets its own stable hostname, shared by clones using the same profile and collection. Existing worktrees and ones created later by Git or T3 share the origin mapping. Restore from any surviving worktree to return all of them to the original remote. If the worktree used for setup is removed or moved with Git, `repo list` and `repo verify` can locate another checkout registered under the same Git common directory.
 - **Fresh clones.** A per-remote setting takes effect after the checkout exists. To clone directly from a synthetic HTTPS URL, use `tfsaz route run -- git clone URL`. You can also clone from the native server with plain Git, then run `repo setup`.
 
+Before setup, confirm that a native `git ls-remote` works with the Git and SSH client you intend to use. On Windows, the live SSH tests passed with the OpenSSH bundled with Git for Windows ([record](../verification/live-t3-2026-11.md#windows-11-x64-and-ubuntu-2604-arm64)).
+
 If something fails, see [Diagnose a CLI or checkout](diagnose.md).

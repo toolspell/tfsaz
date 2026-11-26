@@ -4,6 +4,15 @@ Run `tfsaz route handler-export DESTINATION BROWSER` on the desktop where links 
 
 Export using a permanent tfsaz installation. Choose a new export destination. The handler captures the paths to tfsaz and its config file and reads that config and the repo registry on each click. Restore your usual default browser before removing the handler. If you move tfsaz or its config, or choose a different target browser, export a new handler.
 
+## macOS
+
+```sh
+mkdir -p "$HOME/Applications"
+tfsaz route handler-export "$HOME/Applications/tfsaz Links.app" com.apple.Safari
+```
+
+For Firefox, use `org.mozilla.firefox` as the browser bundle ID. Try the handler with `open -a "$HOME/Applications/tfsaz Links.app" 'YOUR_AZURE_PR_URL'`. Select **tfsaz Links** in **System Settings → Desktop & Dock → Default web browser**. To remove it, select your usual browser and delete the exported app. The earlier `route mac-handler-export` command remains supported.
+
 ## Windows 11
 
 From PowerShell, export a package for your installed browser and run its per-user installer. This example uses Edge. Windows expands percent signs in protocol commands, so choose tfsaz, browser and config paths without a literal `%`.
@@ -38,12 +47,3 @@ gio mime x-scheme-handler/https com.toolspell.tfsaz.links.desktop
 ```
 
 To remove it, restore each recorded desktop ID with `gio mime x-scheme-handler/SCHEME PREVIOUS_ID`, or choose your browser in GNOME's **Default Apps**. Then remove the exported desktop file. [freedesktop default application associations](https://specifications.freedesktop.org/mime-apps/latest/default)
-
-## macOS
-
-```sh
-mkdir -p "$HOME/Applications"
-tfsaz route handler-export "$HOME/Applications/tfsaz Links.app" com.apple.Safari
-```
-
-For Firefox, use `org.mozilla.firefox` as the browser bundle ID. Try the handler with `open -a "$HOME/Applications/tfsaz Links.app" 'YOUR_AZURE_PR_URL'`. Select **tfsaz Links** in **System Settings → Desktop & Dock → Default web browser**. To remove it, select your usual browser and delete the exported app. The earlier `route mac-handler-export` command remains supported.

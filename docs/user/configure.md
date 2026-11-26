@@ -65,7 +65,7 @@ tfsaz devops login --organization https://engineering-example.visualstudio.com
 
 Enter the PAT at the hidden prompt, or pipe one line from a secret provider on stdin. Login verifies the PAT against the collection before saving it in the OS keyring under the stable profile ID. The backend is Keychain on macOS, Credential Manager on Windows, and Secret Service on Linux.
 
-New profiles use `credentialVersion: 2`, which scopes the keyring service to the collection URL. Older profiles without this field use the original `tfsaz` service. Preserve the existing credential version when editing a profile so it can still find its saved PAT.
+New profiles use `credentialVersion: 2`, which scopes the keyring service to the collection URL. Older profiles without this field use the original `tfsaz` service. Preserve the existing credential version when editing a profile so it can still find its saved PAT. For the same reason, run `devops login` again after changing the `collectionUrl` of a version 2 profile.
 
 `tfsaz profile logout --profile ID` removes the selected local credential and keeps the profile configured. Server-side token revocation is separate.
 

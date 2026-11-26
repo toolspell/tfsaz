@@ -16,13 +16,13 @@ These are the Azure CLI calls used by the stock T3 adapter at revision `c478fde9
 | `az repos pr create` and `az repos pr update` | Create draft or ready PRs, edit title and description, change draft or lifecycle status, configure auto-complete, and complete with merge or squash. |
 | `az repos pr reviewer add` and `remove` | Resolve reviewers within the collection and update the selected PR. |
 | `az repos pr policy list --id N --top 100 --skip 0` | Returns one array of raw evaluations. T3 advances the offset and computes the check state. |
-| `az devops invoke --area git --resource NAME` | Reads PR threads, labels, iterations, iteration changes, file revisions and batched blobs for the diff view. |
+| `az devops invoke --area git --resource NAME` | Reads PR threads, labels, iterations, iteration changes, file revisions and batched blobs for the diff view. The supported Git resources are `pullRequestThreads`, `pullRequestLabels`, `pullRequestIterations`, `pullRequestIterationChanges`, `blobs` and `items`. |
 | `az boards work-item create` and `update` | Create typed work items and edit title, description, state and named fields, including tags and assignee. |
 | `az boards work-item show --id N --expand relations` | Reads a work item and the relations T3 uses to find linked PRs. |
-| `az devops invoke --area wit --resource NAME` | Reads workflow states, searches with WIQL, loads result rows in batches, and reads comments, update history and tags. T3 also uses invoke to post work-item comments and add or remove comment reactions. |
+| `az devops invoke --area wit --resource NAME` | Reads workflow states, searches with WIQL, loads result rows in batches, and reads comments, update history and tags (`workitemtypes`, `wiql`, `workitemsbatch`, `comments`, `updates`). T3 also uses catalog-resolved invoke to post work-item comments and add or remove comment reactions. |
 | `az devops team list` and `az devops team list-member` | Lists project teams and members for T3’s assignee picker. |
 
-How the stock adapter uses these commands, and which T3 features they cover, is in [T3 compatibility](../internals/t3-compatibility.md#feature-coverage-at-this-t3-revision).
+Which T3 features these commands cover is in [What works in T3](t3-features.md).
 
 ## Checkout, output and errors
 

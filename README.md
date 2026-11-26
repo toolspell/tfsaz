@@ -1,39 +1,57 @@
 # tfsaz
 
-`tfsaz` lets stock T3 Code work with Git repositories, pull requests and work items in an on-premises Azure DevOps Server collection. It runs as `az` on the T3 **server process's** PATH and talks directly to the configured collection over HTTPS. T3 can publish repositories, open and complete PRs, show diffs and policy checks, and create, edit and comment on work items.
+`tfsaz` lets stock T3 Code work with Git repositories, pull requests and work items in an on-premises Azure DevOps Server collection. T3 needs no patch or fork: tfsaz answers the Azure CLI calls T3 already makes.
 
-## Quickstart
+## Why it is needed
 
-On the machine running the T3 backend, with Go 1.26 or newer, from the tfsaz source directory on macOS or Ubuntu:
+T3 Code's Azure DevOps integration is built for Azure DevOps Services in the cloud. It enables itself only for Git remotes on `dev.azure.com` or `*.visualstudio.com`, derives a cloud organization URL from the remote, and runs Microsoft's `az` with the `azure-devops` extension against that URL. A checkout cloned from an on-premises server is not recognized, and stock `az` would talk to the cloud instead of the server. tfsaz closes both gaps without changing T3. Details: [T3 compatibility](docs/internals/t3-compatibility.md#why-stock-t3-cannot-reach-azure-devops-server).
 
-```sh
-mkdir -p "$HOME/.local/bin"
-go build -o "$HOME/.local/bin/tfsaz" .
-"$HOME/.local/bin/tfsaz" shim install --dir "$HOME/.local/bin"
-export PATH="$HOME/.local/bin:$PATH"
-tfsaz init --collection 'https://devops.example.invalid/DefaultCollection'
-tfsaz repo setup /path/to/checkout
-tfsaz doctor /path/to/checkout
-```
+## How it works
 
-Then put the same directory first on the PATH of T3 Desktop or the T3 server and restart it. [Install](docs/user/install.md) covers Windows and PATH details. [Configure](docs/user/configure.md) covers PATs and multiple collections.
+T3 Code talks to Azure DevOps by running the `az` command. tfsaz is a single Go executable that runs as `az` on the T3 **server process's** PATH and talks directly to the configured collection over HTTPS, using the collection's REST API and a personal access token (PAT) from the OS keyring.
 
-## Choose the setup for your environment
+Stock T3 turns on its Azure DevOps features only for repositories whose remote looks like an Azure cloud URL. tfsaz therefore gives each checkout an Azure-style alias (a synthetic `*.visualstudio.com` hostname). T3 sees the alias; Git reaches the real server over the checkout's original HTTPS or SSH transport through a tfsaz Git remote helper. Links T3 opens under the alias can be routed to the real collection, where the browser signs in as usual.
 
-| Goal | Current entry point |
+This keeps T3 unmodified and keeps every credential pointed at the real server.
+
+## Features
+
+- **Pull requests in T3:** create, publish, list, review diffs and policy checks, edit, change reviewers, set auto-complete, and complete with merge or squash.
+- **Work items in T3:** search, show, create and edit, including state, tags and assignee, plus comments and comment reactions.
+- **Repositories:** create a repository from T3 and set up existing clones, including linked worktrees, without changing how Git connects.
+- **Several collections:** one ordered list of collection profiles, each with its own PAT and optional private CA.
+- **Link routing:** open T3's Azure-style links at the real collection through a local browser redirect, a desktop link handler, a Chromium extension or a Git launcher.
+- **Scripting:** `az devops invoke` and `az rest` reach any REST resource the collection advertises.
+- **Diagnostics:** `tfsaz doctor` checks PATH, configuration, PAT and checkout; `TFSAZ_TRACE=1` traces calls without secrets.
+
+## Status
+
+Early alpha. Version 0.1.0, no release and no prebuilt binaries yet: build it from source. Tested on a dedicated testbed; see the [verification records](#documentation).
+
+## Before you use it
+
+| Constraint | Details |
 | --- | --- |
-| Connect an installed T3 app | Use `tfsaz shim install --dir DIR`, put DIR on the backend’s PATH, and run `tfsaz init --collection URL`. See [Install](docs/user/install.md) and [Configure](docs/user/configure.md). |
-| Use an existing clone | Run `tfsaz repo setup PATH`. New setups keep the original SSH or HTTPS transport. Use `tfsaz repo verify PATH` to check it and `tfsaz repo restore PATH` to recover the original URL offline. See [Set up a checkout](docs/user/checkout-setup.md). |
-| Clone a synthetic HTTPS URL in a shell or job | Start Git under `tfsaz route run --` and configure Git credentials for the native collection. This also works when no checkout exists yet. See [Route synthetic HTTPS URLs](docs/user/routing.md). |
-| Open managed links in a browser | Run `tfsaz route setup` and `tfsaz route verify` on the host running the browser. See [Browser routing](docs/user/browser-routing.md). |
-
-If `tfsaz route redirect` cannot bind port 443, use `--port` with a loopback port redirect as described in [Run the service on port 443](docs/user/browser-routing.md#5-run-the-service-on-port-443).
+| Server | On-premises Azure DevOps Server only. Live-tested against Azure DevOps Server 2022.2; earlier versions are unverified. Azure DevOps Services (cloud) sign-in is out of scope. |
+| Authentication | PAT only, stored in the OS keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service). |
+| T3 Code | The `az` calls follow T3's stock Azure DevOps adapter at revision `c478fde9fe`; the adapter is unchanged up to `v0.1.13-nightly.20261125.5258`. Live tests used T3 Code `v0.1.12-nightly.20261125.5230`. Other T3 versions may call `az` differently. |
+| Operating systems | macOS, Windows and Linux. Tested on macOS ARM64, Windows 11 x64 and Ubuntu 26.04 ARM64. |
+| Scope of `az` | Only the subset T3 uses, plus generic REST calls. No `az login` for Azure cloud and no extension installation. Keep Microsoft's Azure CLI in a separate directory if you also need it. |
+| Install location | tfsaz runs on the machine that runs the T3 backend, which is the T3 server for a remote web client. |
 
 ## Documentation
 
 | Audience | Guides |
 | --- | --- |
-| Operators | [Install](docs/user/install.md) · [Configure collections and PATs](docs/user/configure.md) · [Set up a checkout](docs/user/checkout-setup.md) · [Diagnose](docs/user/diagnose.md) · [Route synthetic HTTPS URLs](docs/user/routing.md) · [Browser routing](docs/user/browser-routing.md) · [Desktop link handler](docs/user/desktop-link-handler.md) |
+| Operators | [Getting started](docs/user/getting-started.md) · [Install](docs/user/install.md) · [Configure collections and PATs](docs/user/configure.md) · [Set up a checkout](docs/user/checkout-setup.md) · [What works in T3](docs/user/t3-features.md) · [Diagnose](docs/user/diagnose.md) · [Route synthetic HTTPS URLs](docs/user/routing.md) · [Browser routing](docs/user/browser-routing.md) · [Manual browser routing](docs/user/browser-routing-manual.md) · [Desktop link handler](docs/user/desktop-link-handler.md) |
 | Script authors | [Azure CLI compatibility and REST calls](docs/user/az-compatibility.md) |
-| Maintainers and agents | [Architecture](docs/internals/architecture.md) · [T3 compatibility](docs/internals/t3-compatibility.md) · [Development](docs/operations/development.md) · [AGENTS.md](AGENTS.md) |
+| Maintainers and agents | [AGENTS.md](AGENTS.md) · [Architecture](docs/internals/architecture.md) · [T3 compatibility](docs/internals/t3-compatibility.md) · [Development](docs/operations/development.md) · [Backlog](docs/backlog.md) |
 | Verification records | [Offline fixtures and native suites](docs/verification/offline-fixtures.md) · [Live T3 results, November 2026](docs/verification/live-t3-2026-11.md) · [Browser routing](docs/verification/browser-routing.md) |
+
+## Contributing
+
+Contribution guidelines will follow.
+
+## License
+
+No license has been chosen yet.
