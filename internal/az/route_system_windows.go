@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -93,6 +94,9 @@ func routeSystemInstallOS(ctx context.Context, p routeSystemPlan) error {
 func routeSystemRestoreOS(ctx context.Context, p routeSystemPlan) error {
 	if winSystemDirErr != nil {
 		return winSystemDirErr
+	}
+	if p.certFile == "" {
+		p.certFile = windowsTaskCertFile(ctx, p.id)
 	}
 	var errs []error
 	if err := removeWindowsTask(ctx, p); err != nil {
@@ -277,14 +281,60 @@ Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | ForEach-Object
     if ($script.StartsWith($marker, [StringComparison]::Ordinal)) { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   }
 }`
-	// Without a recorded configuration path the child's certificate path is
-	// unknown, and an empty one would match every installation's redirector.
+	// An empty certificate path would match every installation's redirector.
 	if p.certFile == "" {
 		return script
 	}
 	return script + `
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains(' route redirect ') -and $_.CommandLine.Contains(` +
 		psQuote(`"`+p.certFile+`"`) + `) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
+}
+
+// windowsTaskCertFile reads the redirector's certificate path from the
+// installation's logon task, so a restore without a recorded configuration
+// path can still stop the redirector. It returns "" when the task is gone.
+func windowsTaskCertFile(ctx context.Context, id string) string {
+	script := `$ErrorActionPreference = 'Stop'; $s = New-Object -ComObject Schedule.Service; $s.Connect(); $s.GetFolder('\tfsaz').GetTask(` +
+		psQuote(filepath.Base(windowsTaskName(id))) + `).Definition.Actions.Item(1).Arguments`
+	out, err := runRouteSystemCommand(ctx, nil, windowsPowerShell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", powerShellEncode(script))
+	if err != nil {
+		return ""
+	}
+	return windowsTaskArgumentsCertFile(string(out), id)
+}
+
+var (
+	windowsEncodedCommand = regexp.MustCompile(`-EncodedCommand\s+([A-Za-z0-9+/=]+)`)
+	windowsTaskInner      = regexp.MustCompile(`(?m)^\$s\.Arguments = '((?:[^']|'')*)'\r?$`)
+	windowsTaskCert       = regexp.MustCompile(` route redirect --cert "([^"]+)" `)
+)
+
+// windowsTaskArgumentsCertFile parses what windowsTaskArguments built for
+// installation id.
+func windowsTaskArgumentsCertFile(args, id string) string {
+	m := windowsEncodedCommand.FindStringSubmatch(args)
+	if m == nil {
+		return ""
+	}
+	raw, err := base64.StdEncoding.DecodeString(m[1])
+	if err != nil || len(raw)%2 != 0 {
+		return ""
+	}
+	units := make([]uint16, len(raw)/2)
+	for i := range units {
+		units[i] = binary.LittleEndian.Uint16(raw[2*i:])
+	}
+	script := string(utf16.Decode(units))
+	if !strings.HasPrefix(script, windowsSupervisorMarker(id)) {
+		return ""
+	}
+	if m = windowsTaskInner.FindStringSubmatch(script); m == nil {
+		return ""
+	}
+	if m = windowsTaskCert.FindStringSubmatch(strings.ReplaceAll(m[1], "''", "'")); m == nil || !filepath.IsAbs(m[1]) {
+		return ""
+	}
+	return m[1]
 }
 
 func removeWindowsTask(ctx context.Context, p routeSystemPlan) error {

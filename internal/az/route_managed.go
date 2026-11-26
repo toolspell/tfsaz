@@ -99,8 +99,11 @@ func readRouteIdentity(dir, configFile string) (routeIdentity, error) {
 	if err != nil {
 		return identity, fmt.Errorf("incomplete browser route identity at %s: %v", dir, err)
 	}
-	if json.Unmarshal(data, &identity) != nil || routeConfigKey(identity.ConfigFile) != routeConfigKey(configFile) || len(identity.Aliases) == 0 {
-		return identity, errors.New("invalid browser route identity or configuration path")
+	if json.Unmarshal(data, &identity) != nil || len(identity.Aliases) == 0 {
+		return identity, errors.New("invalid browser route identity")
+	}
+	if routeConfigKey(identity.ConfigFile) != routeConfigKey(configFile) {
+		return identity, routeIdentityElsewhere{dir, identity.ConfigFile}
 	}
 	for i, host := range identity.Aliases {
 		if !generatedAliasHost.MatchString(host) || i > 0 && host <= identity.Aliases[i-1] {
@@ -124,6 +127,19 @@ func readRouteIdentity(dir, configFile string) (routeIdentity, error) {
 		return identity, errors.New("stored redirect certificate differs from its recorded aliases")
 	}
 	return identity, nil
+}
+
+// routeIdentityElsewhere is a route directory reached through another
+// spelling of its configuration path, such as a symlinked directory. The
+// installation ID belongs to the recorded spelling.
+type routeIdentityElsewhere struct{ dir, configFile string }
+
+func (e routeIdentityElsewhere) note() string {
+	return fmt.Sprintf("%s belongs to the installation for configuration %s", e.dir, e.configFile)
+}
+
+func (e routeIdentityElsewhere) Error() string {
+	return e.note() + "; set TFSAZ_CONFIG to that path"
 }
 
 var errRouteSystemUnsupported = errors.New("browser routing setup supports macOS, Linux and Windows only")
@@ -182,21 +198,19 @@ func runManagedRoute(ctx context.Context, args []string, out io.Writer, system r
 	}
 	recovery := filepath.Join(home, ".tfsaz", "route-recovery")
 	id := routeSystemID(file)
-	if installation != "" && installation != id {
-		// Another configuration's installation. Without a recorded path, only
-		// its recovery certificate is known.
-		if file, err = readRouteConfigRecord(recovery, installation); err != nil {
-			return err
-		}
-		id, dir = installation, ""
-		if file != "" {
-			dir = filepath.Clean(file) + ".browser-route"
-		}
+	other := installation != "" && installation != id
+	if other {
+		id = installation
 	}
 	receipt := filepath.Join(recovery, id+".pem")
 	record := filepath.Join(recovery, id+routeConfigRecordSuffix)
-	if action == "restore" && (dir == "" || !routeStateExists(dir)) && !routeStateExists(receipt) {
-		return writeRouteNothingRecorded(out, recovery, installation)
+	// Another configuration's installation is found through its record.
+	state := dir
+	if other {
+		state = record
+	}
+	if action == "restore" && !routeStateExists(state) && !routeStateExists(receipt) {
+		return writeRouteNothingRecorded(out, recovery, installation, "")
 	}
 	// Runs after the unlock below: the last restore leaves no recovery directory.
 	defer removeEmptyRouteRecovery(recovery)
@@ -205,6 +219,17 @@ func runManagedRoute(ctx context.Context, args []string, out io.Writer, system r
 		return err
 	}
 	defer func() { err = errors.Join(err, unlock()) }()
+	if other {
+		// Setup writes the record under the same lock. Without a recorded
+		// path, only the recovery certificate is known.
+		if file, err = readRouteConfigRecord(recovery, id); err != nil {
+			return err
+		}
+		dir = ""
+		if file != "" {
+			dir = filepath.Clean(file) + ".browser-route"
+		}
+	}
 	var identity routeIdentity
 	var certFile, keyFile string
 	missing := dir == ""
@@ -212,6 +237,9 @@ func runManagedRoute(ctx context.Context, args []string, out io.Writer, system r
 		var readErr error
 		identity, readErr = readRouteIdentity(dir, file)
 		missing = errors.Is(readErr, os.ErrNotExist)
+		if elsewhere := (routeIdentityElsewhere{}); action == "restore" && errors.As(readErr, &elsewhere) {
+			return writeRouteNothingRecorded(out, recovery, installation, elsewhere.note()+".")
+		}
 		if readErr != nil && !missing {
 			return readErr
 		}
@@ -221,7 +249,7 @@ func runManagedRoute(ctx context.Context, args []string, out io.Writer, system r
 		if missing {
 			leaf, err := readRouteRecoveryLeaf(receipt)
 			if errors.Is(err, os.ErrNotExist) {
-				return writeRouteNothingRecorded(out, recovery, installation)
+				return writeRouteNothingRecorded(out, recovery, installation, "")
 			}
 			if err != nil {
 				return err
@@ -368,10 +396,13 @@ func readRouteRecoveryLeaf(receipt string) (*x509.Certificate, error) {
 	return leaf, nil
 }
 
-func writeRouteNothingRecorded(out io.Writer, recovery, installation string) error {
+func writeRouteNothingRecorded(out io.Writer, recovery, installation, note string) error {
 	message := routeNothingRecorded
 	if installation != "" {
 		message = "No installation " + installation + " recorded."
+	}
+	if note != "" {
+		message += "\n" + note
 	}
 	if _, err := fmt.Fprintln(out, message); err != nil {
 		return err

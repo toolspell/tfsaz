@@ -143,6 +143,16 @@ func TestManagedRouteRestoreOtherConfigInstallation(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			// Through a symlinked directory the route directory exists, but its
+			// identity names the original spelling.
+			link := filepath.Join(t.TempDir(), "link")
+			if err := os.Symlink(filepath.Dir(file), link); err == nil {
+				t.Setenv("TFSAZ_CONFIG", filepath.Join(link, filepath.Base(file)))
+				out, err := run("restore")
+				if err != nil || len(calls) != 1 || !strings.Contains(out, "belongs to the installation for configuration "+file) || !strings.Contains(out, "  "+id+"\n") {
+					t.Fatalf("restore through a symlinked directory: err %v, OS calls %d, output:\n%s", err, len(calls), out)
+				}
+			}
 			t.Setenv("TFSAZ_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 			configLine := "configuration: " + file
 			if !recorded {

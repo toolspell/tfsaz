@@ -69,6 +69,12 @@ func TestWindowsTaskXML(t *testing.T) {
 			t.Errorf("script lacks %s:\n%s", want, script)
 		}
 	}
+	if got := windowsTaskArgumentsCertFile(windowsTaskArguments(p), p.id); got != p.certFile {
+		t.Errorf("certificate path from the task arguments: %q, want %q", got, p.certFile)
+	}
+	if got := windowsTaskArgumentsCertFile(windowsTaskArguments(p), "fedcba9876543210"); got != "" {
+		t.Errorf("read the certificate path from another installation's task: %q", got)
+	}
 	if stop := windowsStopScript(p); !strings.Contains(stop, `Contains('"C:\Users\a b\r\cert.pem"')`) {
 		t.Errorf("stop script does not match the redirector by its certificate:\n%s", stop)
 	}
@@ -119,6 +125,17 @@ func TestWindowsTaskActionRuns(t *testing.T) {
 	if err := xml.Unmarshal([]byte(strings.Replace(windowsTaskXML(p, "S-1-5-21-1"), `encoding="UTF-16"`, `encoding="UTF-8"`, 1)), &task); err != nil {
 		t.Fatal(err)
 	}
+	// Restore without a recorded configuration path reads the certificate
+	// path back from the task.
+	saved := runRouteSystemCommand
+	t.Cleanup(func() { runRouteSystemCommand = saved })
+	runRouteSystemCommand = func(context.Context, []byte, string, ...string) ([]byte, error) {
+		return []byte(task.Arguments + "\r\n"), nil
+	}
+	if got := windowsTaskCertFile(t.Context(), p.id); got != p.certFile {
+		t.Errorf("certificate path from the task: %q, want %q", got, p.certFile)
+	}
+	runRouteSystemCommand = saved
 	launch := `$p = Start-Process -Wait -PassThru -FilePath ` + psQuote(task.Command) + ` -ArgumentList ` + psQuote(task.Arguments) + ` -WindowStyle Hidden; exit $p.ExitCode`
 	cmd := exec.Command(windowsPowerShell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", powerShellEncode(launch))
 	cmd.Env = append(os.Environ(), windowsTaskHelperEnv+"=1", "TFSAZ_CONFIG=")
