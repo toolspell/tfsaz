@@ -21,9 +21,10 @@ Solve one problem per PR. Never include a PAT, real hostname or collection URL.
 
 ### Platforms
 
-<!-- tfsaz keeps feature parity across macOS, Windows and Linux. For each platform, tick it
-if you tested on it, or leave it unticked and say why (for example "CI only" or "no
-platform-specific code"). A feature that misses a platform is a gap to report. -->
+<!-- tfsaz needs feature parity across macOS, Windows and Linux for a release. For each
+platform, tick it if you tested on it, or leave it unticked and say why (for example "CI only"
+or "no platform-specific code"). A platform this PR doesn't implement yet needs "not supported
+on this platform" handling and a backlog entry; link it here. -->
 
 - [ ] macOS:
 - [ ] Windows:

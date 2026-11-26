@@ -39,7 +39,11 @@ Details and the remaining routing rules: [Architecture](docs/internals/architect
 
 ### Platform parity
 
-macOS, Linux and Windows are fully supported at feature parity. Platform-specific implementations are fine (launchd, systemd, Task Scheduler). Parity is required to complete a PR, so consider all three platforms in every change, even when a first shot or an experiment is only tried on one. A feature or doc step that misses a platform is a gap to report, not a design choice.
+macOS, Linux and Windows are fully supported at feature parity. Platform-specific implementations are fine (launchd, systemd, Task Scheduler). Consider all three platforms in every change, even when a first shot or an experiment is only tried on one.
+
+- Parity is required for a release, not for every PR.
+- A PR may land a feature on fewer platforms, but every other platform must get explicit "not supported on this platform" handling: a clear error and a nonzero exit, never a silent no-op or a crash. The same PR adds a [backlog](docs/backlog.md#platforms) entry for each missing platform.
+- A feature or doc step that misses a platform without that handling and entry is a gap to report, not a design choice.
 
 ## Glossary
 
