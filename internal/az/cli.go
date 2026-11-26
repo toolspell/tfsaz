@@ -137,7 +137,7 @@ type app struct {
 // Run writes command output to stdout. The executable reports returned errors
 // on stderr and exits nonzero.
 func Run(ctx context.Context, args []string) error {
-	a := app{stdout: os.Stdout, stderr: os.Stderr, stdin: os.Stdin, store: systemStore{}}
+	a := app{stdout: os.Stdout, stderr: os.Stderr, stdin: os.Stdin, store: processStore}
 	return a.run(ctx, args)
 }
 

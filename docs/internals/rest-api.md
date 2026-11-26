@@ -14,7 +14,7 @@ A hard-coded `_apis/...` path skips that contract. It breaks silently when a ser
 
 How TFSaz does it, in `internal/az/catalog.go` and `apiCall.invoke` in `api_call.go`:
 
-- `fetchCatalog` sends the OPTIONS request to the profile's real collection URL on every catalog-resolved command. Nothing caches it, so a server upgrade takes effect at once; the price is one extra request per call (a live 2022.2 collection advertised 1,198 locations).
+- `fetchCatalog` sends the OPTIONS request to the profile's real collection URL on every catalog-resolved command and every [version check](#check-the-servers-api-version). Nothing caches it, so a server upgrade takes effect at once; the price is one extra request per call (a live 2022.2 collection advertised 1,198 locations).
 - TFSaz skips the extension's `_apis/resourceAreas` lookup, which picks the host per area. On Azure DevOps Server every area lives on the collection, and the extension's SDK notes that the server returns an empty list there.
 - `resolveResource` matches area and resource case-insensitively, skips locations whose `minVersion` is above the requested version, and binds the route template. Of the matches it keeps the highest `maxVersion`, then the one that omits the fewest optional slots; a remaining tie is an error, not a guess.
 - `bindResourceRoute` rejects values that could become path control segments (dot segments, `_apis`, `;`, slashes, also percent-encoded, trailing dots), so a catalog-resolved path stays inside the collection.
@@ -34,12 +34,17 @@ Where TFSaz builds routes itself today:
 - Where a version is part of the behavior TFSaz mirrors, the extension's value wins under the [compatibility contract](../../AGENTS.md#compatibility-contract): `devops invoke` defaults to `5.0` without `--api-version`, as the extension does; T3 always passes `7.1` or `7.1-preview`.
 - The connection-data (`5.0-preview.1`) and identity (`5.0`) lookups in `client.go` copy the extension's SDK clients, but they are TFSaz's own requests, not a passthrough, so the 7.1 target applies. Moving them is tracked in [#18](https://github.com/toolspell/tfsaz/issues/18).
 
-## What the server reports about versions
+## Check the server's API version
 
-Nothing uses this today. It is here for when TFSaz needs to detect what a server supports, such as the version check in [#20](https://github.com/toolspell/tfsaz/issues/20).
+`init`, `profile add`, `devops login`, `repo verify` and `doctor` compare the collection with a floor of API 7.1, previews included (`checkAPIFloor` in `catalog.go`). That is the lowest version T3's adapter sends: `7.1`, `7.1-preview` and `7.1-preview.N`.
 
-| Source | What it tells |
+- **Source.** The highest `maxVersion` of the `git/repositories` locations in the catalog stands for the server's API level. Every release T3 can use has that resource, and it follows the server's version. A `maxVersion` of 7.1 passes even where 7.1 is still a preview (`releasedVersion` below it).
+- **Severity.** `repo verify` and `doctor` report a server below the floor, or a catalog they cannot read, as an error and exit nonzero. `init`, `profile add` and `devops login` print a `WARNING:` line on stderr and still save the profile, because the PAT itself is valid. `repo verify` skips the check with a warning when the profile has no PAT; its Git checks need none.
+- **`devops login` stderr.** The extra line breaks no caller: T3 never runs `devops login`, it only names it in its sign-in hint, and the extension's own `devops login` writes `WARNING:` lines to stderr too.
+
+Sources not used:
+
+| Source | Why not |
 | --- | --- |
-| `OPTIONS _apis?allHostTypes=true` | Per resource: `minVersion`, `maxVersion`, `releasedVersion`, `resourceVersion`. The `maxVersion` of a long-lived resource such as `git/repositories` approximates the server's API level. `az devops invoke` without `--resource` lists it. |
-| `_apis/connectionData` | `deploymentType` (hosted or on-premises), `instanceId` and `deploymentId`. With a `connectOptions` value that includes services, `locationServiceData.serviceDefinitions` carries the same version fields per service. Which value fills it is unverified. |
+| `_apis/connectionData` | Reports `deploymentType`, `instanceId` and `deploymentId`. Versions per service appear in `locationServiceData.serviceDefinitions` only with a `connectOptions` value that includes services; which value fills it is unverified. |
 | `_apis/resourceAreas` | Area names and their host URLs, no versions. Empty on the server, per the extension's SDK. |

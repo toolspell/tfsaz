@@ -204,6 +204,10 @@ func TestLoginFromStdinVerifiesBeforeStoring(t *testing.T) {
 			http.Error(w, "invalid", http.StatusUnauthorized)
 			return
 		}
+		if r.Method == http.MethodOptions {
+			serveTestCatalog(w, "7.1")
+			return
+		}
 		serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"fixture@example.invalid"}}`, repoTestViewerID)
 	}))
 	defer server.Close()

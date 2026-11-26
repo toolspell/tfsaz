@@ -122,17 +122,29 @@ func (a app) runDoctor(ctx context.Context, args []string) error {
 			continue
 		}
 		client, authErr := a.client(p)
+		var level catalogVersion
+		var levelErr error
 		if authErr == nil {
 			probe, end := context.WithTimeout(ctx, 15*time.Second)
 			_, authErr = client.Identity(probe)
 			end()
+			if authErr == nil {
+				probe, end = context.WithTimeout(ctx, 20*time.Second)
+				level, levelErr = checkAPIFloor(probe, client)
+				end()
+			}
 			client.http.CloseIdleConnections()
 		}
 		name := "authentication " + p.ID
 		if authErr != nil {
 			add(name, "error", authErr.Error())
+			continue
+		}
+		add(name, "ok", "collection verified the saved PAT")
+		if levelErr != nil {
+			add("api version "+p.ID, "error", levelErr.Error())
 		} else {
-			add(name, "ok", "collection verified the saved PAT")
+			add("api version "+p.ID, "ok", fmt.Sprintf("collection supports API %d.%d", level.major, level.minor))
 		}
 	}
 	if asJSON {

@@ -27,6 +27,10 @@ type credentialStore interface {
 	Delete(service, profileID string) error
 }
 
+// processStore is the store of a running binary. Test binaries replace it
+// (credentials_testbinary.go).
+var processStore credentialStore = systemStore{}
+
 type systemStore struct{}
 
 func (systemStore) Get(service, id string) (string, error) { return keyring.Get(service, id) }
@@ -93,6 +97,10 @@ func (a app) verifyLogin(ctx context.Context, p Profile) (string, error) {
 	defer client.http.CloseIdleConnections()
 	if _, err := client.Identity(ctx); err != nil {
 		return "", err
+	}
+	// The PAT is valid either way, so the caller still saves the profile.
+	if _, err := checkAPIFloor(ctx, client); err != nil {
+		_, _ = fmt.Fprintf(a.stderr, "WARNING: %v\n", err)
 	}
 	return pat, nil
 }

@@ -63,7 +63,7 @@ Interactive `init` already stores the PAT. For a hand-written profile, a profile
 tfsaz devops login --organization https://engineering-example.visualstudio.com
 ```
 
-Enter the PAT at the hidden prompt, or pipe one line from a secret provider on stdin. Login verifies the PAT against the collection before saving it in the OS keyring under the stable profile ID. The OS keyring must be available in that session; see [OS keyring requirements](#os-keyring-requirements).
+Enter the PAT at the hidden prompt, or pipe one line from a secret provider on stdin. Login verifies the PAT against the collection before saving it in the OS keyring under the stable profile ID. If the collection offers no API 7.1, login still saves the PAT and prints a warning; see [Diagnose](diagnose.md#common-problems). The OS keyring must be available in that session; see [OS keyring requirements](#os-keyring-requirements).
 
 New profiles use `credentialVersion: 2`, which scopes the keyring service to the collection URL (`tfsaz/v2/` plus a hash of it). Older profiles without this field use the original `tfsaz` service. Preserve the existing credential version when editing a profile so it can still find its saved PAT. For the same reason, run `devops login` again after changing the `collectionUrl` of a version 2 profile.
 
@@ -97,7 +97,7 @@ TFSaz has no command that removes a profile from the configuration. To remove on
 
 Run `profile logout` before you change a profile's ID, `collectionUrl` or `credentialVersion`, or delete the configuration file. Otherwise the old PAT stays in the keyring, where TFSaz no longer finds it. Remove such an entry with your OS's password manager: Keychain Access on macOS, Credential Manager on Windows, or Passwords and Keys (Seahorse) on Linux. TFSaz entries use a service starting with `tfsaz` and the profile ID as account.
 
-`profile list` does not show whether a PAT is stored. `tfsaz doctor` checks each profile's PAT against its collection.
+`profile list` does not show whether a PAT is stored. `tfsaz doctor` checks each profile's PAT and API version against its collection.
 
 ## PAT scopes
 
