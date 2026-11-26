@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -58,11 +59,11 @@ type routeSystemState struct {
 	Port int    `json:"port"`
 }
 
-func manageRouteSystem(ctx context.Context, install bool, dir, configFile, certFile, keyFile, leafSHA256 string, aliases []string) error {
+func manageRouteSystem(ctx context.Context, install bool, id, dir, configFile, certFile, keyFile, leafSHA256 string, aliases []string) error {
 	if runtime.GOOS != "windows" && os.Geteuid() == 0 {
 		return errors.New("run browser routing setup as your own user, not as root; TFSaz asks for administrator rights only for the hosts file and port 443")
 	}
-	p, err := prepareRouteSystem(install, dir, configFile, certFile, keyFile, leafSHA256, aliases)
+	p, err := prepareRouteSystem(install, id, dir, configFile, certFile, keyFile, leafSHA256, aliases)
 	if err != nil {
 		return err
 	}
@@ -78,26 +79,36 @@ func manageRouteSystem(ctx context.Context, install bool, dir, configFile, certF
 	return nil
 }
 
-func prepareRouteSystem(install bool, dir, configFile, certFile, keyFile, leafSHA256 string, aliases []string) (routeSystemPlan, error) {
-	for _, path := range []string{dir, configFile, certFile, keyFile} {
+// Restore of an installation whose configuration path was not recorded knows
+// only its ID and passes empty paths.
+func prepareRouteSystem(install bool, id, dir, configFile, certFile, keyFile, leafSHA256 string, aliases []string) (routeSystemPlan, error) {
+	// The ID names files and nftables tables in privileged scripts.
+	if !routeInstallationID.MatchString(id) {
+		return routeSystemPlan{}, fmt.Errorf("invalid installation ID %q", id)
+	}
+	paths := []string{dir, configFile, certFile, keyFile}
+	if !install && !slices.ContainsFunc(paths, func(path string) bool { return path != "" }) {
+		paths = nil
+	}
+	for _, path := range paths {
 		if !filepath.IsAbs(path) {
 			return routeSystemPlan{}, fmt.Errorf("routing path %q must be absolute", path)
 		}
 	}
-	p := routeSystemPlan{
-		id:         routeSystemID(configFile),
-		dir:        filepath.Clean(dir),
-		configFile: filepath.Clean(configFile),
-		certFile:   filepath.Clean(certFile),
-		keyFile:    filepath.Clean(keyFile),
-		leafSHA256: strings.ToLower(strings.ReplaceAll(leafSHA256, ":", "")),
+	if paths != nil && routeSystemID(configFile) != id {
+		return routeSystemPlan{}, fmt.Errorf("installation %s does not belong to %s", id, configFile)
 	}
+	p := routeSystemPlan{id: id, leafSHA256: strings.ToLower(strings.ReplaceAll(leafSHA256, ":", ""))}
 	if b, err := hex.DecodeString(p.leafSHA256); err != nil || len(b) != sha256.Size {
 		return routeSystemPlan{}, errors.New("the leaf fingerprint must be a SHA-256 hex digest")
 	}
-	for _, f := range []string{p.certFile, p.keyFile} {
-		if filepath.Dir(f) != p.dir {
-			return routeSystemPlan{}, fmt.Errorf("%s must be directly inside the routing directory %s", f, p.dir)
+	if paths != nil {
+		p.dir, p.configFile = filepath.Clean(dir), filepath.Clean(configFile)
+		p.certFile, p.keyFile = filepath.Clean(certFile), filepath.Clean(keyFile)
+		for _, f := range []string{p.certFile, p.keyFile} {
+			if filepath.Dir(f) != p.dir {
+				return routeSystemPlan{}, fmt.Errorf("%s must be directly inside the routing directory %s", f, p.dir)
+			}
 		}
 	}
 	seen := make(map[string]bool)
@@ -113,7 +124,10 @@ func prepareRouteSystem(install bool, dir, configFile, certFile, keyFile, leafSH
 	slices.Sort(p.aliases)
 	if !install {
 		// Restore works from markers. The staged leaf only helps remove macOS trust.
-		files := []string{p.certFile}
+		var files []string
+		if p.certFile != "" {
+			files = append(files, p.certFile)
+		}
 		if home, err := os.UserHomeDir(); err == nil {
 			files = append(files, filepath.Join(home, ".tfsaz", "route-recovery", p.id+".pem"))
 		}
@@ -171,6 +185,9 @@ func prepareRouteSystem(install bool, dir, configFile, certFile, keyFile, leafSH
 	}
 	return p, nil
 }
+
+// routeInstallationID matches what routeSystemID returns.
+var routeInstallationID = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 // routeSystemID names every system object of one configuration, so two
 // configurations on one machine never touch each other's entries.

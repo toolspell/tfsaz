@@ -203,7 +203,7 @@ type nativeCommand struct {
 var nativeCommandNotes = map[string]string{
 	"route setup":    "Run on the host and under the account where the browser runs. For the web client’s Browser panel this is the T3 server. Setup uses the exact registered alias names, a local leaf certificate, hosts entries and a supervised loopback listener. System integration requires OS privileges. Rerun setup after interruption, or run route restore to undo it. See https://github.com/toolspell/tfsaz/blob/main/docs/user/browser-routing.md#what-setup-installs for what setup installs and needs on each platform.",
 	"route verify":   "Checks the local resolver and both loopback addresses on port 443 using the managed certificate. Open the printed alias URL in your intended browser and compare the address bar with the expected destination to confirm browser trust and routing.",
-	"route restore":  "Stop using alias links before restoring public name resolution. Uses the saved installation identity for the selected configuration. After removing or adding checkout aliases, or when the certificate expires, run restore and then setup.",
+	"route restore":  "Stop using alias links before restoring public name resolution. Uses the saved installation identity for the selected configuration. The installation ID comes from the configuration path, so when no installation matches it, restore lists the installations recorded in ~/.tfsaz/route-recovery and changes nothing; restore one with --installation ID. After removing or adding checkout aliases, or when the certificate expires, run restore and then setup.",
 	"route redirect": "Listens on 127.0.0.1 and ::1 (default port 443) and answers GET and HEAD for supported repository, PR, commit, work-item and build pages with a 302 to the real collection. The browser carries the #fragment to the destination. Fragments stay in the browser, so the redirector cannot validate them. The certificate must be an unexpired CA:FALSE serverAuth leaf whose DNS names are all exact generated aliases of active setups or profiles; wildcards, IP names and shared hosts such as dev.azure.com are refused. SNI and Host must name the same alias. Other names, methods, Git traffic, request bodies and Authorization headers are refused. Nothing is proxied or logged and no PAT is read. Each request rereads the configuration, so a restored setup stops redirecting at once. Map the alias to loopback with tfsaz route hosts and trust only this leaf. If port 443 needs elevated privileges, use a loopback port redirect to a high port and run TFSaz as the profile owner. See https://github.com/toolspell/tfsaz/blob/main/docs/user/browser-routing-manual.md for running the service yourself.",
 }
 
@@ -282,9 +282,9 @@ var nativeCommands = map[string]nativeCommand{
 		"route verify",
 	},
 	"route restore": {
-		"Remove the machine browser routing installed for this configuration.",
-		"",
-		"route restore",
+		"Remove the machine browser routing installed for this configuration, or for the installation with the ID that restore lists.",
+		"[--installation ID]",
+		"route restore --installation 0123456789abcdef",
 	},
 	"route explain": {
 		"Describe how TFSaz routes an Azure DevOps web link.",
