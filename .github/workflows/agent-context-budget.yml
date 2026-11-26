@@ -21,6 +21,10 @@ jobs:
     env:
       BUDGET: .agents/context-budget.json
       ALLOW_INCREASE: ${{ contains(github.event.pull_request.labels.*.name, 'agent-context-increase') }}
+      # Growth from this many bytes in one value gets the advice at HINT_URL. TestAgentContextBudget
+      # keeps both equal to the constants in repo_checks_test.go.
+      HINT_BYTES: 200
+      HINT_URL: https://github.com/toolspell/tfsaz/blob/main/docs/operations/development.md#agent-context-budget
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,5 +57,12 @@ jobs:
             echo "Accepted by the agent-context-increase label."
             exit 0
           fi
-          echo "::error file=$BUDGET::Agent context grew compared to the base branch. Cut the added text, or ask a maintainer to add the agent-context-increase label."
+          largest=$(jq -r --slurpfile base "$RUNNER_TEMP/base.json" '
+            [to_entries[] | select($base[0][.key] != null) | .value - $base[0][.key]] | max // 0
+          ' "$BUDGET")
+          if [ "$largest" -ge "$HINT_BYTES" ]; then
+            echo "::error file=$BUDGET::Agent context grew by $largest bytes in one value. Before you ask for the agent-context-increase label, move detail that matters only in one kind of task to the doc that owns it and leave a one-line pointer that says when to read it (\"Before you X, read Y\"): $HINT_URL"
+          else
+            echo "::error file=$BUDGET::Agent context grew compared to the base branch. Cut the added text, or ask a maintainer to add the agent-context-increase label."
+          fi
           exit 1

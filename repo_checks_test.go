@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -152,6 +153,44 @@ func TestNoEmDashInMarkdown(t *testing.T) {
 // raises a value unless a maintainer adds the agent-context-increase label.
 const agentContextBudget = ".agents/context-budget.json"
 
+// Growth of agentContextHintBytes or more in one value, about two lines of
+// prose, gets agentContextAdvice; smaller growth, such as a reworded rule,
+// fails without it. The CI job repeats both as HINT_BYTES and HINT_URL.
+const (
+	agentContextHintBytes = 200
+	agentContextHintURL   = "https://github.com/toolspell/tfsaz/blob/main/docs/operations/development.md#agent-context-budget"
+	agentContextAdvice    = `Before you record the growth and ask for the agent-context-increase label, move detail that matters only in one kind of task to the doc that owns it and leave a one-line pointer that says when to read it ("Before you X, read Y"): ` + agentContextHintURL
+	agentContextWorkflow  = ".github/workflows/agent-context-budget.yml"
+)
+
+var agentContextNames = map[string]string{
+	"agentsMdBytes":         "AGENTS.md",
+	"claudeMdBytes":         "CLAUDE.md",
+	"skillFrontmatterBytes": "The skills' frontmatter",
+}
+
+// agentContextHint names the values of got that exceed want by
+// agentContextHintBytes or more and appends agentContextAdvice. It returns ""
+// when none does. A value that want lacks is new and has no base to grow from.
+func agentContextHint(want, got map[string]int) string {
+	var grown []string
+	for _, key := range slices.Sorted(maps.Keys(got)) {
+		base, ok := want[key]
+		if !ok || got[key]-base < agentContextHintBytes {
+			continue
+		}
+		name := agentContextNames[key]
+		if name == "" {
+			name = key
+		}
+		grown = append(grown, fmt.Sprintf("%s grew by %d bytes.", name, got[key]-base))
+	}
+	if len(grown) == 0 {
+		return ""
+	}
+	return strings.Join(append(grown, agentContextAdvice), " ")
+}
+
 const maxAgentFileLines = 300
 
 // TestAgentContextBudget keeps agentContextBudget equal to the measured
@@ -190,7 +229,45 @@ func TestAgentContextBudget(t *testing.T) {
 	}
 	if !maps.Equal(got, want) {
 		gotJSON, _ := json.MarshalIndent(got, "", "  ")
-		t.Errorf("%s does not match the measured agent context; update it in the same commit (growth needs the maintainer's OK):\n%s", agentContextBudget, gotJSON)
+		msg := agentContextBudget + " does not match the measured agent context."
+		if hint := agentContextHint(want, got); hint != "" {
+			msg += "\n" + hint
+		}
+		t.Errorf("%s\nUpdate it in the same commit (growth needs the maintainer's OK):\n%s", msg, gotJSON)
+	}
+	workflow := read(agentContextWorkflow)
+	for _, line := range []string{fmt.Sprintf("HINT_BYTES: %d", agentContextHintBytes), "HINT_URL: " + agentContextHintURL} {
+		if !strings.Contains(workflow, line+"\n") {
+			t.Errorf("%s has no line %q; keep it equal to the constant in repo_checks_test.go", agentContextWorkflow, line)
+		}
+	}
+}
+
+func TestAgentContextHint(t *testing.T) {
+	const at = agentContextHintBytes
+	base := map[string]int{"agentsMdBytes": 1000, "skillFrontmatterBytes": 500}
+	for _, tc := range []struct {
+		name  string
+		got   map[string]int
+		grown string // the growth sentences before agentContextAdvice; empty for no hint
+	}{
+		{"unchanged", base, ""},
+		{"shrunk", map[string]int{"agentsMdBytes": 400, "skillFrontmatterBytes": 500}, ""},
+		{"rewording below the threshold", map[string]int{"agentsMdBytes": 1000 + at - 1, "skillFrontmatterBytes": 500 + at - 1}, ""},
+		{"at the threshold", map[string]int{"agentsMdBytes": 1000 + at, "skillFrontmatterBytes": 500}, fmt.Sprintf("AGENTS.md grew by %d bytes.", at)},
+		{"only the value over the threshold", map[string]int{"agentsMdBytes": 1050, "skillFrontmatterBytes": 900}, "The skills' frontmatter grew by 400 bytes."},
+		{"both values", map[string]int{"agentsMdBytes": 1300, "skillFrontmatterBytes": 900}, "AGENTS.md grew by 300 bytes. The skills' frontmatter grew by 400 bytes."},
+		{"new value", map[string]int{"agentsMdBytes": 1000, "skillFrontmatterBytes": 500, "claudeMdBytes": 5000}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want := ""
+			if tc.grown != "" {
+				want = tc.grown + " " + agentContextAdvice
+			}
+			if got := agentContextHint(base, tc.got); got != want {
+				t.Errorf("agentContextHint() = %q, want %q", got, want)
+			}
+		})
 	}
 }
 

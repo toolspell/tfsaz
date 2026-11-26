@@ -99,7 +99,7 @@ export default defineConfig((ctx) => ({
       {
         path: "**/*.md",
         instructions:
-          'Hold changed docs to "Documentation rules" in AGENTS.md and the names in docs/internals/naming.md.',
+          'Hold changed docs to "Documentation rules" in AGENTS.md, docs/internals/documentation.md and the names in docs/internals/naming.md.',
       },
     ],
   },
@@ -118,6 +118,7 @@ export default defineConfig((ctx) => ({
         { files: "docs/internals/architecture.md", applyTo: SYSTEM_PATHS },
         // Source changes too, so a request for tests follows the same rules.
         { files: "docs/internals/testing.md", applyTo: "**/*.go" },
+        { files: "docs/internals/documentation.md", applyTo: "**/*.md" },
         { files: "docs/internals/naming.md", applyTo: "**/*.md" },
       ],
     },
