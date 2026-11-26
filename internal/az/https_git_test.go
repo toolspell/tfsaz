@@ -248,3 +248,57 @@ func TestGitHTTPSDestinationRejectsUnboundManagedAliases(t *testing.T) {
 		}
 	}
 }
+
+// A URL Git would send to a managed alias host must stay managed, so that it
+// fails closed instead of reaching the original helper unrouted.
+func TestGitAzureAlias(t *testing.T) {
+	const managed = "tfsaz-0123456789abcdef01234567"
+	for _, tc := range []struct {
+		raw              string
+		azure, isManaged bool
+	}{
+		{"https://fixture.visualstudio.com/P/_git/R", true, false},
+		{"HTTPS://Fixture.VisualStudio.COM./P/_git/R", true, false},
+		{"https://" + managed + ".visualstudio.com/P/_git/R", true, true},
+		{"https://user:pa%ss@" + managed + ".visualstudio.com:443/P/_git/R", true, true},
+		{"https://" + managed + ".visualstudio.com?x=1", true, true},
+		{"https://" + managed + ".visualstudio.com#fragment", true, true},
+		{"https://%74fsaz-0123456789abcdef01234567.visualstudio.com/P/_git/R", true, true},
+		{"https://dev.azure.com/real/P/_git/R", true, false},
+		{"https://DEV.AZURE.COM./TFSAZ-0123456789abcdef01234567/P/_git/R", true, true}, // naming-allow: Git hostnames and paths are case-insensitive input
+		{"https://dev.azure.com/real?x=" + managed + "/P", true, false},
+		{"https://dev.azure.com?/" + managed, true, false},
+		{"http://" + managed + ".visualstudio.com/P/_git/R", false, false},
+		{"https://fixture.visualstudio.com.evil.invalid/P/_git/R", false, false},
+		{"https://native.invalid/" + managed + "/P/_git/R", false, false},
+		{"git@ssh.dev.azure.com:v3/o/p/r", false, false},
+	} {
+		if azure, isManaged := gitAzureAlias(tc.raw); azure != tc.azure || isManaged != tc.isManaged {
+			t.Errorf("gitAzureAlias(%q) = %v, %v; want %v, %v", tc.raw, azure, isManaged, tc.azure, tc.isManaged)
+		}
+	}
+}
+
+func TestGitHTTPSDestinationWithProfile(t *testing.T) {
+	const collection = "https://server.invalid:8443/tfs/Main%20Collection"
+	setConfig(t, Profile{ID: "fixture", Organization: "https://fixture.visualstudio.com", CollectionURL: collection})
+	for _, tc := range []struct{ raw, want, err string }{
+		{raw: "https://fixture.visualstudio.com/DefaultCollection/My%20Project/_git/Repo", want: collection + "/My%20Project/_git/Repo"},
+		{raw: "https://fixture.visualstudio.com/My%20Project/_git/Repo", want: collection + "/My%20Project/_git/Repo"},
+		{raw: "https://fixture.visualstudio.com/My%20Project/_git/Repo/pullrequest/4", err: "Git endpoint"},
+		{raw: "https://other.visualstudio.com/P/_git/R", want: "https://other.visualstudio.com/P/_git/R"},
+		{raw: "https://dev.azure.com/other/P/_git/R", want: "https://dev.azure.com/other/P/_git/R"},
+		{raw: "https://tfsaz-0123456789abcdef01234567.visualstudio.com/P/_git/R", err: "no active setup"},
+	} {
+		got, err := gitHTTPSDestination(tc.raw)
+		if tc.err != "" {
+			if err == nil || !strings.Contains(err.Error(), tc.err) {
+				t.Errorf("%s: got %q, %v; want an error with %q", tc.raw, got, err, tc.err)
+			}
+			continue
+		}
+		if err != nil || got != tc.want {
+			t.Errorf("%s: got %q, %v; want %q", tc.raw, got, err, tc.want)
+		}
+	}
+}

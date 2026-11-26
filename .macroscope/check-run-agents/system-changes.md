@@ -23,7 +23,7 @@ Everything TFSaz changes outside its own configuration must be cleanly undoable 
 
 Look for changed code that adds or widens a change to state outside TFSaz's configuration: the hosts file, trust stores, services, firewall rules, Git config and remotes, link handlers, keyring entries, shims, browser and proxy settings, or new files outside the configuration directory. For each, use `browse_code` to check that this pull request also:
 
-- undoes it in the matching restore or removal path (`route restore`, `repo restore`, `profile logout`, or a documented step);
+- undoes it in the matching restore or removal path (`route restore`, `repo restore`, `profile logout`, `profile remove`, or a documented step);
 - reports it in a check (`route verify`, `repo verify`, `doctor`, or another TFSaz command);
 - lists it in the `SECURITY.md` table, with the undo and the check.
 
