@@ -100,6 +100,9 @@ func (a app) verifyLogin(ctx context.Context, p Profile) (string, error) {
 	}
 	// The PAT is valid either way, so the caller still saves the profile.
 	if _, err := checkAPIFloor(ctx, client); err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		_, _ = fmt.Fprintf(a.stderr, "WARNING: %v\n", err)
 	}
 	return pat, nil
