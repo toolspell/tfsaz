@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -220,6 +221,34 @@ func setup(buildTools bool) bool {
 		fmt.Println("setup: done.")
 	}
 	return ok
+}
+
+// undoSetup removes the core.hooksPath that setup sets. A value setup did not
+// write is left alone. Downloaded modules and built tools stay in Go's caches.
+func undoSetup() bool {
+	out, err := exec.Command("git", "config", "--local", "--get", "core.hooksPath").Output()
+	var exit *exec.ExitError
+	switch {
+	case errors.As(err, &exit) && exit.ExitCode() == 1:
+		fmt.Println("setup -undo: core.hooksPath is not set; nothing to undo.")
+		return true
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "setup -undo: git config --get core.hooksPath: %v\n", err)
+		return false
+	}
+	if value := strings.TrimSuffix(string(out), "\n"); value != ".githooks" {
+		fmt.Printf("setup -undo: core.hooksPath is %q, not set by setup; left unchanged.\n", value)
+		return true
+	}
+	fmt.Println("setup -undo: git config --local --unset core.hooksPath")
+	c := exec.Command("git", "config", "--local", "--unset", "core.hooksPath")
+	c.Stdout, c.Stderr = os.Stdout, os.Stderr
+	if err := c.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "setup -undo: %v\n", err)
+		return false
+	}
+	fmt.Println("setup -undo: done.")
+	return true
 }
 
 func short(sha string) string {

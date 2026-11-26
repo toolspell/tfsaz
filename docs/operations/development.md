@@ -48,7 +48,7 @@ deadcode only reports. It lists, per system, functions that `main` cannot reach,
 
 `.githooks/pre-commit` is versioned and runs `go run ./tools/dev staged`. It checks the staged content, not the working tree, so a partially staged file is checked as it will be committed. On Windows, Git for Windows runs it in its bundled shell.
 
-Enable it once per clone with `git config core.hooksPath .githooks`; the setup command does this. The setting lives in the clone's shared Git config, so every worktree of the clone uses the hook its own checkout contains. Check it with `git config --show-origin core.hooksPath`; turn the hook off again with `git config --unset core.hooksPath`.
+Enable it once per clone with `git config core.hooksPath .githooks`; the setup command does this. The setting lives in the clone's shared Git config, so every worktree of the clone uses the hook its own checkout contains. Check it with `git config --show-origin core.hooksPath`; turn the hook off again with `go run ./tools/dev setup -undo`. It unsets `core.hooksPath` only when the value is `.githooks`, the one setup writes, and leaves the downloaded modules and built tools in Go's caches.
 
 ## Worktree setup
 

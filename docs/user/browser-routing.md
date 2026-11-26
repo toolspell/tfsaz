@@ -83,6 +83,8 @@ Then open the printed URL in the browser you actually use and compare the addres
 
 **Interrupted hosts edit on Windows.** On Windows, setup and restore edit the hosts file in place. During the edit, `hosts.tfsaz-journal` beside it records the original and intended contents. After an interruption, rerun the same command. If TFSaz reports a conflicting edit, it keeps both files. Review the journal, preserve the wanted hosts entries, then remove the journal and retry.
 
+**Interrupted hosts edit on macOS and Linux.** On macOS and Linux, setup and restore write the complete new hosts file to a temporary `/etc/hosts.tfsaz.XXXXXX` beside it, then replace `/etc/hosts` in one step. The hosts file therefore holds either the old or the new entries, never a partial edit. After an interruption, rerun the same command. If TFSaz reports `hosts changed during setup; retry`, another program changed the hosts file during the edit and TFSaz left it unchanged; rerun the command. If the command was killed, temporary files can remain. List them with `ls /etc/hosts.tfsaz.*` and delete them with `sudo rm /etc/hosts.tfsaz.*`.
+
 ## What the redirector does and refuses
 
 The redirector sends the browser to the real collection instead of serving the collection itself. The browser therefore signs in at the real server, in its own session. Why TFSaz redirects instead of proxying is explained in [Routing compared with a proxy](../internals/architecture.md#routing-compared-with-a-proxy).
