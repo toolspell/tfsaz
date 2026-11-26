@@ -55,12 +55,7 @@ Deferred work, so any session or worktree can pick it up.
   - `routeSystemLeafNames` (`route_system.go:218`, darwin and linux), `routeSystemSystemTrust` (const in `route_system_darwin.go`, `_linux.go`, `_windows.go`).
   - darwin only: `linkHandlerPaths` (`link_open.go:50`); `writeRootFile`, `reserveRoutePort`, `ownsRoutePort`, `releaseRoutePort` and the const `routePortOwner` in `route_system_unix.go`, which only linux uses.
   - linux only: `editRouteHosts` (`route_system_hosts.go:24`). windows only: `routeHostsShell` and `shellQuote` (`route_system_hosts.go:91`, `:134`), and the test helpers `routeSystemCall` and `fakeRouteSystemCommands` (`route_system_test.go:254`, `:261`).
-- **Texts that break the [naming rules](internals/naming.md)**, in help and error strings and agent files:
-  - `internal/az/help.go:235` (`doctor`): "Check the CLI" should say tfsaz.
-  - `internal/az/help.go:131` (`rest --url`): "organization alias" should be "Azure-style alias".
-  - `internal/az/help.go:379` (`route`): "Azure-style URLs" should be "synthetic URLs".
-  - `internal/az/help.go:380`, `internal/az/shim.go:69`, `internal/az/shim.go:106`: "launchers", "CLI and Git helper launchers", "tfsaz launcher" should be "shims" (`az` and `git-remote-tfsaz`).
-  - `internal/az/preserve_git.go:27` ("the tfsaz remote helper") and `internal/az/setup_transport.go:76` ("Git transport helper") should name `git-remote-tfsaz`.
+- **Doc text that breaks the [naming rules](internals/naming.md):** `docs/user/routing.md` ("Long-running processes") says "Git starts its transport helper" for what is the Git HTTPS helper.
 - **Tests that poll with `time.Sleep`:** candidates for waiting on an event instead ([Testing](internals/testing.md#waiting)). Four calls in three files:
   - `internal/az/route_system_darwin_test.go:286` (`TestInheritedRedirectServes`): retries an HTTPS GET every 100 ms until the child serves. The child could signal readiness instead.
   - `internal/az/link_export_linux_test.go:101` (`TestDesktopLinkHandlerGIOArguments`): polls a trace file every 10 ms after `gio launch`. GIO starts the receiver detached, so there may be no event to wait on; if so, keep it and add the reason as a comment.

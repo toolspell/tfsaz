@@ -66,7 +66,7 @@ func (a app) runShim(args []string) error {
 	if err := installShimLinks(dir, executable); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(a.stdout, "Installed CLI and Git helper launchers in %s. Include this directory on the calling process's PATH.\n", dir)
+	_, err = fmt.Fprintf(a.stdout, "Installed the az and git-remote-tfsaz shims in %s. Include this directory on the calling process's PATH.\n", dir)
 	return err
 }
 
@@ -103,7 +103,7 @@ func installShimLinks(dir, executable string) (err error) {
 	}()
 	for _, path := range missing {
 		if err := installShim(executable, path); err != nil {
-			return fmt.Errorf("install tfsaz launcher: %w", err)
+			return fmt.Errorf("install shim: %w", err)
 		}
 		info, err := os.Lstat(path)
 		if err != nil {

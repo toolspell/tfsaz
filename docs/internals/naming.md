@@ -54,6 +54,6 @@ TFS (Team Foundation Server) is the server's former name. Use it only in literal
 
 ## Where the rules apply
 
-- Docs, AGENTS.md, CLI help and error texts. Docs follow these rules now; help and error texts that do not are listed in the [backlog](../backlog.md#code).
+- Docs, AGENTS.md, CLI help and error texts. Known exceptions are listed in the [backlog](../backlog.md#code).
 - Dated records in `docs/verification/` keep their wording unless a fix changes no fact.
 - Quote other projects' names as they write them, such as T3's "Open on Azure DevOps" button.

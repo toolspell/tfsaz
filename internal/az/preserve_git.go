@@ -24,7 +24,7 @@ func RunPreserveGitHelper(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(args) != 2 || args[0] != "origin" {
-		return errors.New("the tfsaz remote helper requires a managed origin")
+		return errors.New("git-remote-tfsaz requires a managed origin")
 	}
 	binding, err := readPreserveGitBinding(ctx, args[1])
 	if err != nil {

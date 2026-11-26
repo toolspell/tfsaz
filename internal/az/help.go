@@ -128,7 +128,7 @@ var azureCommands = map[string]azureCommand{
 		"Call an API using a configured collection URL or a collection-relative path in a recognized checkout.",
 		"url method body headers uri-parameters output-file output query only-show-errors",
 		"rest --url '/_apis/projects?api-version=7.1' --query 'value[].name' -o tsv",
-		"Requires --url. Full URLs can use a configured collection or organization alias. Use --body @FILE to read a request body and --output-file to save a raw response.",
+		"Requires --url. Full URLs can use a configured collection or Azure-style alias. Use --body @FILE to read a request body and --output-file to save a raw response.",
 	},
 }
 
@@ -232,7 +232,7 @@ var nativeCommands = map[string]nativeCommand{
 		"profile logout --profile engineering",
 	},
 	"doctor": {
-		"Check the CLI, collection profiles, credentials and current or specified checkout.",
+		"Check tfsaz, collection profiles, credentials and current or specified checkout.",
 		"[PATH] [--json]",
 		"doctor --json",
 	},
@@ -376,8 +376,8 @@ var helpGroups = map[string]string{
 	"repos pr":          "Work with Azure DevOps pull requests.",
 	"repos pr policy":   "Read pull request policy evaluations.",
 	"repos pr reviewer": "Manage pull request reviewers.",
-	"route":             "Route Azure-style URLs to Azure DevOps Server.",
-	"shim":              "Install launchers for T3 and Git.",
+	"route":             "Route synthetic URLs to Azure DevOps Server.",
+	"shim":              "Install the az and git-remote-tfsaz shims for T3 and Git.",
 }
 
 func commandWords(args []string) int {

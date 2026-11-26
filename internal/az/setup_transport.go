@@ -73,7 +73,7 @@ func checkPreserveHelper(ctx context.Context, c setupCheckout) error {
 	defer cancel()
 	output, err := c.git(ctx, "remote-tfsaz", "--version")
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return fmt.Errorf("Git transport helper version check timed out: %w", ctx.Err())
+		return fmt.Errorf("git-remote-tfsaz version check timed out: %w", ctx.Err())
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
