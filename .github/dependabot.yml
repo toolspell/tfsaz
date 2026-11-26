@@ -1,4 +1,4 @@
-# Weekly grouped updates for the Go module and the SHA-pinned workflow actions.
+# Weekly grouped updates for the Go module, the pinned tool modules and the SHA-pinned workflow actions.
 # Commit types follow the repo's conventional commits: go.mod and go.sum are build
 # inputs ("build(deps): bump ..."), workflow pins are CI ("ci(deps): bump ...").
 version: 2
@@ -18,6 +18,27 @@ updates:
       prefix: build
       include: scope
     # Replaces Dependabot's default labels, which .github/labels.json does not define.
+    labels: ["dependencies"]
+
+  # The pinned developer tools, one module each (docs/operations/development.md#pinned-tools).
+  # Only the tool itself moves, so its indirect dependencies stay those of its release.
+  - package-ecosystem: gomod
+    directories:
+      - "/tools/actionlint"
+      - "/tools/deadcode"
+      - "/tools/gitleaks"
+      - "/tools/golangci-lint"
+      - "/tools/govulncheck"
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-type: direct
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: build
+      include: scope
     labels: ["dependencies"]
 
   - package-ecosystem: github-actions

@@ -1,0 +1,11 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - nolintlint
+    - unused
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true

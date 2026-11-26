@@ -61,14 +61,12 @@ macOS, Linux and Windows are fully supported at feature parity. Platform-specifi
 ## Verify
 
 ```sh
-gofmt -l .                     # must print nothing
-go vet ./...
-go test -count=1 ./...
-go test -race -count=1 ./...   # what CI runs; Windows x64 needs MinGW-w64
+go run ./tools/dev check   # before every commit: the branch's changes, a few seconds
+go run ./tools/dev ready   # before a push: everything, with -race, about 40 s
 TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter -v ./internal/az
 ```
 
-- While iterating, run focused tests (`go test -count=1 ./internal/az -run 'TestName'`). Run the full suite once at the end; `internal/az` takes about 35 s. Details: [Development](docs/operations/development.md).
+- While iterating, run focused tests (`go test -count=1 ./internal/az -run 'TestName'`). The pre-commit hook is a quick check of the staged content; it does not replace `check`. What each command runs: [Development](docs/operations/development.md#checks).
 - When a change touches a command T3 calls, run `TestStockT3Adapter` (the last line; needs a full T3 source tree with dependencies installed, which the sparse `.reference-apps/t3code` is not). Without one, say in the handoff that it did not run.
 - Before you write or review a test, read [Testing](docs/internals/testing.md), the one home of the test rules. Short version:
   - A bug fix starts with a test that fails before the fix. Extend an existing table or case before you add a test.
@@ -76,7 +74,7 @@ TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter 
   - Wait on a channel, process exit or `ctx.Done()`, never on `time.Sleep`.
   - OS-specific tests use file suffixes or build tags; check the other two platforms.
   - Fixtures carry no identities, internal URLs or secrets. Offline and live results stay separate; live gates stay opt-in.
-- Pick a mechanical guard by what it reads: a pattern inside one Go file belongs to golangci-lint (planned, [backlog](docs/backlog.md)); a check across files, on Markdown or on whether files exist is a Go test, like `TestDocLinks` in `docs_links_test.go`. A deliberate exception carries a written reason.
+- Pick a mechanical guard by what it reads: a pattern inside one Go file belongs to golangci-lint (`.golangci.yml`); a check across files, on Markdown or on whether files exist is a Go test, like `TestDocLinks` in `docs_links_test.go`. A deliberate exception carries a written reason.
 
 ## Code comments
 
@@ -101,7 +99,6 @@ When implementing a command, read the T3 adapter and its tests first (skill `ref
 - `docs/operations/`: maintainer runbooks. `docs/verification/`: dated live results, kept in full.
 - When a documented fact changes, rewrite or remove the old text. Do not append a second account.
 - Code and docs in English. No em dashes in markdown.
-- CLI help and error texts link to docs by GitHub URL. `TestDocLinks` checks those URLs and all relative links and anchors in the docs; run `go test ./...` after moving a doc or renaming a heading.
 
 ## Plans and work artifacts
 

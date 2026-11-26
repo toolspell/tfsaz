@@ -1,0 +1,21 @@
+# Secret scanning for the commit hook and the check commands (tools/dev). gitleaks is pinned in
+# tools/gitleaks/go.mod. Allowlist a deliberate fake secret here, by path or regex, each with the
+# reason in its description. Never allowlist a real secret: remove it and rotate it. Test
+# fixtures use word placeholders such as "private-input", which no rule matches, so none is
+# allowlisted yet.
+[extend]
+useDefault = true
+
+# The default rules know no Azure DevOps PAT, and PATs are the credential tfsaz handles.
+[[rules]]
+id = "azure-devops-pat"
+description = "Azure DevOps personal access token (84 characters, AZDO signature)"
+regex = '''\b[0-9A-Za-z]{76}AZDO[0-9A-Za-z]{4}\b'''
+keywords = ["azdo"]
+
+[[rules]]
+id = "azure-devops-pat-legacy"
+description = "Legacy Azure DevOps personal access token (52 lowercase base32 characters)"
+regex = '''\b[a-z2-7]{52}\b'''
+entropy = 3.5
+

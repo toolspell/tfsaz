@@ -1,0 +1,4 @@
+#!/bin/sh
+# Staged-only checks: gofmt, gitleaks and the repo checks. Enabled by
+# `go run ./tools/dev setup`; see docs/operations/development.md.
+exec go run ./tools/dev staged

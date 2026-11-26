@@ -21,18 +21,10 @@ Deferred work, so any session or worktree can pick it up.
 - **License decision and CONTRIBUTING.md:** the README has only placeholders, and GitHub shows no license.
 - **SECURITY.md:** threat model and reporting path, covering PAT handling, the redirect listener and the hosts and trust-store changes. The repo has none. Pointer: Toolspell `SECURITY.md`.
 - **CI path filter:** skip the 3-OS test matrix (about 5 minutes) on docs-only changes, using affected detection. Pointer: Toolspell `scripts/ci-changes.ts`.
-- **Secrets scan** in the pre-commit hook and CI; PATs are the core risk. Pointer: Toolspell `scripts/check-secrets.ts`.
-- **Go lint and safety checks:** golangci-lint, govulncheck and a `go mod tidy` diff check, as the Go equivalent of Toolspell's lint and typecheck steps. Lint rules:
-  - `nolintlint`, so every `//nolint` carries a reason (like Toolspell's `require-suppression-reason`);
-  - optional: a custom analyzer as the Go equivalent of `no-low-value-comments`.
-
-  Pointers: Toolspell `oxlint-plugin-toolspell/rules/`.
-- **Dead-code check:** `deadcode` (`golang.org/x/tools/cmd/deadcode`) for unreachable functions, the `unused` linter in golangci-lint, and `go mod tidy` for dependencies. Worth it for roughly 23,000 agent-written lines. Toolspell uses knip for unused files, exports and dependencies.
-- **actionlint** for the workflow files. Pointer: Toolspell `vp run actionlint`.
-- **Local CI**, in three parts as in Toolspell:
-  - **Workflow run:** run the real workflow locally with nektos/act, optionally on a remote Docker context (Toolspell `vp run ci:local`, `scripts/ci-local.ts`). A green run is evidence, not proof. act runs only Linux containers, so the macOS and Windows jobs of `.github/workflows/test.yml` need another route, for example the test machines or VMs from the test-environment runbook item.
-  - **Checks before a commit or push:** one fast, affected-only entry point (gofmt, `go vet`, a linter, `go test` on affected packages) that agents run before committing, and a `ready` entry point next to it for the full local suite before a push. Document both in `docs/operations/development.md` and the AGENTS.md "Verify" section. Pointers: Toolspell `scripts/check-changed.ts` (`vp run check:changed`, merge base with `main`, uncommitted and untracked files included) and `ready` in `package.json`.
-  - **Pre-commit hook:** a versioned `.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks`, running `gofmt -l`, `go vet`, `gitleaks --staged` and the em-dash check on staged files. Pointers: Toolspell `.vite-hooks/pre-commit`, which runs `vp staged` with the `staged:` list in `vite.config.ts` (format, lint, naming, pinned actions, gitleaks `--staged`).
+- **Secrets scan in CI:** run gitleaks over the pushed commits in CI, as `go run ./tools/dev ready` does locally (pinned in `tools/gitleaks`, config `.gitleaks.toml`). PATs are the core risk. Pointer: Toolspell `scripts/check-secrets.ts`.
+- **Local checks in CI:** CI runs only `go vet` and `go test -race`. Add golangci-lint new issues, `go mod tidy -diff`, actionlint and govulncheck, using the pinned tool modules (`tools/<name>/go.mod`).
+- **Low-value comment analyzer** (optional): a custom analyzer as the Go equivalent of Toolspell's `no-low-value-comments`. Pointer: Toolspell `oxlint-plugin-toolspell/rules/`.
+- **Local workflow run:** run the real workflow locally with nektos/act, optionally on a remote Docker context (Toolspell `vp run ci:local`, `scripts/ci-local.ts`). A green run is evidence, not proof. act runs only Linux containers, so the macOS and Windows jobs of `.github/workflows/test.yml` need another route, for example the test machines or VMs from the test-environment runbook item.
 - **Agent skills:** a testbed/VM verification skill in `.agents/skills/` (pairs with the test-environment runbook item).
 
 ## At the public / PR switch
@@ -51,11 +43,18 @@ Deferred work, so any session or worktree can pick it up.
 ## Later
 
 - **Release pipeline:** signed or checksummed binaries for macOS, Windows and Linux (for example with goreleaser). The README states there is no release yet.
-- **Skills link on Windows:** `.claude/skills` is a committed symlink, which Git checks out as a text file on Windows without `core.symlinks`, so Claude Code sees no project skills there. Let the worktree setup script below create a directory junction instead, and verify it on Windows.
-- **Worktree setup script**, run as the T3 project's "Setup Worktree" script when a worktree is created, so new agent worktrees are ready to use. For Go probably just `go mod download` plus enabling the hooks path. Pointer: Toolspell `scripts/setup-worktree.ts`.
+- **Skills link on Windows:** `.claude/skills` is a committed symlink, which Git checks out as a text file on Windows without `core.symlinks`, so Claude Code sees no project skills there. Let the worktree setup command (`go run ./tools/dev setup`) create a directory junction instead, and verify it on Windows.
 
 ## Code
 
+- **Existing golangci-lint findings** (v2.15.0, `.golangci.yml`; the gates see only new ones): 222 on darwin, 206 on linux, 214 on windows. Decide per linter: fix, or disable with a reason in `.golangci.yml`. List them with `go tool -modfile=tools/golangci-lint/go.mod golangci-lint run --max-issues-per-linter=0 --max-same-issues=0 ./...` (set `GOOS` for another system).
+  - `errcheck`, 146 on darwin, 79 of them in tests (unchecked `fmt.Fprintf`/`io.WriteString` in test handlers). Production code: mostly deferred `Close` and best-effort `os.Remove`/`os.RemoveAll`; most in `route_proxy.go` (10), `route_system.go` (7), `setup_manager.go` and `invoke.go` (5 each).
+  - `staticcheck`, 69: 67 `ST1005` (capitalized or punctuated error strings; check whether some mirror Azure CLI texts on purpose), one `QF1001`, one `QF1003`.
+  - `unused`, 7 on darwin: the same symbols as the dead-code entry below.
+- **Dead code** (deadcode v0.53.0 and `unused`; both depend on `GOOS`): unreachable on every system unless noted. Delete, or move to the file of the system that uses it.
+  - `routeSystemLeafNames` (`route_system.go:218`, darwin and linux), `routeSystemSystemTrust` (const in `route_system_darwin.go`, `_linux.go`, `_windows.go`).
+  - darwin only: `linkHandlerPaths` (`link_open.go:50`); `writeRootFile`, `reserveRoutePort`, `ownsRoutePort`, `releaseRoutePort` and the const `routePortOwner` in `route_system_unix.go`, which only linux uses.
+  - linux only: `editRouteHosts` (`route_system_hosts.go:24`). windows only: `routeHostsShell` and `shellQuote` (`route_system_hosts.go:91`, `:134`), and the test helpers `routeSystemCall` and `fakeRouteSystemCommands` (`route_system_test.go:254`, `:261`).
 - **Real keyring in managed-SSH setup:** `internal/az/setup_route.go:217` reads the system keyring when managed-SSH `repo setup` runs on an HTTPS origin without `--ssh-url`. Tests avoid it only because they use `ssh://` origins.
 - **Tests that poll with `time.Sleep`:** candidates for waiting on an event instead ([Testing](internals/testing.md#waiting)). Four calls in three files:
   - `internal/az/route_system_darwin_test.go:286` (`TestInheritedRedirectServes`): retries an HTTPS GET every 100 ms until the child serves. The child could signal readiness instead.
@@ -66,6 +65,7 @@ Deferred work, so any session or worktree can pick it up.
 
 ## Platforms
 
+- **Check commands on Windows and Linux:** `tools/dev` (`check`, `ready`, `staged`, `setup`) and `.githooks/pre-commit` were verified only on macOS. Verify on Windows (the hook in Git for Windows' shell, CRLF checkouts, `-race` with MinGW-w64, `go tool` paths) and on Linux.
 - **WSL 2 and WSL 3:** check for a platform gap. The code has no WSL-specific handling. Check:
   - T3 backend inside WSL with the browser or desktop app on Windows: which side needs `route setup`, the hosts file, the trust stores and the desktop link handler.
   - Secret Service availability for go-keyring inside WSL.

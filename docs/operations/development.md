@@ -6,22 +6,66 @@
 - Git and OpenSSH for the transport tests, Node for the TLS probe, and GIO on Linux for desktop dispatch.
 - On Windows use Git for Windows with its bundled shell.
 
-## Native suite
+## Checks
 
-Run the checks in this order:
+| Command | What it runs | When |
+| --- | --- | --- |
+| `go run ./tools/dev check` | On the files changed since the merge base with `main`, uncommitted and untracked ones included: gofmt on changed Go files; `go vet` and golangci-lint (new issues only) for darwin, linux and windows; `go mod tidy -diff` for the touched modules; actionlint when a workflow changed; gitleaks on the branch's commits and uncommitted changes; `go test` on the root package and the changed packages. | Before every commit. A few seconds; about 35 s more when `internal/az` changed. |
+| `go run ./tools/dev ready` | The whole tree: gofmt, `go vet` for all three systems, golangci-lint new issues, `go mod tidy -diff` for every module, actionlint, gitleaks over the full history and uncommitted changes, `go test -race -count=1 ./...`. Reports that never fail it: all golangci-lint findings as counts, govulncheck and deadcode, each for all three systems. | Before a push. About 40 s. |
+| Pre-commit hook | Staged content only: gofmt, gitleaks `--staged`, and the repo checks when a `.go`, `.md` or `.github/` file is staged. | On `git commit`. About 1 s. |
+| `go test -count=1 ./internal/az -run 'TestName'` | Focused tests. `-run` takes a regular expression, so `'TestA\|TestB'` runs both. | While iterating. |
 
-1. `gofmt -l .` must print nothing. It lists files that need `gofmt -w`.
-2. `go vet ./...`.
-3. While iterating, focused tests: `go test -count=1 ./internal/az -run 'TestName'`. `-run` takes a regular expression, so `'TestA|TestB'` runs both.
-4. Once at the end, the full suite: `go test -count=1 ./...`. The `internal/az` package takes about 35 s.
+- `check -base <ref>` compares against another ref. On `main` itself `check` sees only uncommitted changes; `-base HEAD~1` checks the last commit.
+- Vet and lint type-check each system from any host, so a `_windows.go` change is checked on macOS too. Tests run only for the host; CI covers the other two.
+- Without cgo or a C compiler, `ready` runs the tests without `-race` and says so in the step name.
 
 Tests use temporary Git repositories, loopback HTTP/TLS servers and a test credential store. The rules for writing them are in [Testing](../internals/testing.md).
 
-The suite also checks links: `TestDocLinks` in `docs_links_test.go` verifies relative links and heading anchors in README.md, AGENTS.md and `docs/`, plus every `https://github.com/toolspell/tfsaz` URL in Go code and docs.
+### Repo checks
 
-`TestPinnedActions` in `repo_checks_test.go` requires every `uses:` in `.github/workflows/` and `.github/actions/` to name a full 40-hex commit SHA followed by a `# vX` version comment. Local `./` actions are exempt; `docker://` images need a `sha256` digest.
+Go tests in the root package that read the whole tree. Every `go test` of `.` runs them, so `check` and CI do too, and the hook runs them as `go test -count=1 -run 'TestDocLinks|TestNoEmDashInMarkdown|TestPinnedActions' .`. They always check everything: renaming a heading breaks links in other files.
 
-`TestNoEmDashInMarkdown` in `repo_checks_test.go` rejects an em dash (U+2014) in any markdown file Git tracks or would track, and reports `file:line`.
+| Test | What it checks |
+| --- | --- |
+| `TestDocLinks` (`docs_links_test.go`) | Relative links and heading anchors in README.md, AGENTS.md and `docs/`, plus every `https://github.com/toolspell/tfsaz` URL in Go code and docs, such as the links in CLI help and error texts. |
+| `TestPinnedActions` (`repo_checks_test.go`) | Every `uses:` in `.github/workflows/` and `.github/actions/` names a full 40-hex commit SHA followed by a `# vX` version comment. Local `./` actions are exempt; `docker://` images need a `sha256` digest. |
+| `TestNoEmDashInMarkdown` (`repo_checks_test.go`) | No em dash (U+2014) in any markdown file Git tracks or would track; reports `file:line`. |
+
+### Lint and existing findings
+
+`.golangci.yml` enables golangci-lint's standard linters plus `unused` and `nolintlint`. A `//nolint` must name a specific linter and give a reason.
+
+The existing code has findings that the structure phase leaves unfixed; the [backlog](../backlog.md#code) summarizes them. The gates therefore run golangci-lint with `--new-from-merge-base=main`: an issue fails only on a line changed since the merge base. Unlike an exclusion list, this hides no new issue of an already-known kind, and a finding resurfaces as soon as its line is edited. `ready` prints the full counts as a report.
+
+## Pre-commit hook
+
+`.githooks/pre-commit` is versioned and runs `go run ./tools/dev staged`. It checks the staged content, not the working tree, so a partially staged file is checked as it will be committed. On Windows, Git for Windows runs it in its bundled shell.
+
+Enable it once per clone with `git config core.hooksPath .githooks`; the setup command does this. The setting lives in the clone's shared Git config, so every worktree of the clone uses the hook its own checkout contains.
+
+## Worktree setup
+
+```sh
+go run ./tools/dev setup -tools
+```
+
+T3 runs this as the project's "Setup Worktree" script. It enables the hook, runs `go mod download` for the root module and each tool module, and with `-tools` builds the pinned tools into Go's build cache, so the first check does not wait for them. It is safe to run again.
+
+## Pinned tools
+
+| Tool | Version | Module |
+| --- | --- | --- |
+| golangci-lint | v2.15.0 | `tools/golangci-lint` |
+| govulncheck (`golang.org/x/vuln`) | v1.10.0 | `tools/govulncheck` |
+| deadcode (`golang.org/x/tools`) | v0.53.0 | `tools/deadcode` |
+| actionlint | v1.7.12 | `tools/actionlint` |
+| gitleaks | v8.30.1 | `tools/gitleaks` |
+
+- Each tool is a `tool` directive in its own module, run as `go tool -modfile=tools/<name>/go.mod <name>`. Nothing is installed globally, and the product's `go.mod` and `go.sum` hold no tool dependencies.
+- One module per tool, because a shared module resolves every shared dependency to the highest version any tool needs: in one module, gitleaks lifted golangci-lint's viper from 1.12 to 1.19. The binaries would then differ from the tested releases. golangci-lint also advises against sharing its module.
+- `tools/dev` and `tools/syncrepos` are packages of the root module and use only the standard library.
+- To bump a tool: `go -C tools/<name> get <module>@<version>`, then `go -C tools/<name> mod tidy`, update the table above and run `go run ./tools/dev ready`. Dependabot proposes the bumps weekly, for direct dependencies only, so each tool keeps the indirect versions its release was built with.
+- `.gitleaks.toml` extends the default rules with Azure DevOps PAT rules. A deliberate fake secret is allowlisted there by path or regex with a written reason; a real secret is removed and rotated, never allowlisted.
 
 ## Isolate manual runs
 
@@ -35,7 +79,7 @@ A manual run of the built binary uses the real configuration, keyring and, for s
 
 ## Race detector and CI
 
-The [native test workflow](../../.github/workflows/test.yml) runs `go vet` and this suite on macOS, Windows and Ubuntu, on pushes to `main`, on pull requests and on manual dispatch. All three jobs enable Go's race detector. To run it locally, use `go test -race -count=1 ./...`. Windows x64 needs a compatible MinGW-w64 C compiler on PATH. [Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements)
+The [native test workflow](../../.github/workflows/test.yml) runs `go vet` and this suite on macOS, Windows and Ubuntu, on pushes to `main`, on pull requests and on manual dispatch. All three jobs enable Go's race detector; locally, `ready` runs the tests with it. Windows x64 needs a compatible MinGW-w64 C compiler on PATH. [Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements)
 
 ## GitHub automation
 
@@ -43,7 +87,7 @@ These files in `.github/` take effect once they are pushed to GitHub; locally th
 
 | File | What it does |
 | --- | --- |
-| `dependabot.yml` | Weekly grouped updates for Go modules (`build(deps): ...`) and workflow actions (`ci(deps): ...`), at most 3 open PRs each, no release younger than 7 days, labeled `dependencies`. |
+| `dependabot.yml` | Weekly grouped updates for the Go module, weekly updates of the pinned tools (`build(deps): ...`) and workflow actions (`ci(deps): ...`), at most 3 open PRs each, no release younger than 7 days, labeled `dependencies`. |
 | `labels.json`, `workflows/labels.yml` | The label set. The workflow creates and updates these labels on a push to `main` that changes them, or on manual dispatch. It never deletes a label. |
 | `ISSUE_TEMPLATE/` | Bug report and feature request forms. Blank issues are off; security reports go to `SECURITY.md`. |
 | `pull_request_template.md` | Problem, Change, Verification and a macOS, Windows and Linux checklist. |
