@@ -22,10 +22,8 @@ Deferred work, so any session or worktree can pick it up.
 - **SECURITY.md:** threat model and reporting path, covering PAT handling, the redirect listener and the hosts and trust-store changes. The repo has none. Pointer: Toolspell `SECURITY.md`.
 - **CI path filter:** skip the 3-OS test matrix (about 5 minutes) on docs-only changes, using affected detection. Pointer: Toolspell `scripts/ci-changes.ts`.
 - **Secrets scan** in the pre-commit hook and CI; PATs are the core risk. Pointer: Toolspell `scripts/check-secrets.ts`.
-- **Pinned-actions check:** the workflow actions are SHA-pinned today, but nothing enforces it. Pointer: Toolspell `scripts/check-pinned.ts`.
 - **Go lint and safety checks:** golangci-lint, govulncheck and a `go mod tidy` diff check, as the Go equivalent of Toolspell's lint and typecheck steps. Lint rules:
   - `nolintlint`, so every `//nolint` carries a reason (like Toolspell's `require-suppression-reason`);
-  - an em-dash check for markdown (like `no-em-dash-copy`);
   - optional: a custom analyzer as the Go equivalent of `no-low-value-comments`.
 
   Pointers: Toolspell `oxlint-plugin-toolspell/rules/`.
@@ -63,6 +61,8 @@ Deferred work, so any session or worktree can pick it up.
   - `internal/az/route_system_darwin_test.go:286` (`TestInheritedRedirectServes`): retries an HTTPS GET every 100 ms until the child serves. The child could signal readiness instead.
   - `internal/az/link_export_linux_test.go:101` (`TestDesktopLinkHandlerGIOArguments`): polls a trace file every 10 ms after `gio launch`. GIO starts the receiver detached, so there may be no event to wait on; if so, keep it and add the reason as a comment.
   - `internal/az/route_system_windows_test.go:475` and `:482` (`TestWindowsScheduledServiceRestartsFailedAction`, live gate): polls the task's retries every second, then sleeps 12 s to prove no restart after stop. The 12 s sleep is on purpose: it outlasts the supervisor's 10 s retry delay (`route_system_windows.go:146`), and a restart that did not happen has no event; add that reason as a comment. The 1 s poll could stay for the same reason.
+
+- **Windows live test skip message:** `internal/az/route_system_windows_test.go:446` (`TestWindowsScheduledServiceRestartsFailedAction`) skips with "requires an interactive Windows test session" and does not name `TFSAZ_LIVE_TASK_SCHEDULER`, unlike the launchd live test (`set TFSAZ_LIVE_LAUNCHD=1 ...`).
 
 ## Platforms
 

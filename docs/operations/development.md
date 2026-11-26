@@ -19,6 +19,10 @@ Tests use temporary Git repositories, loopback HTTP/TLS servers and a test crede
 
 The suite also checks links: `TestDocLinks` in `docs_links_test.go` verifies relative links and heading anchors in README.md, AGENTS.md and `docs/`, plus every `https://github.com/toolspell/tfsaz` URL in Go code and docs.
 
+`TestPinnedActions` in `repo_checks_test.go` requires every `uses:` in `.github/workflows/` and `.github/actions/` to name a full 40-hex commit SHA followed by a `# vX` version comment. Local `./` actions are exempt; `docker://` images need a `sha256` digest.
+
+`TestNoEmDashInMarkdown` in `repo_checks_test.go` rejects an em dash (U+2014) in any markdown file Git tracks or would track, and reports `file:line`.
+
 ## Isolate manual runs
 
 A manual run of the built binary uses the real configuration, keyring and, for some commands, system files. Before trying a command by hand:
