@@ -51,7 +51,7 @@ Enable it once per clone with `git config core.hooksPath .githooks`; the setup c
 go run ./tools/dev setup -tools
 ```
 
-T3 runs this as the project's "Setup Worktree" script. It enables the hook, runs `go mod download` for the root module and each tool module, and with `-tools` builds the pinned tools into Go's build cache, so the first check does not wait for them. It is safe to run again.
+T3 runs this as the project's "Setup Worktree" script, declared with "Check" and "Ready" in [`t3.json`](../../t3.json) (import the actions in T3's project settings once). It enables the hook, runs `go mod download` for the root module and each tool module, and with `-tools` builds the pinned tools into Go's build cache, so the first check does not wait for them. It is safe to run again.
 
 ## Pinned tools
 

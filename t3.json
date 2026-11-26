@@ -1,0 +1,21 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "scripts": [
+    {
+      "name": "Setup Worktree",
+      "command": "go run ./tools/dev setup -tools",
+      "icon": "configure",
+      "runOnWorktreeCreate": true
+    },
+    {
+      "name": "Check",
+      "command": "go run ./tools/dev check",
+      "icon": "lint"
+    },
+    {
+      "name": "Ready",
+      "command": "go run ./tools/dev ready",
+      "icon": "test"
+    }
+  ]
+}

@@ -125,6 +125,7 @@ Code gaps against [Reversible and verifiable system changes](../AGENTS.md#revers
 
 ## Ideas (check value and feasibility first)
 
+- **Configuration sources and channels:** check where `.env` files, JSON config files or other options make sense next to today's `config.json` (OS config dir or `TFSAZ_CONFIG`) and the `TFSAZ_*` variables. Also check whether a T3-style data directory per channel (release, nightly, dev) makes sense, so a dev or nightly build never touches a user's real config, keyring entries, routing state or registry (see AGENTS.md "Ways to hurt yourself").
 - **Routing to Microsoft's Azure CLI:** pass invocations tfsaz doesn't implement, where that is safe, to a real installed Azure CLI (or another real `az` extension) instead of failing with exit 2. Clarify which commands are safe to hand over, how credentials and the collection URL would reach it, and how `doctor` would show which side answers. Keep the compatibility contract: T3's own calls stay with tfsaz.
 - **GUI for setup, configuration and doctor:** a small desktop app for `init`, profiles, `repo setup`, `route setup`/`verify`/`restore` and `doctor`. Consider Wails (Go backend, web UI), which fits a Go codebase on all three OS.
 - **Alias handling on mobile devices:** check whether the T3 Code mobile app would benefit from tfsaz's synthetic URL handling (opening PR and work-item links on a phone), and what is possible on iOS and Android without system changes.
