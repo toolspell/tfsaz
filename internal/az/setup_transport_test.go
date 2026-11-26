@@ -444,6 +444,8 @@ func TestPreserveSetupAccessHTTPSErrors(t *testing.T) {
 	global := filepath.Join(root, "gitconfig")
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_ASKPASS", "")
+	t.Setenv("SSH_ASKPASS", "")
 	t.Setenv("NO_PROXY", "127.0.0.1")
 	repo := filepath.Join(root, "checkout")
 	managerTestGit(t, root, "init", "--quiet", repo)
