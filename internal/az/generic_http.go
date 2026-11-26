@@ -49,9 +49,17 @@ func (r genericRequest) run(ctx context.Context, c *Client, path []string, query
 		}
 	}
 
+	// Registered first so it also covers the staged file's removal.
+	status := 0
+	if r.method != http.MethodHead && r.method != http.MethodGet && r.method != http.MethodOptions {
+		defer func() {
+			if err != nil && status != 0 {
+				err = fmt.Errorf("Azure DevOps returned HTTP %d for %s, but processing its response failed: %w", status, r.method, err)
+			}
+		}()
+	}
 	var staged *os.File
 	if r.outFile != "" {
-		var err error
 		staged, err = stageGenericOutput(r.outFile)
 		if err != nil {
 			return err
@@ -63,14 +71,8 @@ func (r genericRequest) run(ctx context.Context, c *Client, path []string, query
 	if err != nil {
 		return err
 	}
+	status = resp.StatusCode
 	defer closeQuietly(resp.Body)
-	if r.method != http.MethodHead && r.method != http.MethodGet && r.method != http.MethodOptions {
-		defer func() {
-			if err != nil {
-				err = fmt.Errorf("Azure DevOps returned HTTP %d for %s, but processing its response failed: %w", resp.StatusCode, r.method, err)
-			}
-		}()
-	}
 	if staged != nil {
 		// az rest creates the requested file even for HEAD and 204. The
 		// DevOps extension only saves responses that declare a content type.
