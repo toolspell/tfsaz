@@ -4,9 +4,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestFetchCatalogUsesCollectionAndPreservesEntries(t *testing.T) {
@@ -21,7 +26,7 @@ func TestFetchCatalogUsesCollectionAndPreservesEntries(t *testing.T) {
 	}))
 	defer server.Close()
 	client := newClientForTest(t, clientTestProfile(t, server, "/tfs/Local Collection"))
-	locations, err := fetchCatalog(t.Context(), client)
+	_, locations, err := fetchCatalog(t.Context(), client)
 	if err != nil || len(locations) != 1 {
 		t.Fatalf("fetchCatalog returned %d locations, error = %v", len(locations), err)
 	}
@@ -31,6 +36,91 @@ func TestFetchCatalogUsesCollectionAndPreservesEntries(t *testing.T) {
 	path, version, err := resolveResource(locations, "CORE", "PROJECTS", "", nil)
 	if err != nil || version != "5.0" || !slices.Equal(path, []string{"_apis", "projects"}) {
 		t.Fatalf("resolveResource = %q, %q, %v", path, version, err)
+	}
+}
+
+func TestCatalogCacheEntries(t *testing.T) {
+	const served = `{"count":1,"value":[{"area":"served","resourceName":"projects","routeTemplate":"_apis/{resource}","minVersion":"1.0","maxVersion":"7.1","releasedVersion":"7.1","resourceVersion":1}]}`
+	const cached = `{"count":1,"value":[{"area":"cached","resourceName":"projects","routeTemplate":"_apis/{resource}","minVersion":"1.0","maxVersion":"7.1","releasedVersion":"7.1","resourceVersion":1}]}`
+	var fetches atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		checkClientTestAuth(t, r)
+		fetches.Add(1)
+		serveTestBody(w, served)
+	}))
+	defer server.Close()
+	profile := clientTestProfile(t, server, "/tfs/Local Collection")
+	entry := func(body string, age time.Duration) func(*testing.T, string, string) {
+		return func(t *testing.T, dir, file string) {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			modified := time.Now().Add(-age)
+			if err := os.Chtimes(file, modified, modified); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for _, tc := range []struct {
+		name     string
+		setup    func(t *testing.T, dir, file string)
+		wantArea string
+		// wantFile is the entry afterwards; empty when no entry can be written.
+		wantFile string
+	}{
+		{"missing entry", func(*testing.T, string, string) {}, "served", served},
+		{"fresh entry", entry(cached, catalogCacheMaxAge-time.Minute), "cached", cached},
+		{"expired entry", entry(cached, catalogCacheMaxAge), "served", served},
+		{"future entry", entry(cached, -time.Hour), "served", served},
+		{"corrupt entry", entry(`{"value":[{"area":`, 0), "served", served},
+		{"entry without locations", entry(`{"count":0}`, 0), "served", served},
+		{"directory in place of the entry", func(t *testing.T, _, file string) {
+			if err := os.MkdirAll(file, 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}, "served", ""},
+		{"file in place of the cache directory", func(t *testing.T, dir, _ string) {
+			if err := os.WriteFile(dir, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, "served", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fetches.Store(0)
+			client := newClientForTest(t, profile)
+			client.catalogCache = catalogCacheDir(filepath.Join(t.TempDir(), "config.json"))
+			file := client.catalogCacheFile()
+			tc.setup(t, client.catalogCache, file)
+			catalog, err := client.loadCatalog(t.Context())
+			if err != nil || len(catalog.locations) != 1 || catalog.locations[0].Area != tc.wantArea {
+				t.Fatalf("loadCatalog = %+v, %v; want area %s", catalog, err, tc.wantArea)
+			}
+			wantFetches := int32(1)
+			if catalog.cached {
+				wantFetches = 0
+			}
+			if catalog.cached != (tc.wantArea == "cached") || fetches.Load() != wantFetches {
+				t.Errorf("cached = %v after %d fetches", catalog.cached, fetches.Load())
+			}
+			data, err := os.ReadFile(file)
+			if tc.wantFile == "" && err == nil || tc.wantFile != "" && string(data) != tc.wantFile {
+				t.Errorf("cache entry = %q, %v; want %q", data, err, tc.wantFile)
+			}
+			if names, err := os.ReadDir(client.catalogCache); err == nil && (len(names) != 1 || names[0].Name() != filepath.Base(file)) {
+				t.Errorf("cache directory holds %v, want only the entry", names)
+			}
+			if tc.wantFile == "" || runtime.GOOS == "windows" {
+				return
+			}
+			for path, want := range map[string]os.FileMode{client.catalogCache: 0o700, file: 0o600} {
+				if info, err := os.Stat(path); err != nil || info.Mode().Perm() != want {
+					t.Errorf("mode of %s = %v, %v; want %v", filepath.Base(path), info.Mode().Perm(), err, want)
+				}
+			}
+		})
 	}
 }
 

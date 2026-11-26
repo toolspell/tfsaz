@@ -26,7 +26,7 @@ TFSaz runs as the OS user that runs the T3 backend, as the `az` shim and as `git
 
 ## What TFSaz changes on the machine
 
-Besides its configuration file, `<config>.repo-setups.json` and `<config>.browser-route`, TFSaz changes only the state below. Each change is deliberate and needs the user's command; [Reversible and verifiable system changes](AGENTS.md#reversible-and-verifiable-system-changes) is the rule, and the [issues labeled `reversibility`](https://github.com/toolspell/tfsaz/issues?q=is%3Aissue%20is%3Aopen%20label%3Areversibility) track where undo or check is still missing.
+Besides its configuration file, `<config>.repo-setups.json`, `<config>.browser-route` and the resource-catalog cache `<config>.cache` (server responses, no credentials), TFSaz changes only the state below. Each change is deliberate and needs the user's command; [Reversible and verifiable system changes](AGENTS.md#reversible-and-verifiable-system-changes) is the rule, and the [issues labeled `reversibility`](https://github.com/toolspell/tfsaz/issues?q=is%3Aissue%20is%3Aopen%20label%3Areversibility) track where undo or check is still missing.
 
 | Change | Why | Undo | Check |
 | --- | --- | --- | --- |
