@@ -168,7 +168,8 @@ func macBootout(ctx context.Context, label string) error {
 	if _, err := runRouteSystemCommand(ctx, nil, "/bin/launchctl", "print", target); err != nil {
 		return nil // not loaded
 	}
-	runRouteSystemCommand(ctx, nil, "/bin/launchctl", "bootout", target)
+	// The polling below decides; bootout's error only explains a timeout.
+	_, bootoutErr := runRouteSystemCommand(ctx, nil, "/bin/launchctl", "bootout", target)
 	for range 20 {
 		if _, err := runRouteSystemCommand(ctx, nil, "/bin/launchctl", "print", target); err != nil {
 			return nil
@@ -179,7 +180,7 @@ func macBootout(ctx context.Context, label string) error {
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
-	return fmt.Errorf("launchd did not unload %s", target)
+	return errors.Join(fmt.Errorf("launchd did not unload %s", target), bootoutErr)
 }
 
 func installMacAgent(ctx context.Context, p routeSystemPlan, l macListener) error {

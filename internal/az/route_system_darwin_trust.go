@@ -48,12 +48,12 @@ const macEmptyTrustSettings = `<?xml version="1.0" encoding="UTF-8"?>
 // checkMacTrustExpression has the system tool render the exact trust settings
 // into a temporary file, without touching any trust domain or keychain, and
 // refuses to continue unless every rule is SSL-only and names one alias.
-func checkMacTrustExpression(ctx context.Context, certFile string, aliases []string) error {
+func checkMacTrustExpression(ctx context.Context, certFile string, aliases []string) (err error) {
 	tmp, err := os.MkdirTemp("", "tfsaz-trust-")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmp)
+	defer removeStagedTree(tmp, &err)
 	in, out := filepath.Join(tmp, "in.plist"), filepath.Join(tmp, "out.plist")
 	if err := os.WriteFile(in, []byte(macEmptyTrustSettings), 0o600); err != nil {
 		return err
@@ -164,7 +164,7 @@ func macKeychainCopies(ctx context.Context, keychain, sha256Hex string) ([][]byt
 	return found, nil
 }
 
-func removeMacTrust(ctx context.Context, p routeSystemPlan) error {
+func removeMacTrust(ctx context.Context, p routeSystemPlan) (err error) {
 	keychain, err := macLoginKeychain()
 	if err != nil {
 		return err
@@ -184,7 +184,7 @@ func removeMacTrust(ctx context.Context, p routeSystemPlan) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmp)
+	defer removeStagedTree(tmp, &err)
 	certFile := filepath.Join(tmp, "leaf.pem")
 	if err := os.WriteFile(certFile, routeSystemPEM(der), 0o600); err != nil {
 		return err
@@ -224,7 +224,8 @@ func macTrustSettingAbsent(err error, output string) bool {
 
 func xmlText(s string) string {
 	var b strings.Builder
-	xml.EscapeText(&b, []byte(s))
+	// Writes to a strings.Builder never fail.
+	_ = xml.EscapeText(&b, []byte(s))
 	return b.String()
 }
 

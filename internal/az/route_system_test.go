@@ -214,11 +214,11 @@ func routeSystemTestService(t *testing.T, certFile, keyFile string) int {
 		port := ln4.Addr().(*net.TCPAddr).Port
 		ln6, err := tls.Listen("tcp", net.JoinHostPort("::1", strconv.Itoa(port)), cfg)
 		if err != nil {
-			ln4.Close()
+			closeQuietly(ln4)
 			continue
 		}
 		for _, ln := range []net.Listener{ln4, ln6} {
-			t.Cleanup(func() { ln.Close() })
+			t.Cleanup(func() { closeQuietly(ln) })
 			go func() {
 				for {
 					c, err := ln.Accept()
@@ -226,8 +226,9 @@ func routeSystemTestService(t *testing.T, certFile, keyFile string) int {
 						return
 					}
 					go func() {
-						c.(*tls.Conn).Handshake()
-						c.Close()
+						// A probe may hang up before the handshake completes.
+						_ = c.(*tls.Conn).Handshake()
+						closeQuietly(c)
 					}()
 				}
 			}()

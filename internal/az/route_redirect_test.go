@@ -299,7 +299,7 @@ func TestRouteRedirectService(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
-		resp.Body.Close()
+		closeQuietly(resp.Body)
 		if resp.StatusCode != tc.status || resp.Header.Get("Location") != tc.location || resp.ProtoMajor != 1 {
 			t.Errorf("%s: %s %d Location %q; want %d %q", tc.name, resp.Proto, resp.StatusCode, resp.Header.Get("Location"), tc.status, tc.location)
 		}
@@ -312,7 +312,7 @@ func TestRouteRedirectService(t *testing.T) {
 		conn, err := tls.Dial("tcp4", address, &tls.Config{ServerName: serverName, InsecureSkipVerify: true})
 		if err == nil {
 			err = conn.Handshake()
-			conn.Close()
+			closeQuietly(conn)
 		}
 		if err == nil {
 			t.Errorf("handshake for SNI %q succeeded", serverName)
@@ -326,7 +326,7 @@ func TestRouteRedirectService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	closeQuietly(resp.Body)
 	if resp.StatusCode != http.StatusNotFound || resp.Header.Get("Location") != "" {
 		t.Fatalf("restored alias still redirects: %d %q", resp.StatusCode, resp.Header.Get("Location"))
 	}

@@ -75,7 +75,8 @@ func parseProfileOptions(args []string, allowed ...string) (map[string]string, e
 func (a app) newProfile(opts map[string]string, interactive bool) (Profile, error) {
 	rawURL := opts["collection"]
 	if rawURL == "" && interactive && a.stdinIsTerminal() {
-		fmt.Fprint(a.stderr, "Azure DevOps Server collection URL: ")
+		// The prompt is a courtesy; the read below reports a broken terminal.
+		_, _ = fmt.Fprint(a.stderr, "Azure DevOps Server collection URL: ")
 		line, err := bufio.NewReaderSize(a.stdin, 8192).ReadSlice('\n')
 		if err != nil {
 			return Profile{}, errors.New("could not read the collection URL")

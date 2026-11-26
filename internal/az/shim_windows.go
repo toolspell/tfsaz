@@ -21,17 +21,17 @@ func installShim(executable, path string) error {
 }
 
 // Publish a complete executable without replacing a file created concurrently.
-func copyWindowsShim(executable, path string) error {
+func copyWindowsShim(executable, path string) (err error) {
 	source, err := os.Open(executable)
 	if err != nil {
 		return err
 	}
-	defer source.Close()
+	defer closeQuietly(source)
 	stage, err := os.CreateTemp(filepath.Dir(path), ".tfsaz-launcher-*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(stage.Name())
+	defer removeStaged(stage.Name(), &err)
 	_, err = io.Copy(stage, source)
 	if err := errors.Join(err, stage.Close()); err != nil {
 		return err

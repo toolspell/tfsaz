@@ -73,7 +73,7 @@ func prWriteTestClient(t *testing.T, expected ...prWriteRequest) *Client {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		io.WriteString(w, want.response)
+		serveTestBody(w, want.response)
 	})
 }
 

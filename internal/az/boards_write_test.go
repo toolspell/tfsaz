@@ -3,7 +3,6 @@ package az
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -87,7 +86,7 @@ func TestBoardsWorkItemWrites(t *testing.T) {
 					t.Errorf("patch = %#v, error = %v; want %#v", got, err, tc.patch)
 				}
 				w.Header().Set("Content-Type", "application/json")
-				io.WriteString(w, `{"id":42,`+fields+`,"url":"https://example.invalid/_apis/wit/workItems/42"}`)
+				serveTestBody(w, `{"id":42,`+fields+`,"url":"https://example.invalid/_apis/wit/workItems/42"}`)
 			}))
 			defer server.Close()
 			profile := clientTestProfile(t, server, witFixtureCollection)
@@ -109,7 +108,7 @@ func TestBoardsWorkItemWrites(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer input.Close()
+				defer closeQuietly(input)
 			}
 			var stdout bytes.Buffer
 			a := app{cwd: cwd, stdout: &stdout, stdin: input, store: &memoryStore{values: map[string]string{profile.ID: clientTestPassword}}}

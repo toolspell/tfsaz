@@ -34,7 +34,7 @@ const routeCertName = "alias.pem"
 const routeKeyName = "alias-key.pem"
 const routeIdentityName = "identity.json"
 
-func stageRouteIdentity(dir, configFile string, aliases []string) (routeIdentity, error) {
+func stageRouteIdentity(dir, configFile string, aliases []string) (_ routeIdentity, err error) {
 	identity := routeIdentity{ConfigFile: configFile, Aliases: aliases}
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -64,7 +64,8 @@ func stageRouteIdentity(dir, configFile string, aliases []string) (routeIdentity
 	if err != nil {
 		return identity, err
 	}
-	defer os.RemoveAll(staged)
+	// The staged directory holds a copy of the private key until the rename.
+	defer removeStagedTree(staged, &err)
 	if err := protectRouteDirectory(staged); err != nil {
 		return identity, fmt.Errorf("protect browser route key directory: %w", err)
 	}
@@ -312,7 +313,7 @@ func removeEmptyRouteRecovery(recovery string) {
 	}
 }
 
-func retireRouteIdentity(dir string) error {
+func retireRouteIdentity(dir string) (err error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -328,7 +329,7 @@ func retireRouteIdentity(dir string) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(temp)
+	defer removeStaged(temp, &err)
 	retired := filepath.Join(temp, "identity")
 	if err := os.Rename(dir, retired); err != nil {
 		return err

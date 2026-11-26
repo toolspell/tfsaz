@@ -2,7 +2,6 @@ package az
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -26,7 +25,7 @@ func TestCatalogAndRESTCommands(t *testing.T) {
 			if r.Method != "OPTIONS" || r.URL.Query().Get("allHostTypes") != "true" {
 				t.Error("missing OPTIONS discovery")
 			}
-			fmt.Fprintf(w, `{"value":[{"area":"Future","resourceName":"things","routeTemplate":%q,"minVersion":"1.0","maxVersion":"7.1","releasedVersion":"7.1","resourceVersion":3}]}`, route)
+			serveTestf(w, `{"value":[{"area":"Future","resourceName":"things","routeTemplate":%q,"minVersion":"1.0","maxVersion":"7.1","releasedVersion":"7.1","resourceVersion":3}]}`, route)
 		case "/Fixture Collection/_apis/future/things/7":
 			switch r.Method {
 			case http.MethodPatch:
@@ -43,7 +42,7 @@ func TestCatalogAndRESTCommands(t *testing.T) {
 				t.Error("incorrect query or negotiated version")
 			}
 			w.Header().Set("X-MS-ContinuationToken", "page-two")
-			io.WriteString(w, `{"name":"sample","id":7}`)
+			serveTestBody(w, `{"name":"sample","id":7}`)
 		default:
 			t.Error("unexpected request path")
 			http.NotFound(w, r)
@@ -118,7 +117,7 @@ func TestGenericResponseAfterWrite(t *testing.T) {
 		sent.Add(1)
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte{0xff})
+		serveTestBody(w, "\xff")
 	})
 	for _, discard := range []bool{false, true} {
 		r := genericRequest{method: http.MethodPost, discard: discard}
@@ -140,7 +139,7 @@ func TestStockResourcesOnCatalogRoute(t *testing.T) {
 		switch r.URL.Path {
 		case "/C/_apis":
 			catalogs.Add(1)
-			io.WriteString(w, `{"value":[
+			serveTestBody(w, `{"value":[
 				{"area":"git","resourceName":"items","routeTemplate":"_apis/git/{resource}","minVersion":"1.0","maxVersion":"7.2","releasedVersion":"7.1","resourceVersion":1},
 				{"area":"wit","resourceName":"workitemsbatch","routeTemplate":"_apis/wit/{resource}","minVersion":"1.0","maxVersion":"7.2","releasedVersion":"7.1","resourceVersion":1},
 				{"area":"wit","resourceName":"comments","routeTemplate":"_apis/wit/{resource}","minVersion":"1.0","maxVersion":"7.2","releasedVersion":"7.1","resourceVersion":1}]}`)
@@ -148,12 +147,12 @@ func TestStockResourcesOnCatalogRoute(t *testing.T) {
 			if r.URL.Query().Get("path") != "/test %2F.md" {
 				t.Error("incorrect path decoding")
 			}
-			io.WriteString(w, `{"content":"fixture"}`)
+			serveTestBody(w, `{"content":"fixture"}`)
 		case "/C/_apis/wit/workitemsbatch":
-			io.WriteString(w, `{"value":[{"id":7,"url":"https://example.invalid/server/path/_apis/wit/workItems/7"}]}`)
+			serveTestBody(w, `{"value":[{"id":7,"url":"https://example.invalid/server/path/_apis/wit/workItems/7"}]}`)
 		case "/C/_apis/wit/comments":
 			w.Header().Set("X-MS-ContinuationToken", "opaque")
-			io.WriteString(w, `{"comments":[]}`)
+			serveTestBody(w, `{"comments":[]}`)
 		default:
 			t.Error("unexpected resource")
 			http.NotFound(w, r)

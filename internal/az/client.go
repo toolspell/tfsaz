@@ -79,7 +79,7 @@ func (c *Client) Get(ctx context.Context, path []string, query url.Values, dest 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer closeQuietly(resp.Body)
 	body, err := readResponse(resp.Body, maxResponseBytes)
 	if err != nil {
 		return err
@@ -153,7 +153,7 @@ func (c *Client) requestWithMedia(ctx context.Context, method string, path []str
 		return nil, failure
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || resp.StatusCode == http.StatusNonAuthoritativeInfo {
-		defer resp.Body.Close()
+		defer closeQuietly(resp.Body)
 		return nil, collectionResponseError(resp, path)
 	}
 	return resp, nil

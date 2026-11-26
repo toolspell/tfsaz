@@ -23,7 +23,7 @@ func profileTestInput(t *testing.T, pat string) *os.File {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { r.Close() })
+	t.Cleanup(func() { closeQuietly(r) })
 	if _, err := io.WriteString(w, pat+"\r\n"); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestProfileOnboardingAndLogout(t *testing.T) {
 			http.Error(w, "invalid", http.StatusUnauthorized)
 			return
 		}
-		fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"uniqueName":%q}}`, repoTestViewerID, account)
+		serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":%q}}`, repoTestViewerID, account)
 	}))
 	defer server.Close()
 
@@ -147,7 +147,7 @@ func TestProfileConfigFilesCanReuseIDForDifferentEndpoints(t *testing.T) {
 		if _, sent, ok := r.BasicAuth(); !ok || sent != pat {
 			t.Error("incorrect credential for first collection")
 		}
-		fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"first@example.invalid"}}`, repoTestViewerID)
+		serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"first@example.invalid"}}`, repoTestViewerID)
 	}))
 	defer server.Close()
 	ca := clientTestProfile(t, server, "/First").CAFile
@@ -264,7 +264,7 @@ func TestProfileAddCredentialFailureAndRetry(t *testing.T) {
 			http.Error(w, "invalid", http.StatusUnauthorized)
 			return
 		}
-		fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"fixture@example.invalid"}}`, repoTestViewerID)
+		serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"fixture@example.invalid"}}`, repoTestViewerID)
 	}))
 	defer server.Close()
 	p := clientTestProfile(t, server, "/One")
@@ -325,7 +325,7 @@ func TestProfileAddSerializesConfigurationChanges(t *testing.T) {
 	if locked, err := lock.TryLock(); err != nil || !locked {
 		t.Fatalf("test configuration lock: %v", err)
 	}
-	t.Cleanup(func() { lock.Close() })
+	t.Cleanup(func() { closeQuietly(lock) })
 	store := &memoryStore{}
 	a := app{stdout: io.Discard, stderr: io.Discard, store: store}
 	args := []string{"profile", "add", "--collection", "https://ado.example.invalid/One", "--no-login"}

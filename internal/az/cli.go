@@ -339,7 +339,8 @@ func (a app) discover(ctx context.Context, cfg config) (string, error) {
 			if probeErr == nil {
 				for _, failure := range failures {
 					if errors.Is(failure, errStoreUnavailable) {
-						fmt.Fprintln(a.stderr, failure)
+						// A warning only: the login found here is the result.
+						_, _ = fmt.Fprintln(a.stderr, failure)
 					}
 				}
 				return id.Login, nil

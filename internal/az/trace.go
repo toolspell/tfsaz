@@ -71,7 +71,8 @@ func (t *commandTrace) record(code int, start time.Time) {
 	}
 	// Emit only known command and selection names, a validated ID, and
 	// numeric HTTP metadata. Never format a request, response, or error here.
-	fmt.Fprintf(t.stderr, "tfsaz trace command=%q profile=%s selection=%s status=%s elapsed=%s\n",
+	// Tracing must not change the command's outcome, so a failed write is dropped.
+	_, _ = fmt.Fprintf(t.stderr, "tfsaz trace command=%q profile=%s selection=%s status=%s elapsed=%s\n",
 		t.command, t.profile, t.selection, status, time.Since(start).Round(time.Microsecond))
 	t.recorded = true
 }

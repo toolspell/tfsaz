@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -91,7 +90,7 @@ func TestDiscoveryAndCheckoutIsolation(t *testing.T) {
 		}
 		switch strings.TrimPrefix(r.URL.Path, base) {
 		case "/_apis/connectionData":
-			fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"properties":{"Account":{"$value":%q}}}}`, repoTestViewerID, id)
+			serveTestf(w, `{"authenticatedUser":{"id":%q,"properties":{"Account":{"$value":%q}}}}`, repoTestViewerID, id)
 		case "/_apis/identities":
 			if directoryUnavailable.Load() {
 				w.WriteHeader(http.StatusServiceUnavailable)
@@ -100,9 +99,9 @@ func TestDiscoveryAndCheckoutIsolation(t *testing.T) {
 			if r.URL.Query().Get("identityIds") != repoTestViewerID {
 				t.Error("identity lookup must use the authenticated user's collection ID")
 			}
-			fmt.Fprintf(w, `{"value":[{"id":%q,"uniqueName":%q}]}`, repoTestViewerID, id+"@example.invalid")
+			serveTestf(w, `{"value":[{"id":%q,"uniqueName":%q}]}`, repoTestViewerID, id+"@example.invalid")
 		case "/_apis/git/pullrequests/42":
-			io.WriteString(w, repoFixture(t, "pull-request"))
+			serveTestBody(w, repoFixture(t, "pull-request"))
 		default:
 			t.Errorf("unexpected path %s", r.URL.Path)
 			http.NotFound(w, r)
@@ -205,7 +204,7 @@ func TestLoginFromStdinVerifiesBeforeStoring(t *testing.T) {
 			http.Error(w, "invalid", http.StatusUnauthorized)
 			return
 		}
-		fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"fixture@example.invalid"}}`, repoTestViewerID)
+		serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"fixture@example.invalid"}}`, repoTestViewerID)
 	}))
 	defer server.Close()
 	p := clientTestProfile(t, server, "/One")
@@ -218,11 +217,13 @@ func TestLoginFromStdinVerifiesBeforeStoring(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer r.Close()
+		defer closeQuietly(r)
 		if _, err := io.WriteString(w, input); err != nil {
 			t.Fatal(err)
 		}
-		w.Close()
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
 		var output bytes.Buffer
 		a := app{stdout: &output, stderr: &output, stdin: r, store: store}
 		err = a.run(t.Context(), []string{"devops", "login", "--org", p.Organization})

@@ -3,7 +3,6 @@ package az
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -132,7 +131,7 @@ func TestWorkItemReadsWithCollectionFixture(t *testing.T) {
 					w.Header().Set("X-MS-ContinuationToken", "header-token")
 				}
 				w.Header().Set("Content-Type", "application/json")
-				io.WriteString(w, tc.response)
+				serveTestBody(w, tc.response)
 			}))
 			defer server.Close()
 			profile := clientTestProfile(t, server, witFixtureCollection)
@@ -235,7 +234,7 @@ func TestWorkItemShowChecksResponseID(t *testing.T) {
 		if r.URL.Query().Get("$expand") != "all" {
 			t.Error("expected omitted --expand to default to all")
 		}
-		io.WriteString(w, `{"id":43,"fields":{}}`)
+		serveTestBody(w, `{"id":43,"fields":{}}`)
 	}))
 	defer server.Close()
 	profile := clientTestProfile(t, server, witFixtureCollection)
@@ -267,7 +266,7 @@ func TestBoardsReadUnauthorized(t *testing.T) {
 				case witFixtureCollection + "/_apis/connectionData":
 					probes.Add(1)
 					if tc.valid {
-						fmt.Fprintf(w, `{"authenticatedUser":{"id":%q}}`, repoTestViewerID)
+						serveTestf(w, `{"authenticatedUser":{"id":%q}}`, repoTestViewerID)
 						return
 					}
 				case witFixtureCollection + "/_apis/wit/workItems/42":

@@ -2,7 +2,6 @@ package az
 
 import (
 	"bytes"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -106,7 +105,7 @@ func TestTraceReportsCollectionSelectionAndHTTPStatus(t *testing.T) {
 		case "/Denied/_apis/connectionData":
 			http.Error(w, "private-error-marker", http.StatusUnauthorized)
 		case "/Real/_apis/connectionData":
-			fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"uniqueName":%q}}`, repoTestViewerID, login)
+			serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":%q}}`, repoTestViewerID, login)
 		case "/Real/_apis/private-path-marker":
 			http.Error(w, "private-error-marker", http.StatusForbidden)
 		default:

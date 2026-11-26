@@ -32,7 +32,7 @@ func sameBinary(path, executable string) bool {
 		if err != nil {
 			return nil, err
 		}
-		defer f.Close()
+		defer closeQuietly(f)
 		h := sha256.New()
 		_, err = io.Copy(h, f)
 		return h.Sum(nil), err

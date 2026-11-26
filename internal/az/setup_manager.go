@@ -175,18 +175,18 @@ func syncSetupDir(path string) error {
 	if err != nil {
 		return err
 	}
-	defer dir.Close()
+	defer closeQuietly(dir)
 	return dir.Sync()
 }
 
 // Publish a complete file from the same directory. An SSH config is installed
 // exclusively so setup cannot overwrite a file it did not create.
-func publishSetupFile(path string, data []byte, replace bool) error {
+func publishSetupFile(path string, data []byte, replace bool) (err error) {
 	file, err := os.CreateTemp(filepath.Dir(path), ".tfsaz-setup-*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(file.Name())
+	defer removeStaged(file.Name(), &err)
 	_, writeErr := file.Write(data)
 	if writeErr == nil {
 		writeErr = file.Sync()
@@ -526,12 +526,10 @@ func lockSetupGit(c setupCheckout) (*setupGitLock, error) {
 		return nil, err
 	}
 	if err := file.Close(); err != nil {
-		os.Remove(file.Name())
-		return nil, err
+		return nil, errors.Join(err, removeIfPresent(file.Name()))
 	}
 	if err := os.Link(file.Name(), path); err != nil {
-		os.Remove(file.Name())
-		return nil, fmt.Errorf("acquire Git config lock: %w", err)
+		return nil, errors.Join(fmt.Errorf("acquire Git config lock: %w", err), removeIfPresent(file.Name()))
 	}
 	lock := &setupGitLock{c: c, proof: file.Name()}
 	if err := syncSetupDir(c.gitDir); err != nil {
@@ -585,7 +583,7 @@ func (l *setupGitLock) close() error {
 	return syncSetupDir(l.c.gitDir)
 }
 
-func (l *setupGitLock) change(ctx context.Context, from, to setupGitState) error {
+func (l *setupGitLock) change(ctx context.Context, from, to setupGitState) (err error) {
 	c := l.c
 	actual, err := c.loadLocalState(ctx, from.preserve)
 	if err != nil {
@@ -607,7 +605,7 @@ func (l *setupGitLock) change(ctx context.Context, from, to setupGitState) error
 	if err != nil {
 		return err
 	}
-	defer os.Remove(stage.Name())
+	defer removeStaged(stage.Name(), &err)
 	_, writeErr := stage.Write(data)
 	if err := errors.Join(writeErr, stage.Close()); err != nil {
 		return err

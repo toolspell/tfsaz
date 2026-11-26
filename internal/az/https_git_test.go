@@ -83,7 +83,7 @@ func TestGitHTTPSHelperKeepsAzureRemoteAndUsesNativeTransport(t *testing.T) {
 		requests <- r.URL.RequestURI()
 		w.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
 		// Smart discovery for an empty repository.
-		fmt.Fprint(w, "001e# service=git-upload-pack\n00000000")
+		serveTestBody(w, "001e# service=git-upload-pack\n00000000")
 	}))
 	defer server.Close()
 	cert := filepath.Join(root, "fixture.pem")

@@ -2,8 +2,6 @@ package az
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -27,7 +25,7 @@ func TestReposCreate(t *testing.T) {
 			t.Errorf("repository create body = %#v, %v", body, err)
 		}
 		w.WriteHeader(http.StatusCreated)
-		io.WriteString(w, strings.ReplaceAll(fixture, "Fixture%20Collection", "Fixture Collection"))
+		serveTestBody(w, strings.ReplaceAll(fixture, "Fixture%20Collection", "Fixture Collection"))
 	})
 	got, err := (app{}).repoCommand(t.Context(), client, Scope{Project: "Implicit Project"}, "repos create", map[string]string{
 		"project": "Shared Project",
@@ -91,7 +89,7 @@ func TestCheckoutPullRequestBranchPreservesLocalWork(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.EscapedPath() != repoTestPrefix+repoTestPRPath {
 			t.Errorf("unexpected pull request request: %s %s", r.Method, r.URL)
 		}
-		io.WriteString(w, pullRequest)
+		serveTestBody(w, pullRequest)
 	})
 	a := app{cwd: cwd}
 	scope := Scope{Project: "Shared Project", Repository: "Tool Kit"}
@@ -172,7 +170,7 @@ func TestCheckoutPullRequestRejectsWrongRepositoryAndFork(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := repoTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
-				fmt.Fprint(w, tc.response)
+				serveTestBody(w, tc.response)
 			})
 			a := app{cwd: t.TempDir()}
 			err := a.checkoutPullRequest(t.Context(), client, Scope{Project: "Shared Project", Repository: tc.repo}, map[string]string{"id": "42"})

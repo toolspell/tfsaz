@@ -275,8 +275,8 @@ func repoRoot() (string, error) {
 
 func syncRepo(dir string, repo referenceRepo, stdout io.Writer) error {
 	if verify(dir, repo) == nil {
-		fmt.Fprintf(stdout, "%s/%s is at %s (%s).\n", refDir, repo.name, repo.tag, short(repo.commit))
-		return nil
+		_, err := fmt.Fprintf(stdout, "%s/%s is at %s (%s).\n", refDir, repo.name, repo.tag, short(repo.commit))
+		return err
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 		// Only this tool writes here, so a broken entry is recreated.
@@ -305,7 +305,9 @@ func syncRepo(dir string, repo referenceRepo, stdout io.Writer) error {
 		return err
 	}
 	if gitOut(dir, "cat-file", "-t", repo.commit) != "commit" {
-		fmt.Fprintf(stdout, "Fetching %s at %s (%s)...\n", repo.url, repo.tag, short(repo.commit))
+		if _, err := fmt.Fprintf(stdout, "Fetching %s at %s (%s)...\n", repo.url, repo.tag, short(repo.commit)); err != nil {
+			return err
+		}
 		if err := git(dir, "fetch", "--quiet", "--depth", "1", "--filter=blob:none", "origin", repo.commit); err != nil {
 			return err
 		}
@@ -319,8 +321,8 @@ func syncRepo(dir string, repo referenceRepo, stdout io.Writer) error {
 	if err := verify(dir, repo); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "%s/%s synced to %s (%s).\n", refDir, repo.name, repo.tag, short(repo.commit))
-	return nil
+	_, err := fmt.Fprintf(stdout, "%s/%s synced to %s (%s).\n", refDir, repo.name, repo.tag, short(repo.commit))
+	return err
 }
 
 // verify checks the pinned HEAD, the sparse patterns, a clean tree and that

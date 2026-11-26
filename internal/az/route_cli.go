@@ -259,7 +259,7 @@ func copyGitSupportFile(from, to string) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer closeQuietly(src)
 	dst, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
 	if err != nil {
 		return err

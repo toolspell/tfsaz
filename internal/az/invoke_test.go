@@ -78,7 +78,7 @@ func (f invokeFixture) serve(t *testing.T, w http.ResponseWriter, r *http.Reques
 			t.Error("unexpected blob IDs")
 		}
 		w.Header().Set("Content-Type", "application/zip")
-		w.Write(f.zip)
+		serveTestBody(w, string(f.zip))
 		return true
 	}
 	if r.Method != http.MethodGet || r.Header.Get("Accept") != "application/json" {
@@ -122,7 +122,7 @@ func (f invokeFixture) serve(t *testing.T, w http.ResponseWriter, r *http.Reques
 		return false
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	serveTestBody(w, string(data))
 	return true
 }
 
@@ -299,13 +299,13 @@ func TestInvokeBlobFailureLeavesDestinationUntouched(t *testing.T) {
 					w.WriteHeader(http.StatusTemporaryRedirect)
 				case "invalid zip":
 					w.Header().Set("Content-Type", "application/zip")
-					io.WriteString(w, "not a zip")
+					serveTestBody(w, "not a zip")
 				case "concurrent creation":
 					if err := os.WriteFile(out, []byte("keep this"), 0600); err != nil {
 						t.Error(err)
 					}
 					w.Header().Set("Content-Type", "application/zip")
-					w.Write(fixture.zip)
+					serveTestBody(w, string(fixture.zip))
 				default:
 					t.Error("invalid file reached the server")
 					http.NotFound(w, r)
@@ -375,7 +375,7 @@ func TestBlobArchiveAboveT3DiffBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer archive.Close()
+	defer closeQuietly(archive)
 	if len(archive.File) != 1 || archive.File[0].UncompressedSize64 != megabytes<<20 {
 		t.Fatal("incomplete large blob archive")
 	}

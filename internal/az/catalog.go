@@ -30,7 +30,7 @@ func fetchCatalog(ctx context.Context, c *Client) ([]resourceLocation, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer closeQuietly(resp.Body)
 
 	body, err := readResponse(resp.Body, maxResponseBytes)
 	if err != nil {

@@ -255,7 +255,7 @@ func (c routeCheck) probe(ctx context.Context, target routeCheckTarget, address 
 				return nil, err
 			}
 			if tcp, ok := conn.RemoteAddr().(*net.TCPAddr); !ok || !tcp.IP.Equal(net.ParseIP(want)) {
-				conn.Close()
+				closeQuietly(conn)
 				return nil, errors.New("connected to an unexpected address")
 			}
 			return conn, nil
@@ -292,7 +292,7 @@ func (c routeCheck) probe(ctx context.Context, target routeCheckTarget, address 
 	if err != nil {
 		return describeRouteProbeError(err)
 	}
-	resp.Body.Close()
+	closeQuietly(resp.Body)
 	switch {
 	case resp.StatusCode != http.StatusFound:
 		return fmt.Errorf("got HTTP %d, want 302; check that the redirect service runs with the current configuration", resp.StatusCode)

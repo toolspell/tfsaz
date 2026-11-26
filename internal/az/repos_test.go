@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -53,7 +52,7 @@ func TestReposShow(t *testing.T) {
 	fixture := strings.ReplaceAll(repoFixture(t, "repository"), "Fixture%20Collection", "Fixture Collection")
 	client := repoTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		checkRepoRequest(t, r, "/Shared%20Project/_apis/git/repositories/Tool%20Kit", url.Values{"api-version": {"7.1"}})
-		io.WriteString(w, fixture)
+		serveTestBody(w, fixture)
 	})
 	// The adapter can send explicit flags for a repository other than the checkout.
 	scope := Scope{Project: "Checkout Project", Repository: "Checkout Repo"}
@@ -106,7 +105,7 @@ func TestReposPullRequestShowLinks(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			client := repoTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 				checkRepoRequest(t, r, repoTestPRPath, url.Values{"api-version": {"7.1"}})
-				io.WriteString(w, strings.ReplaceAll(fixture, `"Shared Project"`, fmt.Sprintf("%q", tc.project)))
+				serveTestBody(w, strings.ReplaceAll(fixture, `"Shared Project"`, fmt.Sprintf("%q", tc.project)))
 			})
 			checkoutProject := tc.project
 			if strings.Contains(tc.checkout, "Another%20Project") {
@@ -145,14 +144,14 @@ func TestReposPolicyListPagedByPRProject(t *testing.T) {
 			client := repoTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.EscapedPath() == repoTestPrefix+repoTestPRPath {
 					checkRepoRequest(t, r, repoTestPRPath, url.Values{"api-version": {"7.1"}})
-					io.WriteString(w, pr)
+					serveTestBody(w, pr)
 					return
 				}
 				checkRepoRequest(t, r, "/"+repoTestProjectID+"/_apis/policy/evaluations", url.Values{
 					"api-version": {"7.1-preview.1"}, "$top": {"1"}, "$skip": {fmt.Sprint(index)},
 					"artifactId": {"vstfs:///CodeReview/CodeReviewId/" + repoTestProjectID + "/42"},
 				})
-				fmt.Fprintf(w, `{"count":1,"value":[%s]}`, fixture.Value[index])
+				serveTestf(w, `{"count":1,"value":[%s]}`, fixture.Value[index])
 			})
 			scope := Scope{Organization: "https://dev.azure.com/fixture", Project: "Unrelated checkout"}
 			result, err := runRepos(context.Background(), client, scope, "repos pr policy list", map[string]string{
@@ -174,12 +173,12 @@ func TestReposPullRequestListFilters(t *testing.T) {
 	client := repoTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.EscapedPath() {
 		case repoTestPrefix + "/_apis/connectionData":
-			fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"FIXTURE\\reviewer"}}`, repoTestViewerID)
+			serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"FIXTURE\\reviewer"}}`, repoTestViewerID)
 		case repoTestPrefix + "/_apis/identities":
 			checkRepoRequest(t, r, "/_apis/identities", url.Values{
 				"api-version": {"5.0"}, "searchFilter": {"General"}, "filterValue": {"author@example.invalid"},
 			})
-			fmt.Fprintf(w, `{"value":[{"id":%q}]}`, repoTestAuthorID)
+			serveTestf(w, `{"value":[{"id":%q}]}`, repoTestAuthorID)
 		default:
 			checkRepoRequest(t, r, "/Shared%20Project/_apis/git/repositories/Tool%20Kit/pullrequests", url.Values{
 				"api-version": {"7.1"}, "$top": {"3"}, "$skip": {"20"},
@@ -188,7 +187,7 @@ func TestReposPullRequestListFilters(t *testing.T) {
 				"searchCriteria.sourceRefName": {"refs/heads/user/feat/1-(#2)-slug"},
 				"searchCriteria.targetRefName": {"refs/heads/main"},
 			})
-			fmt.Fprintf(w, `{"count":3,"value":[{"pullRequestId":"bad"},{"pullRequestId":41,"title":"Missing repository"},%s]}`, fixture)
+			serveTestf(w, `{"count":3,"value":[{"pullRequestId":"bad"},{"pullRequestId":41,"title":"Missing repository"},%s]}`, fixture)
 		}
 	})
 	scope := Scope{
@@ -218,14 +217,14 @@ func TestReposPullRequestListFilters(t *testing.T) {
 func TestReposPullRequestListMeAndEmptyPage(t *testing.T) {
 	client := repoTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.EscapedPath() == repoTestPrefix+"/_apis/connectionData" {
-			fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"FIXTURE\\reviewer"}}`, repoTestViewerID)
+			serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"FIXTURE\\reviewer"}}`, repoTestViewerID)
 			return
 		}
 		checkRepoRequest(t, r, "/Shared%20Project/_apis/git/pullrequests", url.Values{
 			"api-version": {"7.1"}, "$top": {"1"}, "searchCriteria.status": {"all"},
 			"searchCriteria.creatorId": {repoTestViewerID}, "searchCriteria.includeLinks": {"false"},
 		})
-		io.WriteString(w, `{"count":0,"value":[]}`)
+		serveTestBody(w, `{"count":0,"value":[]}`)
 	})
 	result, err := runRepos(context.Background(), client, Scope{Project: "Shared Project"}, "repos pr list", map[string]string{
 		"creator": "me", "status": "all", "top": "1",
@@ -253,7 +252,7 @@ func TestReposErrors(t *testing.T) {
 		t.Run(tc.want, func(t *testing.T) {
 			client := repoTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tc.status)
-				io.WriteString(w, tc.body)
+				serveTestBody(w, tc.body)
 			})
 			_, err := runRepos(context.Background(), client, Scope{Project: "Shared Project"}, tc.command, tc.opts)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {

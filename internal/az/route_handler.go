@@ -17,7 +17,7 @@ const macLinkHandlerBundleID = "com.toolspell.tfsaz.link-handler"
 
 var macBrowserBundleID = regexp.MustCompile(`^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
 
-func exportMacLinkHandler(ctx context.Context, dest, browserBundleID string) error {
+func exportMacLinkHandler(ctx context.Context, dest, browserBundleID string) (err error) {
 	if runtime.GOOS != "darwin" {
 		return errors.New("use route handler-export to export a native link handler on this platform")
 	}
@@ -27,7 +27,7 @@ func exportMacLinkHandler(ctx context.Context, dest, browserBundleID string) err
 	if !validLinkPath(dest) || !strings.EqualFold(filepath.Ext(dest), ".app") || len(filepath.Base(dest)) <= len(".app") {
 		return errors.New("specify a new .app bundle path")
 	}
-	dest, err := filepath.Abs(dest)
+	dest, err = filepath.Abs(dest)
 	if err != nil {
 		return fmt.Errorf("resolve link handler destination: %w", err)
 	}
@@ -59,7 +59,7 @@ func exportMacLinkHandler(ctx context.Context, dest, browserBundleID string) err
 	if err != nil {
 		return fmt.Errorf("stage link handler: %w", err)
 	}
-	defer os.RemoveAll(stage)
+	defer removeStagedTree(stage, &err)
 	bundle := filepath.Join(stage, filepath.Base(dest))
 	source := macLinkHandlerSource(executable, config, "/usr/bin/open", browserBundleID)
 	script := filepath.Join(stage, "open.applescript")

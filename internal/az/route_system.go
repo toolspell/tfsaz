@@ -268,11 +268,11 @@ func routeSystemServicePort(dir, id string) (int, error) {
 		}
 		port := ln4.Addr().(*net.TCPAddr).Port
 		ln6, err := net.Listen("tcp", net.JoinHostPort("::1", strconv.Itoa(port)))
-		ln4.Close()
+		closeQuietly(ln4)
 		if err != nil {
 			continue
 		}
-		ln6.Close()
+		closeQuietly(ln6)
 		data, _ := json.Marshal(routeSystemState{ID: id, Port: port})
 		if err := writeFileAtomic(path, append(data, '\n'), 0o600); err != nil {
 			return 0, err
@@ -282,18 +282,18 @@ func routeSystemServicePort(dir, id string) (int, error) {
 	return 0, errors.New("could not find a loopback port free on both IPv4 and IPv6")
 }
 
-func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
+func writeFileAtomic(path string, data []byte, mode os.FileMode) (err error) {
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer removeStaged(tmp.Name(), &err)
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		closeQuietly(tmp)
 		return err
 	}
 	if err := tmp.Chmod(mode); err != nil && runtime.GOOS != "windows" {
-		tmp.Close()
+		closeQuietly(tmp)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -311,8 +311,9 @@ func routeSystemPeer(ctx context.Context, addr, sni string) (connected bool, lea
 	if err != nil {
 		return false, ""
 	}
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(3 * time.Second))
+	defer closeQuietly(conn)
+	// The handshake also ends with ctx.
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
 	tc := tls.Client(conn, &tls.Config{ServerName: sni, InsecureSkipVerify: true, MinVersion: tls.VersionTLS12})
 	if tc.HandshakeContext(ctx) != nil {
 		return true, ""

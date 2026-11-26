@@ -71,9 +71,10 @@ func (a app) verifyLogin(ctx context.Context, p Profile) (string, error) {
 	var raw []byte
 	var err error
 	if a.stdinIsTerminal() {
-		fmt.Fprintf(a.stderr, "PAT for %s: ", p.ID)
+		// The prompt is a courtesy; ReadPassword reports a broken terminal.
+		_, _ = fmt.Fprintf(a.stderr, "PAT for %s: ", p.ID)
 		raw, err = term.ReadPassword(int(a.stdin.Fd()))
-		fmt.Fprintln(a.stderr)
+		_, _ = fmt.Fprintln(a.stderr)
 	} else {
 		raw, err = io.ReadAll(io.LimitReader(a.stdin, 1025))
 	}

@@ -56,14 +56,14 @@ func (r genericRequest) run(ctx context.Context, c *Client, path []string, query
 		if err != nil {
 			return err
 		}
-		defer os.Remove(staged.Name())
-		defer staged.Close()
+		defer removeStaged(staged.Name(), &err)
+		defer closeQuietly(staged)
 	}
 	resp, err := c.requestWithMedia(ctx, r.method, path, query, r.accept, r.mediaType, r.headers, body)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer closeQuietly(resp.Body)
 	if r.method != http.MethodHead && r.method != http.MethodGet && r.method != http.MethodOptions {
 		defer func() {
 			if err != nil {

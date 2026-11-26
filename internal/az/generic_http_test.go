@@ -2,7 +2,6 @@ package az
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -64,7 +63,7 @@ func TestGenericRequestMediaAndJSON(t *testing.T) {
 					w.WriteHeader(http.StatusNoContent)
 					return
 				}
-				io.WriteString(w, test.response)
+				serveTestBody(w, test.response)
 			}))
 			defer server.Close()
 			client := newClientForTest(t, clientTestProfile(t, server, "/proxy/Fixture Collection"))
@@ -127,7 +126,7 @@ func TestGenericRequestOutputFile(t *testing.T) {
 					return
 				}
 				w.Header().Set("Content-Type", "application/octet-stream")
-				io.WriteString(w, raw)
+				serveTestBody(w, raw)
 			})
 			request := genericRequest{outFile: out, accept: "application/octet-stream"}
 			var stdout bytes.Buffer
@@ -171,7 +170,7 @@ func TestGenericRequestDoesNotFollowRedirectsOrExposeErrorBody(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "%s %s", private, clientTestPassword)
+		serveTestf(w, "%s %s", private, clientTestPassword)
 	}))
 	defer server.Close()
 	client := newClientForTest(t, clientTestProfile(t, server, "/Collection"))

@@ -211,7 +211,7 @@ func (read invokeRead) run(ctx context.Context, client *Client, scope Scope, cwd
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer closeQuietly(resp.Body)
 	body, err := readResponse(resp.Body, maxResponseBytes)
 	if err != nil {
 		return err
@@ -257,7 +257,7 @@ func readInvokeInput(path string, maxBytes int64) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("could not open --in-file")
 	}
-	defer file.Close()
+	defer closeQuietly(file)
 	opened, err := file.Stat()
 	if err != nil || !os.SameFile(info, opened) {
 		return nil, errors.New("--in-file changed while opening")
@@ -286,7 +286,7 @@ func readBlobIDs(path string) ([]byte, error) {
 	return json.Marshal(ids)
 }
 
-func (read invokeRead) downloadBlobs(ctx context.Context, client *Client, cwd string) error {
+func (read invokeRead) downloadBlobs(ctx context.Context, client *Client, cwd string) (err error) {
 	out := invokeLocalPath(cwd, read.outFile)
 	if _, err := os.Lstat(out); !errors.Is(err, os.ErrNotExist) {
 		if err == nil {
@@ -302,7 +302,7 @@ func (read invokeRead) downloadBlobs(ctx context.Context, client *Client, cwd st
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer closeQuietly(resp.Body)
 	media, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	if media != "application/zip" && media != "application/octet-stream" {
 		return errors.New("Azure DevOps did not return a ZIP response")
@@ -313,11 +313,11 @@ func (read invokeRead) downloadBlobs(ctx context.Context, client *Client, cwd st
 	if err != nil {
 		return errors.New("could not stage --out-file")
 	}
-	defer os.Remove(file.Name())
+	defer removeStaged(file.Name(), &err)
 	n, writeErr := io.Copy(file, resp.Body)
 	if writeErr == nil {
 		if _, err := zip.NewReader(file, n); err != nil {
-			file.Close()
+			closeQuietly(file)
 			return errors.New("Azure DevOps returned an invalid ZIP archive")
 		}
 	}

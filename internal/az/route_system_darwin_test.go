@@ -245,11 +245,11 @@ func TestInheritedRedirectServes(t *testing.T) {
 		}
 		port := ln.Addr().(*net.TCPAddr).Port
 		file, err := ln.(*net.TCPListener).File()
-		ln.Close()
+		closeQuietly(ln)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer file.Close()
+		defer closeQuietly(file)
 		if declaredPort == 0 {
 			declaredPort = port
 		}
@@ -264,7 +264,8 @@ func TestInheritedRedirectServes(t *testing.T) {
 	}
 
 	cmd, port := start(0)
-	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
+	// The child may have exited already, and Wait reports the kill itself.
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
 	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -288,7 +289,7 @@ func TestInheritedRedirectServes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	closeQuietly(resp.Body)
 	if resp.StatusCode != http.StatusFound || !strings.HasPrefix(resp.Header.Get("Location"), collection) {
 		t.Fatalf("status %d location %q", resp.StatusCode, resp.Header.Get("Location"))
 	}

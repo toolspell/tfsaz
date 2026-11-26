@@ -147,7 +147,7 @@ func listenRedirectLoopback(port int) ([]net.Listener, error) {
 		ln, err := net.Listen("tcp", net.JoinHostPort(addr, strconv.Itoa(port)))
 		if err != nil {
 			for _, l := range listeners {
-				l.Close()
+				closeQuietly(l)
 			}
 			if errors.Is(err, os.ErrPermission) {
 				return nil, fmt.Errorf("could not bind loopback port %d: %w; this OS reserves low ports, so use --port with a loopback port redirect as described in https://github.com/toolspell/tfsaz/blob/main/docs/user/browser-routing-manual.md#5-run-the-service-on-port-443", port, err)
@@ -222,7 +222,7 @@ func serveRedirectListeners(ctx context.Context, listeners []net.Listener, cert 
 		workers.Go(func() { done <- srv.Serve(tls.NewListener(netutil.LimitListener(ln, 64), tlsConfig)) })
 	}
 	defer func() {
-		srv.Close()
+		closeQuietly(srv)
 		workers.Wait()
 	}()
 	if _, err := fmt.Fprintf(status, "tfsaz: redirecting %d registered alias(es) on loopback port %d; other names, methods and paths are refused\n", len(names), port); err != nil {

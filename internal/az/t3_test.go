@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -60,14 +59,14 @@ func TestStockT3Adapter(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch strings.TrimPrefix(r.URL.Path, prefix) {
 		case "/_apis/connectionData":
-			fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid","properties":{"Account":{"$value":"author"}}}}`, repoTestViewerID)
+			serveTestf(w, `{"authenticatedUser":{"id":%q,"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid","properties":{"Account":{"$value":"author"}}}}`, repoTestViewerID)
 		case "/_apis/identities":
 			if r.URL.Query().Get("identityIds") != repoTestViewerID {
 				t.Error("identity lookup must use the authenticated user's collection ID")
 			}
-			fmt.Fprintf(w, `{"value":[{"id":%q,"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid","properties":{"Account":{"$value":"author@example.invalid"}}}]}`, clientTestOtherID)
+			serveTestf(w, `{"value":[{"id":%q,"descriptor":"Microsoft.TeamFoundation.Identity;fixture-sid","properties":{"Account":{"$value":"author@example.invalid"}}}]}`, clientTestOtherID)
 		case "/_apis/git/pullrequests/42":
-			io.WriteString(w, pr)
+			serveTestBody(w, pr)
 		case "/" + repoTestProjectID + "/_apis/git/repositories/10101010-1111-4111-8111-101010101010/pullrequests/42":
 			if r.Method != http.MethodPatch || r.Header.Get("Content-Type") != "application/json" || r.URL.Query().Get("api-version") != "7.1" {
 				t.Error("unexpected PR update request")
@@ -79,7 +78,7 @@ func TestStockT3Adapter(t *testing.T) {
 				t.Errorf("unexpected PR update payload: %#v", body)
 			}
 			prUpdates.Add(1)
-			io.WriteString(w, pr)
+			serveTestBody(w, pr)
 		case "/Shared Project/_apis/git/repositories/Tool Kit":
 			var details map[string]any
 			if err := json.Unmarshal([]byte(repo), &details); err != nil {
@@ -87,12 +86,14 @@ func TestStockT3Adapter(t *testing.T) {
 				return
 			}
 			details["sshUrl"] = "ssh://git@" + r.Host + "/tfs/Fixture%20Collection/Shared%20Project/_git/Tool%20Kit"
-			json.NewEncoder(w).Encode(details)
+			if err := json.NewEncoder(w).Encode(details); err != nil {
+				t.Error(err)
+			}
 		case "/Shared Project/_apis/git/repositories/Tool Kit/pullrequests":
 			if r.URL.Query().Get("searchCriteria.creatorId") != repoTestViewerID {
 				t.Error("missing scoped creator filter")
 			}
-			fmt.Fprintf(w, `{"value":[%s]}`, pr)
+			serveTestf(w, `{"value":[%s]}`, pr)
 		case "/" + repoTestProjectID + "/_apis/policy/evaluations":
 			if r.URL.Query().Get("$top") != "100" {
 				t.Error("unexpected policy page size")
@@ -104,13 +105,15 @@ func TestStockT3Adapter(t *testing.T) {
 				for i := range rows {
 					rows[i] = firstPage
 				}
-				json.NewEncoder(w).Encode(map[string]any{"value": rows})
+				if err := json.NewEncoder(w).Encode(map[string]any{"value": rows}); err != nil {
+					t.Error(err)
+				}
 			case "100":
 				last := policies.Value[0]
 				if second.Add(1) > 1 {
 					last = bytes.ReplaceAll(last, []byte(`"queued"`), []byte(`"approved"`))
 				}
-				fmt.Fprintf(w, `{"value":[%s]}`, last)
+				serveTestf(w, `{"value":[%s]}`, last)
 			default:
 				t.Error("unexpected policy offset")
 				http.NotFound(w, r)

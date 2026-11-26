@@ -186,7 +186,7 @@ func utf16File(s string) []byte {
 	return out
 }
 
-func installWindowsTask(ctx context.Context, p routeSystemPlan) error {
+func installWindowsTask(ctx context.Context, p routeSystemPlan) (err error) {
 	u, err := user.Current()
 	if err != nil {
 		return err
@@ -195,7 +195,7 @@ func installWindowsTask(ctx context.Context, p routeSystemPlan) error {
 	if err := os.WriteFile(xmlFile, utf16File(windowsTaskXML(p, u.Uid)), 0o600); err != nil {
 		return err
 	}
-	defer os.Remove(xmlFile)
+	defer removeStaged(xmlFile, &err)
 	if err := stopWindowsTask(ctx, p); err != nil {
 		return err
 	}
@@ -289,8 +289,9 @@ func removeWindowsTask(ctx context.Context, p routeSystemPlan) error {
 	}
 	// schtasks leaves the \tfsaz folder behind. Task Scheduler refuses to delete
 	// a folder that still holds another configuration's task, so this removes
-	// only an empty one.
-	runRouteSystemCommand(ctx, nil, windowsPowerShell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", powerShellEncode(windowsTaskFolderScript))
+	// only an empty one, and fails when the folder is already gone, so its
+	// result says nothing about this configuration.
+	_, _ = runRouteSystemCommand(ctx, nil, windowsPowerShell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", powerShellEncode(windowsTaskFolderScript))
 	return nil
 }
 

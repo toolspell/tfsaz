@@ -93,7 +93,7 @@ func runRouteSink(ctx context.Context, port string, status io.Writer) error {
 		ln, err := net.Listen("tcp", net.JoinHostPort(addr, strconv.Itoa(n)))
 		if err != nil {
 			for _, l := range listeners {
-				l.Close()
+				closeQuietly(l)
 			}
 			return fmt.Errorf("could not bind loopback port %d: %w", n, err)
 		}
@@ -104,10 +104,11 @@ func runRouteSink(ctx context.Context, port string, status io.Writer) error {
 	done := make(chan error, len(listeners))
 	defer func() {
 		for _, ln := range listeners {
-			ln.Close()
+			closeQuietly(ln)
 		}
 		workers.Wait()
-		fmt.Fprintf(status, "tfsaz: refused %d TCP connection(s)\n", refused.Load())
+		// A summary at shutdown; the result is already decided.
+		_, _ = fmt.Fprintf(status, "tfsaz: refused %d TCP connection(s)\n", refused.Load())
 	}()
 	for _, ln := range listeners {
 		workers.Go(func() {
@@ -118,7 +119,7 @@ func runRouteSink(ctx context.Context, port string, status io.Writer) error {
 					return
 				}
 				refused.Add(1)
-				conn.Close()
+				closeQuietly(conn)
 			}
 		})
 	}

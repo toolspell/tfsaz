@@ -300,7 +300,11 @@ func TestRepoSetupSSHKeyCheckAndOfflineRestore(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer os.RemoveAll(agentDir)
+		defer func() {
+			if err := os.RemoveAll(agentDir); err != nil {
+				t.Error(err)
+			}
+		}()
 		agentArgs = append(agentArgs, "-a", filepath.Join(agentDir, "sock"))
 	}
 	out, err := exec.Command(tools["ssh-agent"], agentArgs...).CombinedOutput()

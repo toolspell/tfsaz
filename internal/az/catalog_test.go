@@ -1,7 +1,6 @@
 package az
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -17,7 +16,7 @@ func TestFetchCatalogUsesCollectionAndPreservesEntries(t *testing.T) {
 			r.URL.RawQuery != "allHostTypes=true" || r.Header.Get("Accept") != "application/json" {
 			t.Errorf("unexpected OPTIONS request: %s %s", r.Method, r.URL)
 		}
-		io.WriteString(w, `{"count":1,"value":[`+entry+`]}`)
+		serveTestBody(w, `{"count":1,"value":[`+entry+`]}`)
 	}))
 	defer server.Close()
 	client := newClientForTest(t, clientTestProfile(t, server, "/tfs/Local Collection"))

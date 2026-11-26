@@ -52,7 +52,11 @@ func TestMacLaunchdSocketLive(t *testing.T) {
 			t.Fatal(err)
 		}
 		label := macAgentLabel(p.id, l)
-		t.Cleanup(func() { macBootout(context.Background(), label) })
+		t.Cleanup(func() {
+			if err := macBootout(context.Background(), label); err != nil {
+				t.Error(err)
+			}
+		})
 		if _, err := runRouteSystemCommand(ctx, nil, "/bin/launchctl", "bootstrap", macGUIDomain(), path); err != nil {
 			t.Fatal(err)
 		}
@@ -126,9 +130,9 @@ func routeSystemServicePortForTest() (int, error) {
 		}
 		port := ln4.Addr().(*net.TCPAddr).Port
 		ln6, err := net.Listen("tcp6", net.JoinHostPort("::1", strconv.Itoa(port)))
-		ln4.Close()
+		closeQuietly(ln4)
 		if err == nil {
-			ln6.Close()
+			closeQuietly(ln6)
 			return port, nil
 		}
 	}

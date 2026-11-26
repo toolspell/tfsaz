@@ -23,6 +23,13 @@ const (
 	clientTestOtherID = "c1111111-2222-4333-8444-555555555555"
 )
 
+// serveTestBody writes a fixture response in a test handler. A failed write
+// reaches the client under test as a broken response and fails the test there.
+func serveTestBody(w io.Writer, body string) { _, _ = io.WriteString(w, body) }
+
+// serveTestf is serveTestBody with a format.
+func serveTestf(w io.Writer, format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
+
 func clientTestProfile(t *testing.T, server *httptest.Server, collectionPath string) Profile {
 	t.Helper()
 	ca := filepath.Join(t.TempDir(), "root.pem")
@@ -63,7 +70,7 @@ func TestCollectionClientRequestScope(t *testing.T) {
 			r.Header.Get("X-TFS-FedAuthRedirect") != "Suppress" || r.URL.Query().Get("filter") != "branch/feature & more" {
 			t.Error("unexpected method, headers, or query")
 		}
-		io.WriteString(w, `{"name":"repo#one"}`)
+		serveTestBody(w, `{"name":"repo#one"}`)
 	}))
 	defer server.Close()
 	client := newClientForTest(t, clientTestProfile(t, server, "/tfs/Second Collection/"))
@@ -138,10 +145,10 @@ func TestCollectionClientErrorDiagnostics(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tc.status)
 				if tc.body != "" {
-					io.WriteString(w, tc.body)
+					serveTestBody(w, tc.body)
 					return
 				}
-				fmt.Fprintf(w, "%s %s", privateMarker, clientTestPassword)
+				serveTestf(w, "%s %s", privateMarker, clientTestPassword)
 			}))
 			defer server.Close()
 			client := newClientForTest(t, clientTestProfile(t, server, "/Collection"))
@@ -165,7 +172,7 @@ func TestCollectionClientErrorDiagnostics(t *testing.T) {
 
 func TestCollectionClientTLSAndAvailability(t *testing.T) {
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, `{}`)
+		serveTestBody(w, `{}`)
 	}))
 	server.Config.ErrorLog = log.New(io.Discard, "", 0)
 	server.StartTLS()
@@ -235,7 +242,7 @@ func TestCollectionClientAuthenticatedIdentity(t *testing.T) {
 					if got := r.URL.Query().Get("api-version"); got != "5.0-preview.1" {
 						t.Errorf("connectionData API version = %q", got)
 					}
-					fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,%s},"authorizedUser":{"id":%q,"uniqueName":"different@example.test"}}`,
+					serveTestf(w, `{"authenticatedUser":{"id":%q,%s},"authorizedUser":{"id":%q,"uniqueName":"different@example.test"}}`,
 						clientTestUserID, tc.user, clientTestOtherID)
 				case "/Collection/_apis/identities":
 					fallbackRequests.Add(1)
@@ -245,7 +252,7 @@ func TestCollectionClientAuthenticatedIdentity(t *testing.T) {
 					if tc.status != 0 {
 						w.WriteHeader(tc.status)
 					} else {
-						io.WriteString(w, tc.fallback)
+						serveTestBody(w, tc.fallback)
 					}
 				default:
 					t.Error("request escaped the collection identity routes")
@@ -280,7 +287,7 @@ func TestCollectionClientRejectsUnverifiedIdentity(t *testing.T) {
 				if r.URL.Path != "/Collection/_apis/connectionData" {
 					t.Error("queried identities for an unverified user")
 				}
-				fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"operator@example.test"},"authorizedUser":{"id":%q,"uniqueName":"different@example.test"}}`,
+				serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"operator@example.test"},"authorizedUser":{"id":%q,"uniqueName":"different@example.test"}}`,
 					id, clientTestOtherID)
 			}))
 			defer server.Close()

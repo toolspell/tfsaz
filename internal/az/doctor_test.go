@@ -3,7 +3,6 @@ package az
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +18,7 @@ func TestDoctorChecksOnlyCheckoutCredential(t *testing.T) {
 		if r.URL.Path != "/Second/_apis/connectionData" {
 			t.Errorf("unexpected auth endpoint %s", r.URL.Path)
 		}
-		fmt.Fprintf(w, `{"authenticatedUser":{"id":%q,"properties":{"Account":{"$value":"LOCAL\\viewer"}}}}`, repoTestViewerID)
+		serveTestf(w, `{"authenticatedUser":{"id":%q,"properties":{"Account":{"$value":"LOCAL\\viewer"}}}}`, repoTestViewerID)
 	}))
 	defer server.Close()
 	first := clientTestProfile(t, server, "/First")

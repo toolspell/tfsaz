@@ -11,7 +11,7 @@ import (
 
 const desktopHandlerExample = `route handler-export "$HOME/.local/share/applications/com.toolspell.tfsaz.links.desktop" /usr/bin/firefox`
 
-func exportDesktopLinkHandler(ctx context.Context, dest, browserExecutable string) error {
+func exportDesktopLinkHandler(ctx context.Context, dest, browserExecutable string) (err error) {
 	if !validLinkPath(dest) || filepath.Ext(dest) != ".desktop" || filepath.Base(dest) == ".desktop" {
 		return errors.New("specify a new .desktop file path")
 	}
@@ -35,7 +35,7 @@ func exportDesktopLinkHandler(ctx context.Context, dest, browserExecutable strin
 	if err != nil {
 		return fmt.Errorf("stage link handler: %w", err)
 	}
-	defer os.Remove(stage.Name())
+	defer removeStaged(stage.Name(), &err)
 	_, writeErr := stage.WriteString(desktopLinkHandlerEntry(executable, config, browserExecutable))
 	if err := errors.Join(writeErr, stage.Close()); err != nil {
 		return fmt.Errorf("write link handler: %w", err)

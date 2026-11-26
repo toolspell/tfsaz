@@ -24,7 +24,7 @@ func serveRouteRedirectInherited(ctx context.Context, certFile, keyFile string, 
 			return nil, fmt.Errorf("launchd did not pass a listening socket on standard input: %w", err)
 		}
 		if err := checkInheritedListener(ln.Addr(), port); err != nil {
-			ln.Close()
+			closeQuietly(ln)
 			return nil, err
 		}
 		return []net.Listener{ln}, nil

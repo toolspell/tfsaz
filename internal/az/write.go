@@ -29,7 +29,7 @@ func writeJSON(ctx context.Context, c *Client, method string, path []string, que
 	if err != nil {
 		return c.permissionError(ctx, err)
 	}
-	defer resp.Body.Close()
+	defer closeQuietly(resp.Body)
 	if dest == nil {
 		return nil
 	}
@@ -67,7 +67,7 @@ func (a app) expandWriteText(opts map[string]string) error {
 			if err != nil {
 				return "", errors.New("cannot open text input file")
 			}
-			defer file.Close()
+			defer closeQuietly(file)
 			reader = file
 		}
 		data, err := io.ReadAll(io.LimitReader(reader, limit+1))

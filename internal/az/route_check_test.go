@@ -60,7 +60,9 @@ func routeCheckFixture(t *testing.T) (routeCheck, string, string, string) {
 	go func() { done <- serveRedirectListeners(ctx, listeners, cert, certNames, configFile, 443, status) }()
 	t.Cleanup(func() {
 		cancel()
-		<-done
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
 	})
 	select {
 	case <-status:
@@ -182,7 +184,7 @@ func TestRouteCheckFailures(t *testing.T) {
 			return nil, err
 		}
 		address := ln.Addr().String()
-		ln.Close()
+		closeQuietly(ln)
 		return (&net.Dialer{}).DialContext(ctx, network, address)
 	}
 	expect("nothing listening", closed, "nothing accepts connections")

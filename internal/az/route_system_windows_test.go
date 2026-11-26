@@ -233,7 +233,7 @@ func readHostsIdentity(t *testing.T, path string) hostsIdentity {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeQuietly(f)
 	var id hostsIdentity
 	if err := windows.GetFileInformationByHandle(windows.Handle(f.Fd()), &id.info); err != nil {
 		t.Fatal(err)
@@ -390,7 +390,7 @@ func TestWindowsHostsEditRefuses(t *testing.T) {
 			t.Fatal(err)
 		}
 		code := runHostsScript(t, path, true, "", "")
-		f.Close()
+		closeQuietly(f)
 		got, _ := os.ReadFile(path)
 		if code != windowsHostsExitLocked || string(got) != hostsFixtureContent {
 			t.Fatalf("exit %d, got %q", code, got)

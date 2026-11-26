@@ -75,10 +75,12 @@ func TestLocalRoutingServices(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+					if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+						t.Fatal(err)
+					}
 					var b [1]byte
 					n, err := conn.Read(b[:])
-					conn.Close()
+					closeQuietly(conn)
 					if n != 0 || !errors.Is(err, io.EOF) {
 						t.Fatalf("sink read returned %d bytes, %v", n, err)
 					}
@@ -94,7 +96,7 @@ func TestLocalRoutingServices(t *testing.T) {
 					t.Fatal(err)
 				}
 				body, err := io.ReadAll(resp.Body)
-				resp.Body.Close()
+				closeQuietly(resp.Body)
 				if err != nil || resp.StatusCode != 200 || !bytes.Contains(body, []byte("dev.azure.com")) ||
 					!bytes.Contains(body, []byte("PROXY "+address)) {
 					t.Fatalf("PAC status %d, body %q, error %v", resp.StatusCode, body, err)

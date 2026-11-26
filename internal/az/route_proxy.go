@@ -25,8 +25,8 @@ func serveRouteProxy(ctx context.Context, hosts []string, port int, status io.Wr
 	if err != nil {
 		return fmt.Errorf("could not open local PAC/proxy port: %w", err)
 	}
-	defer ln.Close()
-	stop := context.AfterFunc(ctx, func() { ln.Close() })
+	defer closeQuietly(ln)
+	stop := context.AfterFunc(ctx, func() { closeQuietly(ln) })
 	defer stop()
 	if _, err := fmt.Fprintf(status, "tfsaz: local PAC http://%s/proxy.pac; SOCKS5 and HTTP proxy requests are refused\n", address); err != nil {
 		return err
@@ -44,16 +44,19 @@ func serveRouteProxy(ctx context.Context, hosts []string, port int, status io.Wr
 		case slots <- struct{}{}:
 			go func() {
 				defer func() { <-slots }()
-				defer c.Close()
-				c.SetDeadline(time.Now().Add(2 * time.Second))
+				defer closeQuietly(c)
+				// Without a deadline the reads still end when the client or the listener closes.
+				_ = c.SetDeadline(time.Now().Add(2 * time.Second))
 				handleRouteProxy(c, address, pac.Bytes())
 			}()
 		default:
-			c.Close()
+			closeQuietly(c)
 		}
 	}
 }
 
+// handleRouteProxy answers one request. A failed write means the client is
+// gone, and the caller closes the connection either way.
 func handleRouteProxy(c net.Conn, address string, pac []byte) {
 	// Limit parsing even when the local port receives a malformed request.
 	r := bufio.NewReader(io.LimitReader(c, 8192))
@@ -64,7 +67,7 @@ func handleRouteProxy(c net.Conn, address string, pac []byte) {
 	if lead[0] == 5 {
 		// RFC 1928: no acceptable authentication methods. The client stops
 		// before sending a CONNECT target, application data, or credentials.
-		c.Write([]byte{5, 255})
+		_, _ = c.Write([]byte{5, 255})
 		return
 	}
 	req, err := http.ReadRequest(r)
@@ -72,15 +75,15 @@ func handleRouteProxy(c net.Conn, address string, pac []byte) {
 		return
 	}
 	if req.Method == http.MethodConnect || req.URL.IsAbs() {
-		io.WriteString(c, "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
+		_, _ = io.WriteString(c, "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
 		return
 	}
 	if req.Method != "GET" || req.RequestURI != "/proxy.pac" || req.Host != address {
-		io.WriteString(c, "HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
+		_, _ = io.WriteString(c, "HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
 		return
 	}
-	fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: %d\r\n\r\n", len(pac))
-	c.Write(pac)
+	_, _ = fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: %d\r\n\r\n", len(pac))
+	_, _ = c.Write(pac)
 }
 
 func parseProxyOptions(args []string) (port int, shared bool, err error) {

@@ -36,13 +36,15 @@ func TestDenyProxy(t *testing.T) {
 	} {
 		client, server := net.Pipe()
 		done := make(chan struct{})
-		go func() { defer close(done); defer server.Close(); handleRouteProxy(server, addr, pac) }()
-		client.SetDeadline(time.Now().Add(2 * time.Second))
+		go func() { defer close(done); defer closeQuietly(server); handleRouteProxy(server, addr, pac) }()
+		if err := client.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := io.WriteString(client, tc.input); err != nil {
 			t.Fatal(err)
 		}
 		out, err := io.ReadAll(client)
-		client.Close()
+		closeQuietly(client)
 		<-done
 		if err != nil || !bytes.Contains(out, []byte(tc.want)) {
 			t.Fatalf("reply %q, err %v", out, err)
