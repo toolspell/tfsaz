@@ -137,7 +137,7 @@ type app struct {
 // Run writes command output to stdout. The executable reports returned errors
 // on stderr and exits nonzero.
 func Run(ctx context.Context, args []string) error {
-	a := app{stdout: os.Stdout, stderr: os.Stderr, stdin: os.Stdin, store: systemStore{}}
+	a := app{stdout: os.Stdout, stderr: os.Stderr, stdin: os.Stdin, store: processStore}
 	return a.run(ctx, args)
 }
 
@@ -310,10 +310,16 @@ func (a app) run(ctx context.Context, args []string) error {
 	return json.NewEncoder(a.stdout).Encode(result)
 }
 
+type missingPATError struct{ profile Profile }
+
+func (e missingPATError) Error() string {
+	return fmt.Sprintf("profile %s has no PAT; use az devops login --organization %s", e.profile.ID, e.profile.Organization)
+}
+
 func (a app) client(p Profile) (*Client, error) {
 	pat, err := a.profileCredential(p)
 	if errors.Is(err, errNoCredential) || (err == nil && pat == "") {
-		return nil, fmt.Errorf("profile %s has no PAT; use az devops login --organization %s", p.ID, p.Organization)
+		return nil, missingPATError{p}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%w for profile %s", errStoreUnavailable, p.ID)

@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/gofrs/flock"
 )
@@ -1275,6 +1276,7 @@ func (a app) runRepo(ctx context.Context, args []string) (err error) {
 		return err
 	}
 	var failures []error
+	var profiles []string
 	for _, r := range records {
 		c := checkout
 		if op.path == "" {
@@ -1294,7 +1296,38 @@ func (a app) runRepo(ctx context.Context, args []string) (err error) {
 			failures = append(failures, fmt.Errorf("%s: %w", repo, err))
 		} else if _, err := fmt.Fprintf(a.stdout, "verified %s\n", c.repo); err != nil {
 			return err
+		} else if !slices.Contains(profiles, r.ProfileID) {
+			profiles = append(profiles, r.ProfileID)
 		}
 	}
+	for _, id := range profiles {
+		failures = append(failures, a.verifySetupAPI(ctx, cfg, id))
+	}
 	return errors.Join(failures...)
+}
+
+// verifySetupAPI checks a verified checkout's collection against the API
+// floor. The Git checks need no PAT, so a missing one only skips this check.
+func (a app) verifySetupAPI(ctx context.Context, cfg config, id string) error {
+	i := slices.IndexFunc(cfg.Profiles, func(p Profile) bool { return p.ID == id })
+	if i < 0 {
+		return fmt.Errorf("profile %s is not configured", id)
+	}
+	client, err := a.client(cfg.Profiles[i])
+	if errors.As(err, &missingPATError{}) {
+		_, err = fmt.Fprintf(a.stderr, "WARNING: API version not checked: %v\n", err)
+		return err
+	}
+	if err != nil {
+		return fmt.Errorf("API version not checked: %w", err)
+	}
+	defer client.http.CloseIdleConnections()
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	level, err := checkAPIFloor(ctx, client)
+	if err != nil {
+		return fmt.Errorf("profile %s: %w", id, err)
+	}
+	_, err = fmt.Fprintf(a.stdout, "verified API %d.%d for profile %s\n", level.major, level.minor, id)
+	return err
 }

@@ -24,7 +24,7 @@ conclusion: neutral
 
 Review only the tests this pull request adds or grows. Tests it moves, renames, or deletes are not findings. The rules are in `docs/internals/testing.md`; read `## What to test`, `## Isolation` and `## Waiting` first and hold new tests to them.
 
-Findings are a new test function where a row in an existing table fits, a test that reaches real state (the developer's configuration, the system keyring through `systemStore`, system commands, the home directory, Git configuration, or a non-loopback server), and a wait on `time.Sleep` or a poll loop where an event exists.
+Findings are a new test function where a row in an existing table fits, a test that reaches real state (the developer's configuration, the system keyring through `systemStore` or a binary built without `-tags tfsaztest`, system commands, the home directory, Git configuration, or a non-loopback server), and a wait on `time.Sleep` or a poll loop where an event exists.
 
 Post each finding as a brief inline comment on the new test with one fix. Ask only for fewer, smaller, or better isolated tests, never for more coverage.
 

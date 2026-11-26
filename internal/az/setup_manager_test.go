@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,7 +56,7 @@ func managerTestRepo(t *testing.T) (managerTestCLI, *bytes.Buffer, setupCheckout
 	}
 	root := t.TempDir()
 	bin := testExecutable(filepath.Join(root, "tfsaz"))
-	if output, err := exec.Command("go", "build", "-o", bin, "../..").CombinedOutput(); err != nil {
+	if output, err := exec.Command("go", "build", "-tags", "tfsaztest", "-o", bin, "../..").CombinedOutput(); err != nil {
 		t.Fatalf("build tfsaz: %v\n%s", err, output)
 	}
 	script := `#!/bin/sh
@@ -785,4 +787,49 @@ func managerTestPowerShellArgument(t *testing.T, argument string) (string, error
 	}
 	data, err := os.ReadFile(out)
 	return string(data), err
+}
+
+func TestRepoVerifyChecksCollectionAPI(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		checkClientTestAuth(t, r)
+		if r.Method != http.MethodOptions {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL)
+		}
+		// The collection path names the API level the fixture advertises.
+		level, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+		serveTestCatalog(w, level)
+	}))
+	defer server.Close()
+	tests := []struct {
+		name, collection, stored string
+		locked                   bool
+		stdout, stderr, err      string
+	}{
+		{name: "floor", collection: "7.1", stored: clientTestPassword, stdout: "verified API 7.1 for profile test-collection\n"},
+		{name: "below floor", collection: "6.0", stored: clientTestPassword, err: "profile test-collection: the collection supports API 6.0 at most"},
+		{name: "no PAT skips the check", collection: "7.1", stderr: "WARNING: API version not checked: profile test-collection has no PAT"},
+		{name: "locked store fails", collection: "7.1", stored: clientTestPassword, locked: true, err: "API version not checked: credential store locked or unavailable"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := clientTestProfile(t, server, "/"+tc.collection)
+			store := &memoryStore{values: map[string]string{}}
+			if tc.stored != "" {
+				store.values[p.ID] = tc.stored
+			}
+			if tc.locked {
+				store.lockedProfile = p.ID
+			}
+			var stdout, stderr bytes.Buffer
+			a := app{stdout: &stdout, stderr: &stderr, store: store}
+			err := a.verifySetupAPI(t.Context(), config{Profiles: []Profile{p}}, p.ID)
+			if (err == nil) != (tc.err == "") || (err != nil && !strings.Contains(err.Error(), tc.err)) ||
+				stdout.String() != tc.stdout || !strings.HasPrefix(stderr.String(), tc.stderr) || (tc.stderr == "" && stderr.Len() != 0) {
+				t.Fatalf("verifySetupAPI = %v, stdout %q, stderr %q", err, &stdout, &stderr)
+			}
+		})
+	}
+	if err := (app{store: &memoryStore{}}).verifySetupAPI(t.Context(), config{}, "missing"); err == nil {
+		t.Fatal("verifySetupAPI accepted an unconfigured profile")
+	}
 }
