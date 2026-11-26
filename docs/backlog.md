@@ -63,7 +63,6 @@ Deferred work, so any session or worktree can pick it up.
   - `internal/az/help.go:131` (`rest --url`): "organization alias" should be "Azure-style alias".
   - `internal/az/help.go:379` (`route`): "Azure-style URLs" should be "synthetic URLs".
   - `internal/az/help.go:380`, `internal/az/shim.go:69`, `internal/az/shim.go:106`: "launchers", "CLI and Git helper launchers", "tfsaz launcher" should be "shims" (`az` and `git-remote-tfsaz`).
-  - "Microsoft's `az`" should be "Microsoft's Azure CLI" in AGENTS.md (the line after the docs map), `.agents/skills/reference-azure-cli/SKILL.md:8` and `.agents/skills/reference-t3code/SKILL.md:35`.
   - `internal/az/preserve_git.go:27` ("the tfsaz remote helper") and `internal/az/setup_transport.go:76` ("Git transport helper") should name `git-remote-tfsaz`.
 - **Tests that poll with `time.Sleep`:** candidates for waiting on an event instead ([Testing](internals/testing.md#waiting)). Four calls in three files:
   - `internal/az/route_system_darwin_test.go:286` (`TestInheritedRedirectServes`): retries an HTTPS GET every 100 ms until the child serves. The child could signal readiness instead.
@@ -96,4 +95,3 @@ Deferred work, so any session or worktree can pick it up.
   - `docs/operations/development.md`: T3 adapter test prerequisites, Windows logon with a loaded profile for Credential Manager, an unlocked Secret Service collection on Linux, the live system test variables.
   - `docs/verification/live-t3-2026-11.md`: server version 2022.2, two collections on one server (one name with a space) with distinct aliases, T3 Nightly with an isolated data directory, GNOME Keyring session on Ubuntu, password-backed Windows logon, explicitly trusted testbed CA, Git for Windows' OpenSSH.
   - `docs/verification/browser-routing.md`: disposable browser profiles, Windows over SSH versus RDP, `t3 browser setup` for AppArmor on Ubuntu.
-- **Structure-phase rule:** remove the structure-phase no-code-changes rule from AGENTS.md once the repo setup is done.

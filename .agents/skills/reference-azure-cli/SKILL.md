@@ -5,7 +5,7 @@ description: Read Microsoft's Azure CLI, its azure-devops extension and the knac
 
 # Reference: Azure CLI and the DevOps extension
 
-tfsaz answers as `az`, so it mimics Microsoft's Azure CLI and its `azure-devops` extension: their command surface, argument parsing, output formats, errors and exit codes, and some internals such as the connection-data and identity lookups. These are behavioral references, not templates: implement the behavior in Go, in tfsaz's own way, and copy no code. Where T3's adapter (skill `reference-t3code`) and Microsoft's `az` differ, T3's actual calls win.
+tfsaz answers as `az`, so it mimics Microsoft's Azure CLI and its `azure-devops` extension: their command surface, argument parsing, output formats, errors and exit codes, and some internals such as the connection-data and identity lookups. These are behavioral references, not templates: implement the behavior in Go, in tfsaz's own way, and copy no code. Where T3's adapter (skill `reference-t3code`) and Microsoft's Azure CLI differ, T3's actual calls win.
 
 ## Get the source
 

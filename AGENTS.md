@@ -4,11 +4,28 @@ tfsaz is a standalone Go CLI for macOS, Windows and Linux that lets an unmodifie
 
 Stock T3 recognizes only Azure DevOps Services remotes and scopes every `az` call to a cloud organization. tfsaz therefore gives checkouts Azure-style aliases and maps them back to the real collection; do not "simplify" that to native URLs. Details: [why stock T3 cannot reach Azure DevOps Server](docs/internals/t3-compatibility.md#why-stock-t3-cannot-reach-azure-devops-server).
 
-## Current phase: no code changes
-
-While the repo structure work is ongoing, change no code, tests, workflows or tooling, and reorganize nothing unless the maintainer explicitly asks for it. This holds even when existing code or docs break the rules below (for example the on-disk `alias-key.pem`). Report such findings to the maintainer instead of fixing them. This rule is removed when the repo setup is done ([backlog](docs/backlog.md)).
-
 ## Hard rules
+
+### Compatibility contract
+
+tfsaz works only while stock T3 Code cannot tell it apart from Microsoft's Azure CLI with the `azure-devops` extension. Any difference shows up as a broken T3 feature, not as a tfsaz error. Before you change a command, check all three:
+
+- T3's call site and its tests: the arguments, JSON shapes, stderr and exit codes T3 reads. Skill `reference-t3code`; [T3 compatibility](docs/internals/t3-compatibility.md) names the files.
+- The hosts and URL shapes T3 recognizes as Azure DevOps. The Azure-style aliases and synthetic URLs must keep matching them.
+- How Microsoft's Azure CLI, the extension and knack parse, format output and fail. Skill `reference-azure-cli`. Where they differ from what T3 actually calls, T3 wins.
+
+### Outside in only
+
+tfsaz solves the problem from outside, against the real installed T3 Code app or server. Never suggest or make a change, fork or upstream PR to T3 Code, Microsoft's Azure CLI or the `azure-devops` extension, and never patch an installed copy. If a fix seems to need one, report it to the maintainer as a gap.
+
+### Reversible and verifiable system changes
+
+- Everything tfsaz or its setup changes outside its own configuration (hosts file, trust stores, services, firewall rules, Git config and remotes, link handlers, keyring entries, shims, browser and proxy settings) must be cleanly undoable with a tfsaz command or a documented step, leaving no residue, and checkable by tfsaz itself, so users can see the current state. A feature that lacks either is a gap: report it and add it to the backlog.
+- Clean up after yourself: revert test environments (temp configs, test checkouts, routing on test machines, test keyring entries) to a clean state as soon as you are sure the state is no longer needed.
+
+### Security-affecting features are intended
+
+Some features deliberately change a machine's security state: local trust for a leaf certificate, hosts entries, a loopback listener on port 443, firewall rules, link handlers. tfsaz users are developers who accept that knowingly. Do not remove or weaken such a feature as "insecure". Instead, make sure the user docs and [SECURITY.md](SECURITY.md) say exactly what it changes, why, and how to undo it. Using tfsaz requires trust; transparency earns it.
 
 ### Credentials
 
@@ -55,7 +72,8 @@ macOS, Linux and Windows are fully supported at feature parity. Platform-specifi
   - `route_*.go`, `https_*.go`, `link_*.go`, `browser_target.go`: routing. `*_darwin.go`, `*_linux.go`, `*_windows.go` hold the OS integration.
   - `t3_test.go`: the stock T3 adapter test. `testdata/`: fixtures.
 - `.github/workflows/test.yml`: CI on macOS, Windows and Ubuntu.
-- `tools/syncrepos`: syncs the reference checkouts. `.agents/skills/`: agent skills, linked as `.claude/skills`.
+- `tools/dev`: the `check`, `ready`, `staged` and `setup` commands. `tools/<tool>/go.mod`: one module per pinned dev tool. `.githooks/pre-commit`: the commit hook. `tools/syncrepos`: syncs the reference checkouts.
+- `.agents/skills/`: agent skills, linked as `.claude/skills`.
 - `.reference-apps/<name>`: gitignored, pinned sparse checkouts of T3 Code, Azure CLI, the Azure DevOps CLI extension and knack, synced with `go run ./tools/syncrepos [--repo <name>]`. Read reference code only there, never from another checkout or installation on this machine, which may be a fork or at another revision. Never edit or import from it.
 
 ## Verify
@@ -87,9 +105,7 @@ Default to no comment. Existing comments record what the code can't show: a serv
 | Everyone | [README.md](README.md): what tfsaz is, how it works, features, status, constraints, docs index. [SECURITY.md](SECURITY.md): what tfsaz protects, scope, reporting |
 | Operators and script authors | `docs/user/`: getting started, install, configure, checkout setup, what works in T3, diagnose, routing, browser routing (managed and manual), desktop link handler, Azure CLI compatibility |
 | Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why tfsaz is needed, adapter files, keeping coverage current), [testing](docs/internals/testing.md) (test rules), [naming](docs/internals/naming.md) (how to write tfsaz, the `az` shim, Microsoft's Azure CLI and the glossary terms) |
-| Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI. `docs/verification/`: dated live records. [`docs/backlog.md`](docs/backlog.md): deferred work, including the code-reference scan |
-
-When implementing a command, read the T3 adapter and its tests first (skill `reference-t3code`); [T3 compatibility](docs/internals/t3-compatibility.md) names the files. For how Microsoft's `az` parses, formats output and fails, the behavioral reference tfsaz mimics, use skill `reference-azure-cli`. Both are references, not templates.
+| Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI. `docs/verification/`: dated live records. [`docs/backlog.md`](docs/backlog.md): deferred work |
 
 ## Documentation rules
 

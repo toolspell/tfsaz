@@ -32,7 +32,7 @@ Each has a `*.test.ts` next to it; the tests show the exact arguments and expect
 
 1. Start at `docs/internals/t3-compatibility.md` in this repo, then the adapter file and its test.
 2. Follow the arguments T3 actually passes, including explicit `--organization` and checkout-derived scope.
-3. Match the shapes and errors T3 reads, not everything Microsoft's `az` returns.
+3. Match the shapes and errors T3 reads, not everything Microsoft's Azure CLI returns.
 4. `TestStockT3Adapter` cannot run against this sparse checkout: it needs a full T3 tree with dependencies installed, passed as `TFSAZ_T3_ROOT`.
 
 ## When T3 releases
