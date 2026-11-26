@@ -101,7 +101,7 @@ var azureCommands = map[string]azureCommand{
 		"Requires --id. Use --expand relations to include linked work items and pull requests.",
 	},
 	"devops login": {
-		"Verify a PAT for a configured organization and save it in the OS keyring. Reads the PAT from a hidden prompt or stdin.",
+		"Verify a PAT for a configured organization and save it in the OS keyring. Reads the PAT from a hidden prompt or stdin. Warns when the collection offers no API 7.1.",
 		"organization",
 		"devops login --organization https://engineering-example.visualstudio.com",
 		"Requires --organization with a configured alias or collection URL.",
@@ -232,7 +232,7 @@ var nativeCommands = map[string]nativeCommand{
 		"profile logout --profile engineering",
 	},
 	"doctor": {
-		"Check the shims on PATH, collection profiles, credentials and current or specified checkout.",
+		"Check the shims on PATH, collection profiles, credentials, the collection API version and current or specified checkout.",
 		"[PATH] [--json]",
 		"doctor --json",
 	},
@@ -257,7 +257,7 @@ var nativeCommands = map[string]nativeCommand{
 		"repo show ./checkout",
 	},
 	"repo verify": {
-		"Check managed Git settings and read access for one checkout or all registered checkouts.",
+		"Check managed Git settings, read access and the collection's API version for one checkout or all registered checkouts.",
 		"[PATH]",
 		"repo verify ./checkout",
 	},

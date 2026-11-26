@@ -10,11 +10,18 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
 func TestDoctorChecksOnlyCheckoutCredential(t *testing.T) {
+	var level atomic.Value
+	level.Store("7.1")
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions && r.URL.Path == "/Second/_apis" {
+			serveTestCatalog(w, level.Load().(string))
+			return
+		}
 		if r.URL.Path != "/Second/_apis/connectionData" {
 			t.Errorf("unexpected auth endpoint %s", r.URL.Path)
 		}
@@ -63,6 +70,20 @@ func TestDoctorChecksOnlyCheckoutCredential(t *testing.T) {
 	}
 	if status := statuses(report); status["az"] != "ok" || status["git-remote-tfsaz"] != "ok" {
 		t.Fatalf("shim checks: %v", status)
+	}
+	if !slices.Contains(report.Checks, doctorCheck{"api version second", "ok", "collection supports API 7.1"}) {
+		t.Fatalf("doctor did not report the collection API version: %+v", report.Checks)
+	}
+	level.Store("6.0")
+	out.Reset()
+	if err := a.runDoctor(t.Context(), []string{"--json"}); err == nil {
+		t.Fatal("doctor should fail on a collection below API 7.1")
+	}
+	report = doctorReport{}
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil || !slices.ContainsFunc(report.Checks, func(c doctorCheck) bool {
+		return c.Name == "api version second" && c.Status == "error" && strings.Contains(c.Message, "supports API 6.0 at most")
+	}) {
+		t.Fatalf("doctor did not report the server below API 7.1: %v, %s", err, &out)
 	}
 	delete(store.values, "second")
 	stale := shimPath(bin, "git-remote-tfsaz")

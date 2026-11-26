@@ -40,7 +40,7 @@ func TestGitHTTPSHelperKeepsAzureRemoteAndUsesNativeTransport(t *testing.T) {
 	}
 	helper := filepath.Join(helperDir, gitHTTPSHelperName())
 	binary := filepath.Join(root, "tfsaz"+filepath.Ext(helper))
-	if out, err := exec.CommandContext(t.Context(), "go", "build", "-o", binary, "../..").CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(t.Context(), "go", "build", "-tags", "tfsaztest", "-o", binary, "../..").CombinedOutput(); err != nil {
 		t.Fatalf("build tfsaz: %v\n%s", err, out)
 	}
 	if err := os.Link(binary, helper); err != nil {

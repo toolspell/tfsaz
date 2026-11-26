@@ -8,8 +8,8 @@ The report identifies the `az` and `git-remote-tfsaz` selected by this process�
 
 | Context | What doctor checks |
 | --- | --- |
-| Managed checkout | Runs the repository verifier and checks the selected collection’s saved PAT. |
-| No checkout path, working directory outside Git | Checks all configured profiles in order. |
+| Managed checkout | Runs the repository verifier and checks the selected collection’s saved PAT and API version. |
+| No checkout path, working directory outside Git | Checks the PAT and API version of all configured profiles in order. |
 | Unrelated Git checkout | Skips authentication. Pass the path to your managed clone for a definite checkout result. |
 
 A failed check produces a nonzero exit, including with JSON output.
@@ -18,6 +18,7 @@ A failed check produces a nonzero exit, including with JSON output.
 
 | Symptom | What to check |
 | --- | --- |
+| `the collection supports API 6.0 at most; TFSaz needs API 7.1` | The server is older than Azure DevOps Server 2022.1 and cannot answer the API 7.1 requests T3 sends. Upgrade the server; TFSaz is tested on 2022.2. |
 | `credential store locked or unavailable` or `profile ID has no PAT` | The OS keyring of the user that runs T3. See [OS keyring requirements](configure.md#os-keyring-requirements). |
 | Git over SSH stalls on Windows | Use the OpenSSH bundled with Git for Windows and check a native `git ls-remote` first. See [Set up a checkout](checkout-setup.md). |
 | A Node client rejects the collection certificate | See [Node clients and TLS](routing.md#node-clients-and-tls). |

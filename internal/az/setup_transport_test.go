@@ -29,7 +29,7 @@ func preserveTestRepo(t *testing.T) (managerTestCLI, setupCheckout, string, stri
 	}
 	root := t.TempDir()
 	bin := testExecutable(filepath.Join(root, "tfsaz"))
-	if output, err := exec.Command("go", "build", "-o", bin, "../..").CombinedOutput(); err != nil {
+	if output, err := exec.Command("go", "build", "-tags", "tfsaztest", "-o", bin, "../..").CombinedOutput(); err != nil {
 		t.Fatalf("build tfsaz: %v\n%s", err, output)
 	}
 	copyTestExecutable(t, bin, testExecutable(filepath.Join(root, "git-remote-tfsaz")))
