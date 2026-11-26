@@ -9,7 +9,14 @@ Deferred work, so any session or worktree can pick it up.
 ## Before going public
 
 - **Browser-redirect TLS key on disk:** move the leaf private key `alias-key.pem` in `<config>.browser-route`, written by `internal/az/route_managed.go`, into the OS secret store, or decide otherwise.
-- **Personal and testbed details:** audit git history and `docs/verification/` for names, machine paths, hostnames and other testbed details.
+- **Pre-public git history audit** for personal details, secrets and other things that deserve cleanup. Cover every commit (not just the current tree), commit messages and `docs/verification/`. Look for:
+  - personal names and machine paths;
+  - real hostnames, IP addresses and collection URLs;
+  - testbed identifiers;
+  - PATs or other secrets;
+  - leftovers such as large or stray files.
+
+  If something turns up, the history has to be rewritten. That is easiest before anyone else clones the repo.
 - **License and contribution policy:** the README has placeholders for both.
 - **Secrets scan** in the pre-commit hook and CI; PATs are the core risk. Pointer: Toolspell `scripts/check-secrets.ts`.
 - **Pinned-actions check:** the workflow actions are SHA-pinned today, but nothing enforces it. Pointer: Toolspell `scripts/check-pinned.ts`.
