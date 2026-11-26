@@ -232,7 +232,7 @@ var nativeCommands = map[string]nativeCommand{
 		"profile logout --profile engineering",
 	},
 	"doctor": {
-		"Check TFSaz, collection profiles, credentials and current or specified checkout.",
+		"Check the shims on PATH, collection profiles, credentials and current or specified checkout.",
 		"[PATH] [--json]",
 		"doctor --json",
 	},
@@ -240,6 +240,11 @@ var nativeCommands = map[string]nativeCommand{
 		"Install az and git-remote-tfsaz in a directory on T3's PATH. Windows installs executable copies when symbolic links are unavailable.",
 		"--dir DIR",
 		"shim install --dir ./bin",
+	},
+	"shim uninstall": {
+		"Remove the az and git-remote-tfsaz shims from a directory. Removes only links to this TFSaz and, on Windows, copies of it; any other file stays in place and makes the command fail.",
+		"--dir DIR",
+		"shim uninstall --dir ./bin",
 	},
 	"repo setup": {
 		"Set up a checkout for T3. New setups preserve the original HTTPS or SSH transport. Use --managed-ssh for the SSH wrapper, and --ssh-url to override its native endpoint. --ssh-url also selects that mode on its own.",
@@ -377,7 +382,7 @@ var helpGroups = map[string]string{
 	"repos pr policy":   "Read pull request policy evaluations.",
 	"repos pr reviewer": "Manage pull request reviewers.",
 	"route":             "Route synthetic URLs to Azure DevOps Server.",
-	"shim":              "Install the az and git-remote-tfsaz shims for T3 and Git.",
+	"shim":              "Install or remove the az and git-remote-tfsaz shims for T3 and Git.",
 }
 
 func commandWords(args []string) int {

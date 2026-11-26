@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -51,12 +52,9 @@ func (a app) runDoctor(ctx context.Context, args []string) error {
 	add := func(name, status, message string) {
 		report.Checks = append(report.Checks, doctorCheck{name, status, message})
 	}
-	if az, err := exec.LookPath("az"); err != nil {
-		add("az", "error", "az is unavailable on this PATH; run tfsaz shim install --dir DIR and put DIR on PATH")
-	} else if binary, err := os.Executable(); err != nil || !sameBinary(az, binary) {
-		add("az", "error", az+" differs from this TFSaz executable; check PATH order and installed version")
-	} else {
-		add("az", "ok", az)
+	for _, name := range shimNames {
+		status, message := checkShimOnPath(name)
+		add(name, status, message)
 	}
 	report.Config, err = configPath()
 	var cfg config
@@ -157,4 +155,20 @@ func (a app) runDoctor(ctx context.Context, args []string) error {
 		}
 	}
 	return nil
+}
+
+func checkShimOnPath(name string) (status, message string) {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return "error", name + " is unavailable on this PATH; run tfsaz shim install --dir DIR and put DIR on PATH"
+	}
+	if binary, err := os.Executable(); err == nil && sameBinary(path, binary) {
+		return "ok", path
+	}
+	message = path + " differs from this TFSaz executable; check PATH order and installed version"
+	// The Windows fallback copies the binary, so an upgrade leaves the old copy.
+	if info, err := os.Lstat(path); err == nil && runtime.GOOS == "windows" && info.Mode().IsRegular() {
+		message += ". If it is a copy from an older TFSaz, delete it and rerun tfsaz shim install --dir DIR"
+	}
+	return "error", message
 }

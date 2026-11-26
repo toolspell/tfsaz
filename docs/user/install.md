@@ -25,17 +25,17 @@ go build -o "$bin\tfsaz.exe" .
 $env:Path = "$bin;$env:Path"
 ```
 
-The shim installer creates `az` and `git-remote-tfsaz` and refuses to overwrite a different executable. On Windows it falls back to executable copies when symbolic links are unavailable.
+The shim installer creates `az` and `git-remote-tfsaz` and refuses to overwrite a different executable. On Windows it falls back to executable copies when symbolic links are unavailable. `tfsaz shim uninstall --dir DIR` removes them again.
 
 ## Put the shim on T3's PATH
 
 Both examples set PATH for the current shell only. Put the same directory first on the PATH used by T3 Desktop, the remote backend service or the job that launches Git. Fully quit and reopen the app or restart the service after changing its environment.
 
-`tfsaz doctor` checks that the `az` selected on its own PATH matches the running TFSaz binary. If you also use Microsoft's Azure CLI, keep its installation in a separate directory and choose PATH order per process.
+`tfsaz doctor` checks that the `az` and `git-remote-tfsaz` selected on its own PATH match the running TFSaz binary. If you also use Microsoft's Azure CLI, keep its installation in a separate directory and choose PATH order per process.
 
 ## Upgrade
 
-After upgrading TFSaz, remove the two old **copies** from your dedicated shim directory and rerun `shim install`. If you use managed browser routing and the upgrade moved or removed the installed binary, rerun `tfsaz route setup` as described in [Browser routing](browser-routing.md#managed-browser-routing).
+After upgrading TFSaz, delete the two old **copies** from your dedicated shim directory and rerun `shim install`. `shim uninstall` leaves them in place, because they no longer match the new binary; it names each one it keeps. If you use managed browser routing and the upgrade moved or removed the installed binary, rerun `tfsaz route setup` as described in [Browser routing](browser-routing.md#managed-browser-routing).
 
 ## Uninstall
 
@@ -48,8 +48,8 @@ Undo the parts you set up, in this order, then remove TFSaz itself. Run each com
 | 3. Checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`. |
 | 4. PATs | `tfsaz profile logout --profile ID` for each profile in `tfsaz profile list`. |
 | 5. Configuration | Delete the configuration file and any `.repo-setups.json`, `.browser-route`, `.run` or `.lock` entries left beside it. For the default location, delete the `tfsaz` folder under your OS user configuration directory (see [Configure](configure.md#configuration-file)). |
-| 6. Shims and binary | Delete `az`, `git-remote-tfsaz` and `tfsaz` (`.exe` on Windows) from the shim directory, and remove that directory from the PATH of T3 and your shell. |
+| 6. Shims and binary | `tfsaz shim uninstall --dir DIR` for the shim directory, then delete `tfsaz` (`tfsaz.exe` on Windows) and remove the directory from the PATH of T3 and your shell. |
 
-There is no `shim uninstall` command. Check the result with `command -v az` on macOS and Linux or `Get-Command az` in PowerShell: it should find Microsoft's Azure CLI or nothing.
+`shim uninstall` removes only links to the running TFSaz and, on Windows, copies of it. It names every other file it leaves in place and then fails; delete such a file yourself if it is a copy from an older TFSaz. Check the result with `command -v az` on macOS and Linux or `Get-Command az` in PowerShell: it should find Microsoft's Azure CLI or nothing.
 
 Next: [configure your collections and PATs](configure.md).
