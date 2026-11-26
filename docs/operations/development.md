@@ -104,7 +104,7 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 
 ## CI
 
-[`.github/workflows/test.yml`](../../.github/workflows/test.yml) (workflow "CI") runs on pushes to `main`, on pull requests and on manual dispatch.
+[`.github/workflows/test.yml`](../../.github/workflows/test.yml) (workflow "CI") runs on pushes to `main`, on pull requests, on [merge queue](#merge-queue) groups and on manual dispatch.
 
 | Job | Runner | What it does |
 | --- | --- | --- |
@@ -128,6 +128,7 @@ The path filter compares against a base:
 | Event | Base | Why |
 | --- | --- | --- |
 | Pull request | The PR base: the first parent of GitHub's merge commit | Exactly the files the PR changes. |
+| Merge queue group | `merge_group.base_sha`, the base the group was built on | Every file of every PR in the group. |
 | Push to `main` | `github.event.before`, the previous head of `main` | Covers every commit of the push, including direct pushes that had no PR run. |
 | Manual run, first push, or a base the clone lacks (force push) | None: the matrix runs | Nothing to compare against. |
 
@@ -177,9 +178,9 @@ These files in `.github/` take effect once they are pushed to GitHub; locally th
 | `labels.json`, `workflows/labels.yml` | The label set. The workflow creates and updates these labels on a push to `main` that changes them, or on manual dispatch. It never deletes a label. |
 | `ISSUE_TEMPLATE/` | Bug report and feature request forms. Blank issues are off; security reports go to `SECURITY.md`. |
 | `pull_request_template.md` | Problem, Change, Verification and a macOS, Windows and Linux checklist. |
-| `workflows/pr-title.yml`, `scripts/pr-title.cjs` | Check `PR title`: the title is a Conventional Commit subject (`type(scope): what changed`), because the squash merge uses it as the commit subject. A title edit reruns only this check. |
+| `workflows/pr-title.yml`, `scripts/pr-title.cjs` | Check `PR title`: the title is a Conventional Commit subject (`type(scope): what changed`), because the squash merge uses it as the commit subject. A title edit reruns only this check. In the merge queue it passes without checking: a group has no title, and each PR passed on its own run. |
 | `workflows/pr-size.yml`, `scripts/pr-size.cjs` | Sets one `size:XS` to `size:XXL` label by changed lines, ignoring whitespace. `go.sum` files never count; `_test.go` files and `testdata/` count only in a PR that touches nothing else. Comments when a PR adds 10 or more test functions net. Runs on `pull_request_target` from the default branch and only diffs the PR's commits. |
-| `workflows/agent-context-budget.yml` | Check `Agent context budget`: fails when a value in `.agents/context-budget.json` is higher than on the PR's base branch. |
+| `workflows/agent-context-budget.yml` | Check `Agent context budget`: fails when a value in `.agents/context-budget.json` is higher than on the PR's base branch. In the merge queue it passes without checking: each PR passed against its own base, and two PRs that change the same value conflict in the file. |
 | `workflows/claude.yml` | Runs Claude Code when the account in the repository variable `CLAUDE_ALLOWED_ACTOR` mentions `@claude` in an issue, a PR or a review; unset, nobody can start it. It reads code and CI results and writes comments, never pushes. Needs the secret `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`). |
 
 Pin every workflow action to a full commit SHA with a `# vX.Y.Z` comment (`TestPinnedActions` enforces it); Dependabot keeps both current. Check a new pin with `git ls-remote https://github.com/OWNER/REPO refs/tags/vX.Y.Z*` (use the `^{}` line for annotated tags).
@@ -198,7 +199,21 @@ CodeRabbit and Codex review PRs. CodeRabbit reads [`.coderabbit.config.ts`](../.
 
 ## GitHub workflows
 
-These are the rules for `main`, enforced by a ruleset. `main` takes only squash-merged PRs that are up to date and pass `Check`, `PR title` and `Agent context budget`. Bring a Dependabot PR up to date with a `@dependabot rebase` comment, not "Update branch": Dependabot stops rebasing a PR once someone else pushed to it.
+These are the rules for `main`, enforced by a ruleset. `main` takes only squash-merged PRs that pass `Check`, `PR title` and `Agent context budget`, on the PR and again in the [merge queue](#merge-queue). Resolve a Dependabot PR's conflicts with a `@dependabot rebase` comment, not by pushing to it: Dependabot stops rebasing a PR once someone else pushed to it.
+
+### Merge queue
+
+A PR merges through the merge queue, not directly. Add it with "Merge when ready" or `gh pr merge <number> --squash`; with auto-merge (`gh pr merge <number> --squash --auto`) GitHub adds it once its own checks pass. The queue tests each PR on top of `main` and the PRs ahead of it, so nobody updates a branch to bring it up to date, and several ready PRs share one CI run.
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Merge method | Squash | The PR title becomes the commit on `main`. |
+| Build concurrency | 3 | Groups whose CI runs at the same time. The free plan runs 20 jobs at once, 5 of them on macOS, and pull request runs need room too. |
+| PRs per merge | 1 to 5 | A lone PR does not wait for company. |
+| Only merge non-failing PRs | On | A PR whose group fails leaves the queue; the PRs behind it are tested again without it. |
+| Status check timeout | 30 minutes | Longer than the slowest job's 20-minute timeout. |
+
+The queue resolves no conflicts: a PR that conflicts with `main` or with a PR ahead of it leaves the queue, and its author merges `main` in and adds it again. Every workflow that a required check comes from runs on `merge_group` and reports that check there too; without it the queue waits for the timeout.
 
 Every workflow that runs on PRs must also work for [stacked pull requests](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs):
 

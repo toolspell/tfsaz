@@ -7,6 +7,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
   workflow_dispatch:
 
 # One group per pull request or per commit on main, so a burst of pushes to main does not cancel the
@@ -20,9 +21,10 @@ permissions:
 
 env:
   # What the Changes job compares against to decide whether the test matrix runs: a pull request's
-  # merge commit has the base as its first parent; a push compares against the previous head of
-  # main. Empty on a manual run, which runs the tests.
-  BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
+  # merge commit has the base as its first parent; a merge queue group compares against the base it
+  # was built on, so a group of several PRs counts all their files; a push compares against the
+  # previous head of main. Empty on a manual run, which runs the tests.
+  BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
 
 jobs:
   changes:

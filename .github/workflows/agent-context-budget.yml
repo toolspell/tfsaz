@@ -8,6 +8,10 @@ name: Agent context budget
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
+  # The ruleset requires this check in the merge queue too. Every PR in a group passed it against its
+  # own base, or a maintainer accepted the growth with the label, which a group run cannot see. Two
+  # PRs that both change a value conflict in the file, so a group cannot add up hidden growth.
+  merge_group:
 
 permissions:
   contents: read
@@ -26,7 +30,10 @@ jobs:
       HINT_BYTES: 200
       HINT_URL: https://github.com/toolspell/tfsaz/blob/main/docs/operations/development.md#agent-context-budget
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: github.event_name == 'merge_group'
+        run: echo "Every PR in this merge queue group passed the budget check on its pull request."
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .agents/context-budget.json
           sparse-checkout-cone-mode: false
@@ -37,6 +44,7 @@ jobs:
       # fetched main can hold lower values the PR never saw, and in a stack it would count the lower
       # layers' growth as this layer's.
       - name: Compare with the base branch
+        if: github.event_name == 'pull_request'
         run: |
           if ! git cat-file -e "HEAD^1:$BUDGET" 2>/dev/null; then
             echo "The base branch has no agent context budget yet."
