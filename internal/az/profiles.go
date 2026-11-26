@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,7 +22,7 @@ func (a app) runProfiles(ctx context.Context, args []string) error {
 		return a.addProfile(ctx, args[1:], true)
 	}
 	if len(args) < 2 {
-		return usageError{errors.New("expected profile add, list, or logout")}
+		return usageError{errors.New("expected profile add, list, logout, or remove")}
 	}
 	switch args[1] {
 	case "add":
@@ -39,8 +41,34 @@ func (a app) runProfiles(ctx context.Context, args []string) error {
 			return usageError{errors.New("profile logout requires --profile with a valid ID")}
 		}
 		return a.logoutProfile(opts["profile"])
+	case "remove":
+		opts, err := parseProfileOptions(args[2:], "profile", "collection", "service")
+		if err != nil {
+			return usageError{err}
+		}
+		id := opts["profile"]
+		if !profileID.MatchString(id) {
+			return usageError{errors.New("profile remove requires --profile with a valid ID")}
+		}
+		switch {
+		case opts["collection"] != "" && opts["service"] != "":
+			return usageError{errors.New("profile remove takes --collection or --service, not both")}
+		case opts["collection"] != "":
+			collection, err := collectionURL(opts["collection"])
+			if err != nil {
+				return usageError{err}
+			}
+			p := Profile{ID: id, CollectionURL: collection.String(), CredentialVersion: collectionCredentialVersion}
+			return a.removeKeyringEntry(profileEntry(p))
+		case opts["service"] != "":
+			if !credentialServiceName.MatchString(opts["service"]) {
+				return usageError{errors.New("--service requires a service that tfsaz profile list shows")}
+			}
+			return a.removeKeyringEntry(keyringEntry{opts["service"], id})
+		}
+		return a.removeProfile(id)
 	default:
-		return usageError{errors.New("expected profile add, list, or logout")}
+		return usageError{errors.New("expected profile add, list, logout, or remove")}
 	}
 }
 
@@ -72,6 +100,25 @@ func parseProfileOptions(args []string, allowed ...string) (map[string]string, e
 	return opts, nil
 }
 
+func collectionURL(raw string) (*url.URL, error) {
+	collection, ok := baseURL(raw)
+	if !ok || collection.Path == "" || strings.HasSuffix(collection.Host, ":") ||
+		(strings.Contains(collection.Hostname(), ":") && !strings.HasPrefix(collection.Host, "[")) {
+		return nil, errors.New("--collection requires a full HTTPS collection URL without credentials, query, or fragment")
+	}
+	if strings.HasPrefix(collection.Host, "[") {
+		if address, err := netip.ParseAddr(collection.Hostname()); err != nil || !address.Is6() {
+			return nil, errors.New("--collection has an invalid IPv6 address")
+		}
+	}
+	if port := collection.Port(); port != "" {
+		if number, err := strconv.ParseUint(port, 10, 16); err != nil || number == 0 {
+			return nil, errors.New("--collection has an invalid port")
+		}
+	}
+	return collection, nil
+}
+
 func (a app) newProfile(opts map[string]string, interactive bool) (Profile, error) {
 	rawURL := opts["collection"]
 	if rawURL == "" && interactive && a.stdinIsTerminal() {
@@ -83,20 +130,9 @@ func (a app) newProfile(opts map[string]string, interactive bool) (Profile, erro
 		}
 		rawURL = strings.TrimSpace(string(line))
 	}
-	collection, ok := baseURL(rawURL)
-	if !ok || collection.Path == "" || strings.HasSuffix(collection.Host, ":") ||
-		(strings.Contains(collection.Hostname(), ":") && !strings.HasPrefix(collection.Host, "[")) {
-		return Profile{}, errors.New("--collection requires a full HTTPS collection URL without credentials, query, or fragment")
-	}
-	if strings.HasPrefix(collection.Host, "[") {
-		if address, err := netip.ParseAddr(collection.Hostname()); err != nil || !address.Is6() {
-			return Profile{}, errors.New("--collection has an invalid IPv6 address")
-		}
-	}
-	if port := collection.Port(); port != "" {
-		if number, err := strconv.ParseUint(port, 10, 16); err != nil || number == 0 {
-			return Profile{}, errors.New("--collection has an invalid port")
-		}
+	collection, err := collectionURL(rawURL)
+	if err != nil {
+		return Profile{}, err
 	}
 	// A deterministic alias keeps repeated setup stable and gives each collection
 	// its own host for T3's viewer lookups.
@@ -219,18 +255,14 @@ func (a app) addProfile(ctx context.Context, args []string, interactive bool) er
 			}
 		}
 		if !exists {
-			data, err := json.MarshalIndent(original, "", "  ")
-			if err != nil {
-				return err
-			}
 			// Publish the binding before writing its secret, so an interrupted
 			// login can retry the same profile without leaving an orphaned PAT.
-			if err := publishSetupFile(target, append(data, '\n'), fileExists); err != nil {
-				return fmt.Errorf("save TFSaz configuration: %w", err)
+			if err := saveConfigFile(target, original, fileExists); err != nil {
+				return err
 			}
 		}
 		if pat != "" {
-			if err := a.storeProfileCredential(p, pat); err != nil {
+			if err := a.saveLogin(path, target, p, pat); err != nil {
 				if !exists {
 					return fmt.Errorf("%w; profile configuration was saved and login can be retried", err)
 				}
@@ -277,6 +309,17 @@ func withProfileConfigLock(create bool, run func(path, target string) error) (er
 	return run(path, target)
 }
 
+func saveConfigFile(target string, cfg config, replace bool) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := publishSetupFile(target, append(data, '\n'), replace); err != nil {
+		return fmt.Errorf("save TFSaz configuration: %w", err)
+	}
+	return nil
+}
+
 func (a app) listProfiles() error {
 	path, err := configPath()
 	if err != nil {
@@ -290,38 +333,176 @@ func (a app) listProfiles() error {
 	if err != nil {
 		return err
 	}
-	if len(cfg.Profiles) == 0 {
-		_, err := fmt.Fprintln(a.stdout, "No collection profiles configured")
+	recorded, err := readKeyringList(a.keyringList)
+	if err != nil {
 		return err
 	}
-	for _, p := range cfg.Profiles {
-		if _, err := fmt.Fprintf(a.stdout, "%s\t%s\t%s\n", p.ID, p.Organization, p.CollectionURL); err != nil {
-			return err
-		}
+	var b strings.Builder
+	if len(cfg.Profiles) == 0 {
+		fmt.Fprintln(&b, "No collection profiles configured")
 	}
-	return nil
+	used := make(map[keyringEntry]bool, len(cfg.Profiles))
+	for _, p := range cfg.Profiles {
+		used[profileEntry(p)] = true
+		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\n", p.ID, p.Organization, p.CollectionURL, a.credentialState(profileEntry(p)))
+	}
+	recorded = slices.DeleteFunc(recorded, func(e keyringEntry) bool { return used[e] })
+	if len(recorded) > 0 {
+		fmt.Fprintln(&b, "\nKeyring entries that no profile in this configuration uses:")
+		for _, e := range recorded {
+			fmt.Fprintf(&b, "%s\t%s\t%s\n", e.Account, e.Service, a.credentialState(e))
+		}
+		fmt.Fprintln(&b, "Another configuration may still use them. Remove one with tfsaz profile remove --profile ID --service SERVICE.")
+	}
+	_, err = io.WriteString(a.stdout, b.String())
+	return err
+}
+
+// findProfile reads the configuration under its lock and returns the
+// unvalidated file content for rewriting, with the index of profile id.
+func findProfile(path, target, id string, missing error) (config, Profile, int, error) {
+	original, err := readConfigFile(target)
+	if err != nil {
+		return config{}, Profile{}, -1, err
+	}
+	cfg, err := validateConfig(original, path)
+	if err != nil {
+		return config{}, Profile{}, -1, err
+	}
+	i := slices.IndexFunc(cfg.Profiles, func(p Profile) bool { return p.ID == id })
+	if i < 0 {
+		return config{}, Profile{}, -1, missing
+	}
+	return original, cfg.Profiles[i], i, nil
 }
 
 func (a app) logoutProfile(id string) error {
 	return withProfileConfigLock(false, func(path, target string) error {
-		cfg, err := readConfigFile(target)
+		original, p, i, err := findProfile(path, target, id, errors.New("profile logout requires a configured profile ID"))
 		if err != nil {
 			return err
 		}
-		cfg, err = validateConfig(cfg, path)
+		kept, err := a.releaseCredential(p)
 		if err != nil {
 			return err
 		}
-		for _, p := range cfg.Profiles {
-			if p.ID != id {
-				continue
+		// A legacy profile logs out by moving off the shared entry.
+		if original.Profiles[i].CredentialVersion != collectionCredentialVersion {
+			original.Profiles[i].CredentialVersion = collectionCredentialVersion
+			if err := saveConfigFile(target, original, true); err != nil {
+				return err
 			}
-			if err := a.store.Delete(credentialService(p), p.ID); err != nil && !errors.Is(err, errNoCredential) {
-				return fmt.Errorf("%w for profile %s", errStoreUnavailable, p.ID)
-			}
-			_, err := fmt.Fprintf(a.stdout, "Logged out %s\n", p.ID)
+		}
+		if _, err := fmt.Fprintf(a.stdout, "Logged out %s\n", p.ID); err != nil {
 			return err
 		}
-		return errors.New("profile logout requires a configured profile ID")
+		return a.legacyEntryNote(kept, p.ID)
 	})
+}
+
+func (a app) removeProfile(id string) error {
+	return withProfileConfigLock(false, func(path, target string) (err error) {
+		original, p, i, err := findProfile(path, target, id,
+			errors.New("profile remove requires a configured profile ID; add --collection or --service to remove a keyring entry that no profile uses"))
+		if err != nil {
+			return err
+		}
+		// Hold the registry through the configuration update, so a concurrent
+		// repo setup cannot register a checkout for the profile in between.
+		registry, err := setupRegistryPath()
+		if err != nil {
+			return err
+		}
+		release, err := acquireSetupLock(registry + ".lock")
+		if err != nil {
+			return err
+		}
+		defer func() { err = errors.Join(err, release()) }()
+		records, err := readSetupRegistry(registry)
+		if err != nil {
+			return err
+		}
+		if slices.ContainsFunc(records, func(r setupRecord) bool { return r.ProfileID == p.ID }) {
+			return fmt.Errorf("profile %s has managed checkouts; run tfsaz repo restore for each of them in tfsaz repo list first", p.ID)
+		}
+		// Delete the PAT before the profile, so a retry after a failed
+		// configuration write still finds the profile.
+		kept, err := a.releaseCredential(p)
+		if err != nil {
+			return err
+		}
+		// No other profile of this configuration shares the collection, so its
+		// catalog cache would only be left behind. Delete it while a retry can
+		// still find the profile.
+		cache := catalogCacheDir(path)
+		if collection, err := url.Parse(p.CollectionURL); err == nil {
+			if err := removeIfPresent(catalogCachePath(cache, *collection)); err != nil {
+				return fmt.Errorf("remove the catalog cache of profile %s: %w", p.ID, err)
+			}
+		}
+		original.Profiles = slices.Delete(original.Profiles, i, i+1)
+		if err := saveConfigFile(target, original, true); err != nil {
+			return err
+		}
+		// The directory stays while other collections have a cache file.
+		_ = os.Remove(cache)
+		if _, err := fmt.Fprintf(a.stdout, "Removed profile %s\n", p.ID); err != nil {
+			return err
+		}
+		return a.legacyEntryNote(kept, p.ID)
+	})
+}
+
+// removeKeyringEntry deletes an entry that no profile in this configuration
+// uses, including one written before TFSaz recorded its entries.
+func (a app) removeKeyringEntry(entry keyringEntry) error {
+	path, err := configPath()
+	if err != nil {
+		return err
+	}
+	var found bool
+	remove := func(path, target string) error {
+		return a.withKeyringList(func(list *keyringList) error {
+			cfg, err := readConfigFile(target)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			if cfg, err = validateConfig(cfg, path); err != nil {
+				return err
+			}
+			for _, p := range cfg.Profiles {
+				if profileEntry(p) == entry {
+					return fmt.Errorf("profile %s uses this keyring entry; run tfsaz profile logout or tfsaz profile remove --profile %s", p.ID, p.ID)
+				}
+			}
+			found, err = a.deleteCredential(list, entry)
+			return err
+		})
+	}
+	// The configuration lock keeps a profile from being added for the entry
+	// during the check, also when the configuration directory is gone. The
+	// lock creates the missing directories; remove them once empty again.
+	var created []string
+	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+		if _, err := os.Lstat(dir); !errors.Is(err, os.ErrNotExist) || filepath.Dir(dir) == dir {
+			break
+		}
+		created = append(created, dir)
+	}
+	err = withProfileConfigLock(true, remove)
+	for _, dir := range created {
+		// A directory that a concurrent command filled stays, with its parents.
+		if os.Remove(dir) != nil {
+			break
+		}
+	}
+	if err != nil {
+		return err
+	}
+	if !found {
+		_, err = fmt.Fprintf(a.stdout, "No keyring entry %s for %s\n", entry.Service, entry.Account)
+		return err
+	}
+	_, err = fmt.Fprintf(a.stdout, "Removed keyring entry %s for %s\n", entry.Service, entry.Account)
+	return err
 }

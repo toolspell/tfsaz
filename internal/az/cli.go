@@ -132,12 +132,15 @@ type app struct {
 	stdout, stderr io.Writer
 	stdin          *os.File
 	store          credentialStore
+	keyringList    string
 }
 
 // Run writes command output to stdout. The executable reports returned errors
 // on stderr and exits nonzero.
 func Run(ctx context.Context, args []string) error {
-	a := app{stdout: os.Stdout, stderr: os.Stderr, stdin: os.Stdin, store: processStore}
+	// Without a home directory, only commands that need the list fail.
+	list, _ := processKeyringList()
+	a := app{stdout: os.Stdout, stderr: os.Stderr, stdin: os.Stdin, store: processStore, keyringList: list}
 	return a.run(ctx, args)
 }
 
@@ -259,6 +262,9 @@ func (a app) run(ctx context.Context, args []string) error {
 		return err
 	}
 	client.checkBoundary = func(path []string) error { return cfg.checkRestBoundary(p, path) }
+	if file, err := configPath(); err == nil {
+		client.catalogCache = catalogCacheDir(file)
+	}
 	if command == "account show" {
 		id, err := client.Identity(ctx)
 		if err != nil {

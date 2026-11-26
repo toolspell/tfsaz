@@ -12,7 +12,7 @@ tfsaz profile list
 - `init` verifies the PAT before saving it. It generates a stable Azure-style alias from the collection URL when you omit `--organization`.
 - On a terminal it can prompt for the collection URL and hides PAT input. For a job, pass the URL as an argument and pipe the PAT on stdin from a secret provider.
 - `--no-login` writes only the nonsecret configuration and works without access to the OS keyring.
-- Add another collection with `tfsaz profile add --collection URL`. `profile list` prints profiles in discovery order.
+- Add another collection with `tfsaz profile add --collection URL`. `profile list` prints profiles in discovery order and whether each has a stored PAT.
 - Use `--ca-file PATH` for a private CA.
 - For multiple collections, use distinct `*.visualstudio.com` hostnames so T3’s viewer lookup can distinguish them.
 
@@ -65,7 +65,7 @@ tfsaz devops login --organization https://engineering-example.visualstudio.com
 
 Enter the PAT at the hidden prompt, or pipe one line from a secret provider on stdin. Login verifies the PAT against the collection before saving it in the OS keyring under the stable profile ID. If the collection offers no API 7.1, login still saves the PAT and prints a warning; see [Diagnose](diagnose.md#common-problems). The OS keyring must be available in that session; see [OS keyring requirements](#os-keyring-requirements).
 
-New profiles use `credentialVersion: 2`, which scopes the keyring service to the collection URL (`tfsaz/v2/` plus a hash of it). Older profiles without this field use the original `tfsaz` service. Preserve the existing credential version when editing a profile so it can still find its saved PAT. For the same reason, run `devops login` again after changing the `collectionUrl` of a version 2 profile.
+New profiles use `credentialVersion: 2`, which scopes the keyring service to the collection URL (`tfsaz/v2/` plus a hash of it). Older profiles without this field use the shared `tfsaz` service; the next login or logout moves such a profile to `credentialVersion: 2` and leaves the shared entry in place (see [leftover keyring entries](#find-and-remove-leftover-keyring-entries)). Preserve the existing credential version when editing a profile so it can still find its saved PAT. For the same reason, run `devops login` again after changing the `collectionUrl` of a version 2 profile.
 
 `tfsaz profile logout --profile ID` removes the selected local credential and keeps the profile configured. Server-side token revocation is separate.
 
@@ -81,7 +81,7 @@ Login saves the PAT in the keyring of the OS user who runs it, and the T3 backen
 
 When the keyring is missing or locked:
 
-- `init`, `devops login` and `profile logout` stop with `credential store locked or unavailable for profile ID`. `devops login` and `profile logout` change nothing. For a new profile, `init` has already saved the profile configuration and says the login can be retried. Fix the session and run the same command again. `init --no-login` still writes the profile without touching the keyring.
+- `init`, `devops login`, `profile logout` and `profile remove` stop with `credential store locked or unavailable for profile ID`. `devops login`, `profile logout` and `profile remove` leave the configuration and the keyring unchanged. For a new profile, `init` has already saved the profile configuration and says the login can be retried. Fix the session and run the same command again. `init --no-login` still writes the profile without touching the keyring.
 - Commands T3 runs fail with the same message. If the keyring is reachable but holds no PAT for the profile, for example because login ran as another user or in another session's keyring, they report `profile ID has no PAT; use az devops login --organization URL`.
 - `tfsaz doctor` run from a directory outside Git checks the PAT of every profile; in a managed checkout it checks only that checkout's profile. Run it in the same environment as T3. See [Diagnose](diagnose.md#run-doctor).
 
@@ -89,15 +89,33 @@ The setups tested so far are recorded in [Windows 11 and Ubuntu verification](..
 
 ### Remove a profile
 
-TFSaz has no command that removes a profile from the configuration. To remove one:
+1. Run `tfsaz repo restore PATH` for each checkout of that collection in `tfsaz repo list`, or `tfsaz repo forget PATH` for one whose clone you deleted. `profile remove` refuses while a managed checkout uses the profile.
+2. Run `tfsaz profile remove --profile ID`. It deletes the profile's PAT from the keyring, the profile from the configuration file and its collection's catalog cache from `<config-file>.cache`.
 
-1. Run `tfsaz repo restore PATH` for each checkout of that collection in `tfsaz repo list`, or `tfsaz repo forget PATH` for one whose clone you deleted.
-2. Run `tfsaz profile logout --profile ID`.
-3. Delete the profile from the configuration file.
+### Find and remove leftover keyring entries
 
-Run `profile logout` before you change a profile's ID, `collectionUrl` or `credentialVersion`, or delete the configuration file. Otherwise the old PAT stays in the keyring, where TFSaz no longer finds it. Remove such an entry with your OS's password manager: Keychain Access on macOS, Credential Manager on Windows, or Passwords and Keys (Seahorse) on Linux. TFSaz entries use a service starting with `tfsaz` and the profile ID as account.
+TFSaz records the name of every keyring entry it writes (service and profile ID, never the PAT) in `~/.tfsaz/keyring-entries.json`, outside the configuration directory, so the record survives deleting the configuration. It drops a name when it deletes the entry. When no name is left, it deletes the file, and `~/.tfsaz` once that is empty.
 
-`profile list` does not show whether a PAT is stored. `tfsaz doctor` checks each profile's PAT and API version against its collection.
+If you change a profile's ID, `collectionUrl` or `credentialVersion`, or delete the configuration, without `profile logout` first, its PAT stays in the keyring. `tfsaz profile list` shows such entries below the profiles, with their service:
+
+```text
+Keyring entries that no profile in this configuration uses:
+engineering	tfsaz/v2/<hash>	PAT stored
+```
+
+Another configuration (another `TFSAZ_CONFIG`) may still use an entry in this list. Remove one you no longer need:
+
+```sh
+tfsaz profile remove --profile engineering --service 'tfsaz/v2/<hash>'
+```
+
+| Entry | Remove with |
+| --- | --- |
+| Listed by `profile list` | `--profile ID --service SERVICE`, as printed. |
+| Written before TFSaz recorded its entries | `--profile ID --collection URL`, with the collection URL the PAT was saved for. TFSaz computes the service from it. |
+| The legacy `tfsaz` service of an older profile | `--profile ID` and `--service` set to `tfsaz`. Several configurations can share this entry, so `profile logout`, `profile remove` and the login that moves a profile to `credentialVersion: 2` keep it, list it and print the command that deletes it. |
+
+These forms refuse an entry that a profile in the current configuration still uses; use `profile logout` or `profile remove --profile ID` for that. `tfsaz doctor` checks each profile's PAT and API version against its collection.
 
 ## PAT scopes
 

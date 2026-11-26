@@ -36,6 +36,9 @@ type Client struct {
 	pat           string
 	http          *http.Client
 	checkBoundary func([]string) error
+	// catalogCache is the directory of the on-disk catalog cache; empty disables it.
+	catalogCache string
+	catalog      *loadedCatalog
 }
 
 func newClient(profile Profile, pat string) (*Client, error) {
@@ -156,10 +159,21 @@ func (c *Client) requestWithMedia(ctx context.Context, method string, path []str
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || resp.StatusCode == http.StatusNonAuthoritativeInfo {
 		defer closeQuietly(resp.Body)
-		return nil, collectionResponseError(resp, path)
+		return nil, responseStatusError{resp.StatusCode, collectionResponseError(resp, path)}
 	}
 	return resp, nil
 }
+
+// responseStatusError is a request the collection answered with a failure
+// status, as opposed to one that failed before or while receiving a response.
+type responseStatusError struct {
+	status int
+	err    error
+}
+
+func (e responseStatusError) Error() string { return e.err.Error() }
+
+func (e responseStatusError) Unwrap() error { return e.err }
 
 func readResponse(r io.Reader, maxBytes int64) ([]byte, error) {
 	body, err := io.ReadAll(io.LimitReader(r, maxBytes+1))

@@ -43,11 +43,11 @@ Undo the parts you set up, in this order, then remove TFSaz itself. Run each com
 
 | Step | What to do |
 | --- | --- |
-| 1. Browser routing | `tfsaz route restore`; the last one also removes `~/.tfsaz`. See [Refresh or remove](browser-routing.md#refresh-or-remove). |
+| 1. Browser routing | `tfsaz route restore`; the last one also removes `~/.tfsaz/route-recovery`. See [Refresh or remove](browser-routing.md#refresh-or-remove). |
 | 2. Link handler and extension | Choose your usual default browser and remove the handler as described in [Desktop link handler](desktop-link-handler.md). Remove the Chromium extension from the browser profile and delete its export directory. |
 | 3. Checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`, or `tfsaz repo forget PATH` for one whose clone you deleted. |
-| 4. PATs | `tfsaz profile logout --profile ID` for each profile in `tfsaz profile list`. |
-| 5. Configuration | Delete the configuration file and any `.repo-setups.json`, `.browser-route`, `.run` or `.lock` entries left beside it. For the default location, delete the `tfsaz` folder under your OS user configuration directory (see [Configure](configure.md#configuration-file)). |
+| 4. Profiles and PATs | `tfsaz profile remove --profile ID` for each profile in `tfsaz profile list`. Then remove each entry that `profile list` still shows under "Keyring entries that no profile in this configuration uses", as described in [Find and remove leftover keyring entries](configure.md#find-and-remove-leftover-keyring-entries). The last removal also deletes `~/.tfsaz/keyring-entries.json` and, once empty, `~/.tfsaz`. |
+| 5. Configuration | Delete the configuration file and any `.repo-setups.json`, `.browser-route`, `.cache`, `.run` or `.lock` entries left beside it. For the default location, delete the `tfsaz` folder under your OS user configuration directory (see [Configure](configure.md#configuration-file)). |
 | 6. Shims and binary | `tfsaz shim uninstall --dir DIR` for the shim directory, then delete `tfsaz` (`tfsaz.exe` on Windows) and remove the directory from the PATH of T3 and your shell. |
 
 `shim uninstall` removes only links to the running TFSaz and, on Windows, copies of it. It names every other file it leaves in place and then fails; delete such a file yourself if it is a copy from an older TFSaz. Check the result with `command -v az` on macOS and Linux or `Get-Command az` in PowerShell: it should find Microsoft's Azure CLI or nothing.

@@ -2,15 +2,20 @@ package az
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -25,18 +30,174 @@ type resourceLocation struct {
 	raw             json.RawMessage
 }
 
-func fetchCatalog(ctx context.Context, c *Client) ([]resourceLocation, error) {
+// catalogCacheMaxAge is DEFAULT_MAX_AGE of the on-disk OPTIONS cache in the
+// extension's SDK (devops_sdk/_file_cache.py).
+const catalogCacheMaxAge = 12 * time.Hour
+
+type loadedCatalog struct {
+	locations []resourceLocation
+	cached    bool
+}
+
+// catalogResource names a REST resource the collection catalog resolves.
+type catalogResource struct {
+	area, resource, version string
+	route                   map[string]string
+}
+
+// catalogRouteError is a request the catalog cannot route. newer is set when
+// a newer catalog might route it.
+type catalogRouteError struct {
+	err   error
+	newer bool
+}
+
+func (e catalogRouteError) Error() string { return e.err.Error() }
+
+func (e catalogRouteError) Unwrap() error { return e.err }
+
+func catalogCacheDir(configFile string) string {
+	return filepath.Clean(configFile) + ".cache"
+}
+
+func catalogCachePath(dir string, collection url.URL) string {
+	return filepath.Join(dir, fmt.Sprintf("catalog-%x.json", sha256.Sum256([]byte(collection.String()))))
+}
+
+func (c *Client) catalogCacheFile() string {
+	if c.catalogCache == "" {
+		return ""
+	}
+	return catalogCachePath(c.catalogCache, c.collection)
+}
+
+// withCatalogRoute resolves res and passes its collection path and negotiated
+// version to send. A catalog from the on-disk cache is reloaded once when it
+// cannot route res, or when a read through its route fails with HTTP 404; the
+// read then repeats only if the route changed. A write is never repeated.
+func (c *Client) withCatalogRoute(ctx context.Context, method string, res catalogResource, send func(path []string, version string) error) error {
+	catalog, err := c.loadCatalog(ctx)
+	if err != nil {
+		return err
+	}
+	path, version, err := resolveResource(catalog.locations, res.area, res.resource, res.version, res.route)
+	if err != nil {
+		var routeErr catalogRouteError
+		if !catalog.cached || !errors.As(err, &routeErr) || !routeErr.newer {
+			return err
+		}
+		if catalog, err = c.reloadCatalog(ctx); err != nil {
+			return err
+		}
+		if path, version, err = resolveResource(catalog.locations, res.area, res.resource, res.version, res.route); err != nil {
+			return err
+		}
+		return send(path, version)
+	}
+	err = send(path, version)
+	var status responseStatusError
+	if !catalog.cached || !errors.As(err, &status) || status.status != http.StatusNotFound {
+		return err
+	}
+	if method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions {
+		c.dropCatalogCache()
+		return err
+	}
+	catalog, reloadErr := c.reloadCatalog(ctx)
+	if reloadErr != nil {
+		return err
+	}
+	freshPath, freshVersion, resolveErr := resolveResource(catalog.locations, res.area, res.resource, res.version, res.route)
+	if resolveErr != nil {
+		return resolveErr
+	}
+	if slices.Equal(freshPath, path) && freshVersion == version {
+		return err
+	}
+	return send(freshPath, freshVersion)
+}
+
+// loadCatalog returns the catalog this client already loaded, else a fresh
+// cache entry, else the catalog from the server.
+func (c *Client) loadCatalog(ctx context.Context) (*loadedCatalog, error) {
+	if c.catalog != nil {
+		return c.catalog, nil
+	}
+	if locations, ok := readCatalogCache(c.catalogCacheFile()); ok {
+		c.catalog = &loadedCatalog{locations: locations, cached: true}
+		return c.catalog, nil
+	}
+	return c.reloadCatalog(ctx)
+}
+
+// reloadCatalog fetches the catalog from the server and replaces the cache
+// entry. Several az processes can run at once, so the entry is replaced
+// atomically, and a failed write leaves the next call to fetch again.
+func (c *Client) reloadCatalog(ctx context.Context) (*loadedCatalog, error) {
+	body, locations, err := fetchCatalog(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	c.catalog = &loadedCatalog{locations: locations}
+	if file := c.catalogCacheFile(); file != "" && os.MkdirAll(filepath.Dir(file), 0o700) == nil {
+		_ = writeFileAtomic(file, body, 0o600)
+	}
+	return c.catalog, nil
+}
+
+func (c *Client) dropCatalogCache() {
+	c.catalog = nil
+	if file := c.catalogCacheFile(); file != "" {
+		_ = os.Remove(file)
+	}
+}
+
+// readCatalogCache treats a missing, unreadable, corrupt, expired or
+// future-dated entry as absent.
+func readCatalogCache(file string) ([]resourceLocation, bool) {
+	if file == "" {
+		return nil, false
+	}
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, false
+	}
+	defer closeQuietly(f)
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxResponseBytes {
+		return nil, false
+	}
+	if age := time.Since(info.ModTime()); age < 0 || age >= catalogCacheMaxAge {
+		return nil, false
+	}
+	body, err := io.ReadAll(io.LimitReader(f, maxResponseBytes+1))
+	if err != nil || int64(len(body)) > maxResponseBytes {
+		return nil, false
+	}
+	locations, err := parseCatalog(body)
+	return locations, err == nil
+}
+
+func fetchCatalog(ctx context.Context, c *Client) ([]byte, []resourceLocation, error) {
 	query := url.Values{"allHostTypes": {"true"}}
 	resp, err := c.request(ctx, http.MethodOptions, []string{"_apis"}, query, "application/json", nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer closeQuietly(resp.Body)
 
 	body, err := readResponse(resp.Body, maxResponseBytes)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	locations, err := parseCatalog(body)
+	if err != nil {
+		return nil, nil, err
+	}
+	return body, locations, nil
+}
+
+func parseCatalog(body []byte) ([]resourceLocation, error) {
 	var catalog struct {
 		Value []json.RawMessage `json:"value"`
 	}
@@ -114,16 +275,16 @@ func resolveResource(locations []resourceLocation, area, resource, version strin
 	}
 	requested, previewSuffix, revision, valid := parseAPIVersion(version)
 	if !valid {
-		return nil, "", errors.New("invalid devops invoke API version")
+		return nil, "", catalogRouteError{err: errors.New("invalid devops invoke API version")}
 	}
 	parameters := make(map[string]string, len(route))
 	for key, value := range route {
 		key = strings.ToLower(key)
 		if key == "area" || key == "resource" {
-			return nil, "", errors.New("devops invoke route parameters cannot override area or resource")
+			return nil, "", catalogRouteError{err: errors.New("devops invoke route parameters cannot override area or resource")}
 		}
 		if _, exists := parameters[key]; exists {
-			return nil, "", errors.New("duplicate devops invoke route parameter")
+			return nil, "", catalogRouteError{err: errors.New("duplicate devops invoke route parameter")}
 		}
 		parameters[key] = value
 	}
@@ -173,15 +334,15 @@ func resolveResource(locations []resourceLocation, area, resource, version strin
 	}
 	switch {
 	case ambiguous:
-		return nil, "", errors.New("devops invoke resource matches multiple collection routes")
+		return nil, "", catalogRouteError{err: errors.New("devops invoke resource matches multiple collection routes"), newer: true}
 	case selected != nil:
 		return selected, selectedVersion, nil
 	case !found:
-		return nil, "", errors.New("devops invoke resource is absent from the collection catalog")
+		return nil, "", catalogRouteError{err: errors.New("devops invoke resource is absent from the collection catalog"), newer: true}
 	case !compatible:
-		return nil, "", errors.New("devops invoke API version is unavailable for this resource")
+		return nil, "", catalogRouteError{err: errors.New("devops invoke API version is unavailable for this resource"), newer: true}
 	default:
-		return nil, "", errors.New("devops invoke route parameters do not match a safe collection route")
+		return nil, "", catalogRouteError{err: errors.New("devops invoke route parameters do not match a safe collection route"), newer: true}
 	}
 }
 
@@ -302,13 +463,13 @@ var apiFloor = catalogVersion{7, 1}
 // checkAPIFloor reads the collection's API level from the catalog: the
 // highest maxVersion of the long-lived git/repositories resource.
 func checkAPIFloor(ctx context.Context, c *Client) (catalogVersion, error) {
-	locations, err := fetchCatalog(ctx, c)
+	catalog, err := c.reloadCatalog(ctx)
 	if err != nil {
 		return catalogVersion{}, fmt.Errorf("could not read the collection resource catalog to check its API version: %w", err)
 	}
 	var level catalogVersion
 	found := false
-	for _, location := range locations {
+	for _, location := range catalog.locations {
 		if !strings.EqualFold(location.Area, "git") || !strings.EqualFold(location.ResourceName, "repositories") {
 			continue
 		}
