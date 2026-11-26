@@ -8,6 +8,9 @@ import (
 )
 
 func TestUndoSetup(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
 	for _, tc := range []struct {
 		name, hooksPath, want string
 	}{
