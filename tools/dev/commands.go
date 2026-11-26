@@ -10,7 +10,17 @@ import (
 	"strings"
 )
 
-var gitleaksFlags = []string{"--config", ".gitleaks.toml", "--redact", "--no-banner", "--verbose", "--exit-code", "1"}
+var gitleaksFlags = []string{"--config", ".gitleaks.toml", "--redact", "--no-banner", "--exit-code", "1"}
+
+// gitleaksArgs adds --verbose locally, which prints each finding redacted with
+// its file and commit. CI leaves it out: a finding there is already public,
+// and the log shows only the count.
+func gitleaksArgs(verbose bool) []string {
+	if verbose {
+		return append(slices.Clone(gitleaksFlags), "--verbose")
+	}
+	return gitleaksFlags
+}
 
 // lintNew fails on lint issues in lines changed since the merge base with
 // base. The existing code has findings that the current phase may not fix
@@ -41,7 +51,7 @@ func actionlint() step {
 
 // gitleaksChanges scans commits in logRange (all history when empty), then
 // staged, unstaged and untracked changes.
-func gitleaksChanges(logRange string, scanLog bool) step {
+func gitleaksChanges(logRange string, scanLog, verbose bool) step {
 	return step{name: "gitleaks", run: func(out *bytes.Buffer) error {
 		var scans [][]string
 		if scanLog {
@@ -61,7 +71,7 @@ func gitleaksChanges(logRange string, scanLog bool) step {
 		}
 		var failed error
 		for _, s := range scans {
-			args := append(slices.Clone(s), gitleaksFlags...)
+			args := append(slices.Clone(s), gitleaksArgs(verbose)...)
 			if s[0] == "git" {
 				args = append(args, ".")
 			}
@@ -108,7 +118,7 @@ func check(base string) bool {
 		steps = append(steps, actionlint())
 	}
 	steps = append(steps,
-		gitleaksChanges(mergeBase+"..HEAD", !onBase),
+		gitleaksChanges(mergeBase+"..HEAD", !onBase, true),
 		step{name: "go test " + strings.Join(p.packages, " "), run: cmd("go", append([]string{"test", "-count=1"}, p.packages...)...)},
 	)
 	fmt.Printf("check: %d changed files since %s (%s).\n", len(files), base, short(mergeBase))
@@ -116,12 +126,11 @@ func check(base string) bool {
 }
 
 func ready() bool {
-	goFiles, err := gitPaths("ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.go")
+	steps, err := treeSteps("main", false)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ready:", err)
 		return false
 	}
-	goFiles = slices.DeleteFunc(goFiles, func(f string) bool { return !fileExists(f) })
 	test := []string{"test", "-count=1"}
 	testName := "go test -race ./..."
 	if ok, why := raceSupported(); ok {
@@ -129,27 +138,39 @@ func ready() bool {
 	} else {
 		testName = "go test ./... (no -race: " + why + ")"
 	}
+	steps = append(steps, step{name: testName, run: cmd("go", append(test, "./...")...)})
+	return runSteps("ready", steps)
+}
+
+// treeSteps are the whole-tree checks that ready and ci-checks share. An
+// empty lintBase leaves out the new-issues gate; the full counts still print.
+func treeSteps(lintBase string, ci bool) ([]step, error) {
+	goFiles, err := gitPaths("ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.go")
+	if err != nil {
+		return nil, err
+	}
+	goFiles = slices.DeleteFunc(goFiles, func(f string) bool { return !fileExists(f) })
 	modules := []string{"."}
-	for _, name := range tools {
+	for _, name := range toolModules() {
 		modules = append(modules, "tools/"+name)
 	}
 	steps := []step{
 		{name: "gofmt", run: gofmtCheck(goFiles, readWorktree)},
 		vet(),
-		lintNew("main"),
 		actionlint(),
-		gitleaksChanges("", true),
-		{name: testName, run: cmd("go", append(test, "./...")...)},
-		{name: "golangci-lint, all findings", report: true, run: eachTarget(lintSummary)},
-		{name: "govulncheck", report: true, run: eachTarget(func(goos string) func(*bytes.Buffer) error {
+		gitleaksChanges("", true, !ci),
+		{name: "govulncheck", run: eachTarget(func(goos string) func(*bytes.Buffer) error {
 			return toolFor(goos, "govulncheck", "./...")
 		})},
+		{name: "golangci-lint, all findings", report: true, run: eachTarget(lintSummary)},
 		{name: "deadcode", report: true, run: eachTarget(func(goos string) func(*bytes.Buffer) error {
 			return toolFor(goos, "deadcode", "./...")
 		})},
 	}
-	steps = append(steps, tidy(modules)...)
-	return runSteps("ready", steps)
+	if lintBase != "" {
+		steps = append(steps, lintNew(lintBase))
+	}
+	return append(steps, tidy(modules)...), nil
 }
 
 var lintSummaryStart = regexp.MustCompile(`(?m)^(\d+ issues:|0 issues\.)`)
@@ -186,7 +207,7 @@ func staged() bool {
 			repoChecks = true
 		}
 	}
-	steps := []step{{name: "gitleaks --staged", run: tool("gitleaks", append([]string{"git", "--pre-commit", "--staged"}, append(gitleaksFlags, ".")...)...)}}
+	steps := []step{{name: "gitleaks --staged", run: tool("gitleaks", append([]string{"git", "--pre-commit", "--staged"}, append(gitleaksArgs(true), ".")...)...)}}
 	if len(goFiles) > 0 {
 		steps = append(steps, step{name: "gofmt (staged)", run: gofmtCheck(goFiles, readStaged)})
 	}

@@ -24,6 +24,7 @@ updates:
   # Only the tool itself moves, so its indirect dependencies stay those of its release.
   - package-ecosystem: gomod
     directories:
+      - "/tools/act"
       - "/tools/actionlint"
       - "/tools/deadcode"
       - "/tools/gitleaks"

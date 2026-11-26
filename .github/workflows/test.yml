@@ -1,4 +1,7 @@
-name: Native Go tests
+# Change detection, the whole-tree checks on Linux, the native test matrix on macOS, Windows and
+# Ubuntu, and one roll-up job, Check, for a ruleset to require. The roll-up pattern is adapted from
+# T3 Code's CI (MIT), by way of Toolspell. docs/operations/development.md#ci describes the layout.
+name: CI
 
 on:
   push:
@@ -6,11 +9,67 @@ on:
   pull_request:
   workflow_dispatch:
 
+# One group per pull request or per commit on main, so a burst of pushes to main does not cancel the
+# runs of the commits in between.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
+env:
+  # What a run compares against: a pull request's merge commit has the base as its first parent; a
+  # push compares against the previous head of main. Empty on a manual run, which runs and reports
+  # everything but gates no lint issue.
+  BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
+
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tests: ${{ steps.changes.outputs.tests }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A push can carry several commits, so the previous head may be further back than one.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          # tools/dev uses only the standard library.
+          cache: false
+      - id: changes
+        run: go run ./tools/dev ci-changes -base "$BASE"
+
+  checks:
+    name: Checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # gitleaks reads the whole history, including commits made without the hook.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          # govulncheck judges the standard library of the Go it runs on. A release is built with a
+          # current Go, not with go.mod's minimum, which carries long-fixed standard library issues.
+          go-version: stable
+          # The build cache keeps the compiled tools, which are most of a cold run.
+          cache-dependency-path: |
+            go.sum
+            tools/*/go.sum
+      # vet, golangci-lint, govulncheck and deadcode run once per GOOS (darwin, linux, windows).
+      - run: go run ./tools/dev ci-checks -base "$BASE"
+
   test:
+    needs: changes
+    if: needs.changes.outputs.tests == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -20,11 +79,27 @@ jobs:
     env:
       CGO_ENABLED: '1'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
-      - run: go vet ./...
       - run: go test -race -count=1 ./...
+
+  check:
+    name: Check
+    if: ${{ always() }}
+    needs: [changes, checks, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed, or the tests were skipped because no code changed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          TESTS_NEEDED: ${{ needs.changes.outputs.tests }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e --arg tests "$TESTS_NEEDED" '
+            .changes.result == "success" and .checks.result == "success"
+            and (.test.result == "success" or (.test.result == "skipped" and $tests == "false"))'

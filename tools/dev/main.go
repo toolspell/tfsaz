@@ -4,6 +4,9 @@
 //	go run ./tools/dev ready               full local suite, before a push
 //	go run ./tools/dev staged              staged-only checks, run by .githooks/pre-commit
 //	go run ./tools/dev setup [-tools]      prepare a fresh worktree
+//	go run ./tools/dev ci-local            run the CI workflow with act in Docker
+//
+// ci-changes and ci-checks are the CI workflow's steps.
 //
 // The tools are pinned in one module each under tools/<name>/go.mod; see
 // docs/operations/development.md.
@@ -21,6 +24,12 @@ const usage = `usage: go run ./tools/dev <command>
   ready               full local suite, before a push
   staged              staged-only checks (the pre-commit hook)
   setup [-tools]      enable the hooks and download modules; -tools also builds the tools
+  ci-local [-base main] [-context <docker context>] [-- <act args>]
+                      run .github/workflows/test.yml with act in Docker
+
+CI workflow steps:
+  ci-changes -base <rev>  print tests=true|false: whether the native test matrix must run
+  ci-checks -base <rev>   whole-tree gates and reports; lint gates on lines changed since rev
 `
 
 func main() {
@@ -54,6 +63,19 @@ func main() {
 		tools := flags.Bool("tools", false, "also build the pinned tools")
 		_ = flags.Parse(os.Args[2:])
 		ok = setup(*tools)
+	case "ci-changes":
+		base := flags.String("base", "", "the commit before the change; empty runs the tests")
+		_ = flags.Parse(os.Args[2:])
+		ok = ciChanges(*base)
+	case "ci-checks":
+		base := flags.String("base", "", "gate golangci-lint on lines changed since this commit; empty only reports")
+		_ = flags.Parse(os.Args[2:])
+		ok = ciChecks(*base)
+	case "ci-local":
+		base := flags.String("base", "main", "simulate a push of the changes since the merge base with this ref")
+		context := flags.String("context", "", "docker context to run the containers in")
+		_ = flags.Parse(os.Args[2:])
+		ok = ciLocal(*base, *context, flags.Args())
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)

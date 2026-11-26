@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -15,8 +16,12 @@ import (
 // from any host, so a change to a _windows.go file is checked on macOS too.
 var targets = []string{"darwin", "linux", "windows"}
 
-// tools maps each pinned tool to its module directory under tools/.
+// tools are the pinned check tools, each in its module directory under tools/.
 var tools = []string{"golangci-lint", "govulncheck", "deadcode", "actionlint", "gitleaks"}
+
+// toolModules adds act, which only ci-local uses; setup does not download or
+// build it, because its Docker client dependencies are large.
+func toolModules() []string { return append(slices.Clone(tools), "act") }
 
 // repoChecksRun selects the root-package tests that check the whole
 // repository: doc links and anchors, em dashes in markdown, pinned actions.

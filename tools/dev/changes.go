@@ -138,7 +138,7 @@ func planFor(files []string, exists func(string) bool, pkgDirs []string) plan {
 
 // toolModule returns the tool module directory a file belongs to, if any.
 func toolModule(file string) string {
-	for _, name := range tools {
+	for _, name := range toolModules() {
 		dir := "tools/" + name
 		if strings.HasPrefix(file, dir+"/") {
 			return dir
