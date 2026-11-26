@@ -4,6 +4,7 @@ package az
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
@@ -24,8 +25,6 @@ import (
 // through Windows PowerShell. The leaf goes into the user's Root store, which
 // shows a confirmation dialog on the interactive desktop. Only the hosts edit
 // runs elevated, as a fixed PowerShell script behind one UAC prompt.
-
-const routeSystemSystemTrust = true
 
 const routeHostsCRLF = true
 
@@ -572,4 +571,12 @@ func windowsHostsExitMessage(err error) string {
 		return "the hosts file gained an entry for this alias that tfsaz did not add; remove it first"
 	}
 	return ""
+}
+
+func routeSystemLeafNames(der []byte) []string {
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil
+	}
+	return leaf.DNSNames
 }

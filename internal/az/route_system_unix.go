@@ -55,48 +55,51 @@ func runRouteSystemPrivileged(ctx context.Context, script string) error {
 	return nil
 }
 
-// writeRootFile is a shell fragment that replaces path with root-owned content
-// through a temporary file, so an interruption never leaves a partial file.
-func writeRootFile(path, content, group string) string {
-	if strings.Contains(content, "\nTFSAZ_EOF\n") {
-		panic("heredoc terminator in content")
+// Stage the complete replacement alongside the system hosts file and preserve
+// its metadata. Prepending our lines preserves the original final newline.
+func routeHostsShell(path, id string, aliases []string, install bool) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "h=%s; m=%s\n", shellQuote(path), shellQuote(routeHostsMarker(id)))
+	b.WriteString(`[ -f "$h" ] && [ ! -L "$h" ] || exit 1
+t=$(mktemp "$h.tfsaz.XXXXXX")
+trap 'rm -f "$t"' EXIT
+orig=$(mktemp "$h.tfsaz.XXXXXX")
+trap 'rm -f "$t" "$orig"' EXIT
+cp -p "$h" "$orig"
+cp -p "$orig" "$t"
+`)
+	perl := `use strict; use warnings; binmode STDOUT; my ($m, $install, $h, @lines) = @ARGV;
+open(my $in, "<:raw", $h) or die "cannot read hosts";
+my $text = do { local $/; <$in> } // "";
+my %aliases = map { (split / /)[1] => 1 } @lines;
+if ($install) { my $nl = index($text, "\r\n") >= 0 ? "\r\n" : "\n"; print $_, $nl for @lines; }
+while ($text =~ /([^\n]*\n|[^\n]+\z)/g) {
+  my $line = $1;
+  next if $line =~ /\Q$m\E(?:\r?\n)?\z/;
+  if ($install) {
+    my $names = $line; $names =~ s/#.*//; my @names = split ' ', $names; shift @names;
+    for (@names) { s/\.$//; die "foreign hosts entry already names this alias" if $aliases{lc $_}; }
+  }
+  print $line;
+}
+close STDOUT or die "cannot stage hosts";
+`
+	flag := "0"
+	if install {
+		flag = "1"
 	}
-	q := shellQuote(path)
-	return fmt.Sprintf(`f=%s
-tmp=$(mktemp "$f.tfsaz.XXXXXX")
-trap 'rm -f "$tmp"' EXIT
-cat > "$tmp" <<'TFSAZ_EOF'
-%sTFSAZ_EOF
-chown root:%s "$tmp"
-chmod 644 "$tmp"
-mv -f "$tmp" "$f"
-trap - EXIT
-`, q, content, group)
+	fmt.Fprintf(&b, "/usr/bin/perl -e %s -- \"$m\" %s \"$orig\"", shellQuote(perl), flag)
+	for _, line := range routeHostsLines(id, aliases) {
+		b.WriteString(" " + shellQuote(line))
+	}
+	b.WriteString(` > "$t"
+cmp -s "$orig" "$h" || { echo "hosts changed during setup; retry" >&2; exit 1; }
+cmp -s "$t" "$h" || mv -f "$t" "$h"
+rm -f "$t" "$orig"; trap - EXIT
+`)
+	return b.String()
 }
 
-const routePortOwner = "/etc/tfsaz-browser-port-443.owner"
-
-// Port forwarding is shared by all user sessions, including while the user's
-// redirect process is stopped. Reserve it independently of listener readiness.
-func reserveRoutePort(id string) string {
-	return fmt.Sprintf(`f=%s
-if [ ! -e "$f" ]; then
-  tmp=$(mktemp "$f.XXXXXX")
-  trap 'rm -f "$tmp"' EXIT
-  printf '%%s\n' %s > "$tmp"
-  chmod 644 "$tmp"
-  ln "$tmp" "$f" 2>/dev/null || true
-  rm -f "$tmp"; trap - EXIT
-fi
-[ ! -L "$f" ] && [ "$(cat "$f")" = %s ] || { echo "loopback port 443 is reserved by another managed installation" >&2; exit 1; }
-`, routePortOwner, shellQuote(id), shellQuote(id))
-}
-
-func ownsRoutePort(id string) bool {
-	data, err := os.ReadFile(routePortOwner)
-	return err == nil && strings.TrimSpace(string(data)) == id
-}
-
-func releaseRoutePort(id string) string {
-	return fmt.Sprintf("if [ -f %s ] && [ \"$(cat %s)\" = %s ]; then rm %s; fi\n", routePortOwner, routePortOwner, shellQuote(id), routePortOwner)
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

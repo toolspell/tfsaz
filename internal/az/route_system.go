@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -219,14 +218,6 @@ func pemCertificates(data []byte) [][]byte {
 			ders = append(ders, block.Bytes)
 		}
 	}
-}
-
-func routeSystemLeafNames(der []byte) []string {
-	leaf, err := x509.ParseCertificate(der)
-	if err != nil {
-		return nil
-	}
-	return leaf.DNSNames
 }
 
 func routeSystemPEM(der []byte) []byte {

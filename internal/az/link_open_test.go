@@ -14,12 +14,12 @@ func TestLinkHandlerRejectsRecursiveOrMissingBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := linkHandlerPaths(executable); err == nil {
+	if err := validateLinkBrowser(executable, executable); err == nil {
 		t.Fatal("accepted tfsaz as its own browser")
 	}
 	dir := t.TempDir()
 	for _, browser := range []string{"relative", filepath.Join(dir, "missing.exe")} {
-		if _, _, err := linkHandlerPaths(browser); err == nil {
+		if err := validateLinkBrowser(browser, executable); err == nil {
 			t.Fatalf("accepted browser %q", browser)
 		}
 	}
@@ -31,7 +31,7 @@ func TestLinkHandlerRejectsRecursiveOrMissingBrowser(t *testing.T) {
 	if err := os.WriteFile(opener, []byte("fixture"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := linkHandlerPaths(opener); err == nil {
+	if err := validateLinkBrowser(opener, executable); err == nil {
 		t.Fatal("accepted browser dispatcher")
 	}
 }

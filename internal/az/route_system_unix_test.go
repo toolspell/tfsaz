@@ -3,6 +3,7 @@
 package az
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,4 +57,24 @@ func TestRouteHostsShellMatchesGo(t *testing.T) {
 			t.Fatalf("temporary files left: %v", leftovers)
 		}
 	}
+}
+
+type routeSystemCall struct {
+	name  string
+	args  []string
+	stdin string
+}
+
+// fakeRouteSystemCommands records commands instead of running them.
+func fakeRouteSystemCommands(t *testing.T, reply func(c routeSystemCall) ([]byte, error)) *[]routeSystemCall {
+	t.Helper()
+	var calls []routeSystemCall
+	old := runRouteSystemCommand
+	runRouteSystemCommand = func(_ context.Context, stdin []byte, name string, args ...string) ([]byte, error) {
+		c := routeSystemCall{name: name, args: args, stdin: string(stdin)}
+		calls = append(calls, c)
+		return reply(c)
+	}
+	t.Cleanup(func() { runRouteSystemCommand = old })
+	return &calls
 }

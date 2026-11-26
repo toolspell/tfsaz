@@ -7,8 +7,6 @@ import (
 	"os"
 )
 
-const routeSystemSystemTrust = true
-
 const routeHostsCRLF = false
 
 func routeHostsPath() string                                      { return "/etc/hosts" }

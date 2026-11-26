@@ -21,8 +21,6 @@ import (
 // gets SSL trust in the user's login keychain with one exact hostname rule per
 // alias (see route_system_darwin_trust.go).
 
-const routeSystemSystemTrust = true
-
 type macListener struct {
 	suffix string // label suffix
 	node   string // literal loopback address launchd binds

@@ -47,21 +47,6 @@ func validateLinkBrowser(browser, executable string) error {
 	return nil
 }
 
-func linkHandlerPaths(browser string) (executable, config string, err error) {
-	executable, err = os.Executable()
-	if err != nil || !absoluteLinkPath(executable) {
-		return "", "", errors.New("could not locate the tfsaz executable")
-	}
-	if err := validateLinkBrowser(browser, executable); err != nil {
-		return "", "", err
-	}
-	config, err = configPath()
-	if err != nil || !absoluteLinkPath(config) {
-		return "", "", errors.New("link handler configuration requires an absolute path")
-	}
-	return executable, config, nil
-}
-
 func openDesktopLink(ctx context.Context, configFile, browser, raw string) error {
 	if !absoluteLinkPath(configFile) {
 		return errors.New("link handler configuration requires an absolute path")

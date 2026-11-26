@@ -23,8 +23,6 @@ import (
 // trusted peer, not a CA). Prerequisites: a systemd user session, sudo,
 // nftables (nft) and, for trust, certutil from libnss3-tools.
 
-const routeSystemSystemTrust = false
-
 func linuxUserUnit(id string) string { return "tfsaz-route-redirect-" + id + ".service" }
 func linuxNATUnit(id string) string  { return "tfsaz-route-redirect-" + id + "-nat.service" }
 func linuxNATTable(id string) string { return "tfsaz_route_" + id }
@@ -447,4 +445,50 @@ func removeLinuxNSS(ctx context.Context, certutil, db string, p routeSystemPlan)
 	}
 	_, err = runRouteSystemCommand(ctx, nil, certutil, "-d", "sql:"+db, "-D", "-n", nick)
 	return err
+}
+
+// writeRootFile is a shell fragment that replaces path with root-owned content
+// through a temporary file, so an interruption never leaves a partial file.
+func writeRootFile(path, content, group string) string {
+	if strings.Contains(content, "\nTFSAZ_EOF\n") {
+		panic("heredoc terminator in content")
+	}
+	q := shellQuote(path)
+	return fmt.Sprintf(`f=%s
+tmp=$(mktemp "$f.tfsaz.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+cat > "$tmp" <<'TFSAZ_EOF'
+%sTFSAZ_EOF
+chown root:%s "$tmp"
+chmod 644 "$tmp"
+mv -f "$tmp" "$f"
+trap - EXIT
+`, q, content, group)
+}
+
+const routePortOwner = "/etc/tfsaz-browser-port-443.owner"
+
+// Port forwarding is shared by all user sessions, including while the user's
+// redirect process is stopped. Reserve it independently of listener readiness.
+func reserveRoutePort(id string) string {
+	return fmt.Sprintf(`f=%s
+if [ ! -e "$f" ]; then
+  tmp=$(mktemp "$f.XXXXXX")
+  trap 'rm -f "$tmp"' EXIT
+  printf '%%s\n' %s > "$tmp"
+  chmod 644 "$tmp"
+  ln "$tmp" "$f" 2>/dev/null || true
+  rm -f "$tmp"; trap - EXIT
+fi
+[ ! -L "$f" ] && [ "$(cat "$f")" = %s ] || { echo "loopback port 443 is reserved by another managed installation" >&2; exit 1; }
+`, routePortOwner, shellQuote(id), shellQuote(id))
+}
+
+func ownsRoutePort(id string) bool {
+	data, err := os.ReadFile(routePortOwner)
+	return err == nil && strings.TrimSpace(string(data)) == id
+}
+
+func releaseRoutePort(id string) string {
+	return fmt.Sprintf("if [ -f %s ] && [ \"$(cat %s)\" = %s ]; then rm %s; fi\n", routePortOwner, routePortOwner, shellQuote(id), routePortOwner)
 }
