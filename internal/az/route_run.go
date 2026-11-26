@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/gofrs/flock"
 )
 
 // Each route run overlay git-X has a lock file git-X.lock, held while the run
@@ -30,8 +32,8 @@ func (o routeRunOverlay) remove() error {
 }
 
 // A run that ends concurrently may remove the empty parent between the
-// MkdirAll and the CreateTemp, and a concurrent cleanup may take a fresh lock
-// file before its creator does, so retry a few times.
+// MkdirAll and the CreateTemp, and a concurrent cleanup may take or remove a
+// fresh lock file before its creator locks it, so retry a few times.
 func makeRouteRunOverlay(parent string) (routeRunOverlay, error) {
 	var last error
 	for range 3 {
@@ -50,8 +52,8 @@ func makeRouteRunOverlay(parent string) (routeRunOverlay, error) {
 		if err := file.Close(); err != nil {
 			return routeRunOverlay{}, errors.Join(err, removeIfPresent(path))
 		}
-		lock, err := tryLockFile(path)
-		if err != nil {
+		lock, err := tryRouteRunLock(path)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return routeRunOverlay{}, err
 		}
 		if lock == nil {
@@ -65,6 +67,13 @@ func makeRouteRunOverlay(parent string) (routeRunOverlay, error) {
 		return overlay, nil
 	}
 	return routeRunOverlay{}, fmt.Errorf("create a route run overlay in %s: %w", parent, last)
+}
+
+// Only CreateTemp creates a lock file. Recreating one that a cleanup removed
+// would let a cleanup that saw it missing delete the overlay its new holder
+// creates next.
+func tryRouteRunLock(path string) (*flock.Flock, error) {
+	return tryLockFile(path, flock.SetFlag(os.O_RDONLY))
 }
 
 // removeStaleRouteRunOverlays removes the overlays of runs that ended without
@@ -100,7 +109,10 @@ func removeStaleRouteRunOverlay(dir string) error {
 	} else if err != nil {
 		return err
 	}
-	lock, err := tryLockFile(lockPath)
+	lock, err := tryRouteRunLock(lockPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
 	if err != nil || lock == nil {
 		return err
 	}

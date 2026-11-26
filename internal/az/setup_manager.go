@@ -156,11 +156,11 @@ func acquireLockFile(path string, busy error) (func() error, error) {
 
 // tryLockFile returns a nil lock when another process holds the file or the
 // path no longer names the file it locked.
-func tryLockFile(path string) (*flock.Flock, error) {
+func tryLockFile(path string, opts ...flock.Option) (*flock.Flock, error) {
 	if _, err := setupFileExists(path); err != nil {
 		return nil, err
 	}
-	lock := flock.New(path)
+	lock := flock.New(path, opts...)
 	ok, err := lock.TryLock()
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("lock %s: %w", path, err), lock.Close())

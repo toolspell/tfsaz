@@ -79,4 +79,13 @@ func TestRouteRunOverlayLock(t *testing.T) {
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("route run left %v: %v", entries, err)
 	}
+
+	// A cleanup may remove a fresh lock file before its creator locks it.
+	removed := run.dir + ".lock"
+	if lock, err := tryRouteRunLock(removed); lock != nil || !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("locked a removed route run lock file: %v", err)
+	}
+	if _, err := os.Lstat(removed); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("recreated a removed route run lock file: %v", err)
+	}
 }
