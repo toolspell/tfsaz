@@ -10,6 +10,8 @@
 
 Run `go vet ./...` and `go test -count=1 ./...` for the native suite. Tests use temporary Git repositories, loopback HTTP/TLS servers and a test credential store.
 
+The suite also checks links: `TestDocLinks` in `docs_links_test.go` verifies relative links and heading anchors in README.md, AGENTS.md and `docs/`, plus every `https://github.com/toolspell/tfsaz` URL in Go code and docs.
+
 ## Isolate manual runs
 
 A manual run of the built binary uses the real configuration, keyring and, for some commands, system files. Before trying a command by hand:

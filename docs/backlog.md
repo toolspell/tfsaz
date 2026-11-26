@@ -36,7 +36,6 @@ Deferred work, so any session or worktree can pick it up.
   - **Checks before a commit or push:** one fast, affected-only entry point (gofmt, `go vet`, a linter, `go test` on affected packages) that agents run before committing, and a `ready` entry point next to it for the full local suite before a push. Document both in `docs/operations/development.md` and the AGENTS.md "Verify" section. Pointers: Toolspell `scripts/check-changed.ts` (`vp run check:changed`, merge base with `main`, uncommitted and untracked files included) and `ready` in `package.json`.
   - **Pre-commit hook:** a versioned `.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks`, running `gofmt -l`, `go vet`, `gitleaks --staged` and the em-dash check on staged files. Pointers: Toolspell `.vite-hooks/pre-commit`, which runs `vp staged` with the `staged:` list in `vite.config.ts` (format, lint, naming, pinned actions, gitleaks `--staged`).
 - **Agent skills:** keep skills in `.agents/skills/`, linked to `.claude/skills`, as Toolspell does. Candidates: a `reference-t3code` skill (pairs with the reference-repo item) and a testbed/VM verification skill (pairs with the test-environment runbook item).
-- **Doc link and anchor checker** for README, AGENTS.md and `docs/`. The docs-overhaul threads used throwaway versions of one.
 
 ## At the public / PR switch
 
