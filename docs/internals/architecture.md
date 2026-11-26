@@ -1,6 +1,6 @@
 # Architecture
 
-tfsaz is a standalone Go CLI that lets an unmodified T3 Code use Azure DevOps Server. T3's invocation of `az` is the compatibility contract; see [T3 compatibility](t3-compatibility.md). The backend is the on-premises REST API, called directly.
+tfsaz is a standalone Go CLI that lets an unmodified T3 Code use Azure DevOps Server. T3's invocation of `az` is the compatibility contract; see [T3 compatibility](t3-compatibility.md). The backend is the on-premises REST API, called directly; how tfsaz resolves its routes and which API version it targets is in [REST API](rest-api.md).
 
 ## Authentication and routing rules
 

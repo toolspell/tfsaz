@@ -19,7 +19,7 @@ These are the `az` calls used by the stock T3 adapter at revision `c478fde9fe`. 
 | `az devops invoke --area git --resource NAME` | Reads PR threads, labels, iterations, iteration changes, file revisions and batched blobs for the diff view. The supported Git resources are `pullRequestThreads`, `pullRequestLabels`, `pullRequestIterations`, `pullRequestIterationChanges`, `blobs` and `items`. |
 | `az boards work-item create` and `update` | Create typed work items and edit title, description, state and named fields, including tags and assignee. |
 | `az boards work-item show --id N --expand relations` | Reads a work item and the relations T3 uses to find linked PRs. |
-| `az devops invoke --area wit --resource NAME` | Reads workflow states, searches with WIQL, loads result rows in batches, and reads comments, update history and tags (`workitemtypes`, `wiql`, `workitemsbatch`, `comments`, `updates`). T3 also uses catalog-resolved invoke to post work-item comments and add or remove comment reactions. |
+| `az devops invoke --area wit --resource NAME` | Reads workflow states, searches with WIQL, loads result rows in batches, and reads comments, update history and tags (`workitemtypes`, `wiql`, `workitemsbatch`, `comments`, `updates`, `tags`). T3 also uses catalog-resolved invoke to post work-item comments and add or remove comment reactions. |
 | `az devops team list` and `az devops team list-member` | Lists project teams and members for T3’s assignee picker. |
 
 Which T3 features these commands cover is in [What works in T3](t3-features.md).

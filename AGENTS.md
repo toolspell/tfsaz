@@ -14,6 +14,8 @@ tfsaz works only while stock T3 Code cannot tell it apart from Microsoft's Azure
 - The hosts and URL shapes T3 recognizes as Azure DevOps. The Azure-style aliases and synthetic URLs must keep matching them.
 - How Microsoft's Azure CLI, the extension and knack parse, format output and fail. Skill `reference-azure-cli`. Where they differ from what T3 actually calls, T3 wins.
 
+Resolve REST routes through the server's resource-location catalog, not hard-coded `_apis` paths, and target API 7.1 (and its previews), compatible down to Azure DevOps Server 2022.2. Details: [REST API](docs/internals/rest-api.md).
+
 ### Outside in only
 
 tfsaz solves the problem from outside, against the real installed T3 Code app or server. Never suggest or make a change, fork or upstream PR to T3 Code, Microsoft's Azure CLI or the `azure-devops` extension, and never patch an installed copy. If a fix seems to need one, report it to the maintainer as a gap.
@@ -108,7 +110,7 @@ Default to no comment. Existing comments record what the code can't show: a serv
 | --- | --- |
 | Everyone | [README.md](README.md): what tfsaz is, how it works, features, status, constraints, docs index. [SECURITY.md](SECURITY.md): what tfsaz protects, scope, reporting |
 | Operators and script authors | `docs/user/`: getting started, install, configure, checkout setup, what works in T3, diagnose, routing, browser routing (managed and manual), desktop link handler, Azure CLI compatibility |
-| Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why tfsaz is needed, adapter files, keeping coverage current), [testing](docs/internals/testing.md) (test rules), [naming](docs/internals/naming.md) (how to write tfsaz, the `az` shim, Microsoft's Azure CLI and the glossary terms) |
+| Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why tfsaz is needed, adapter files, keeping coverage current), [REST API](docs/internals/rest-api.md) (catalog routes, API version policy), [testing](docs/internals/testing.md) (test rules), [naming](docs/internals/naming.md) (how to write tfsaz, the `az` shim, Microsoft's Azure CLI and the glossary terms) |
 | Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI. `docs/verification/`: dated live records. [`docs/backlog.md`](docs/backlog.md): deferred work |
 
 ## Documentation rules
