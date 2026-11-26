@@ -431,20 +431,21 @@ func (a app) removeProfile(id string) error {
 		if err != nil {
 			return err
 		}
+		// No other profile of this configuration shares the collection, so its
+		// catalog cache would only be left behind. Delete it while a retry can
+		// still find the profile.
+		cache := catalogCacheDir(path)
+		if collection, err := url.Parse(p.CollectionURL); err == nil {
+			if err := removeIfPresent(catalogCachePath(cache, *collection)); err != nil {
+				return fmt.Errorf("remove the catalog cache of profile %s: %w", p.ID, err)
+			}
+		}
 		original.Profiles = slices.Delete(original.Profiles, i, i+1)
 		if err := saveConfigFile(target, original, true); err != nil {
 			return err
 		}
-		// No other profile of this configuration shares the collection, so
-		// its catalog cache would only be left behind.
-		if collection, err := url.Parse(p.CollectionURL); err == nil {
-			cache := catalogCacheDir(path)
-			if err := removeIfPresent(catalogCachePath(cache, *collection)); err != nil {
-				return fmt.Errorf("remove the catalog cache of profile %s: %w", p.ID, err)
-			}
-			// The directory stays while other collections have a cache file.
-			_ = os.Remove(cache)
-		}
+		// The directory stays while other collections have a cache file.
+		_ = os.Remove(cache)
 		if _, err := fmt.Fprintf(a.stdout, "Removed profile %s\n", p.ID); err != nil {
 			return err
 		}
@@ -479,12 +480,21 @@ func (a app) removeKeyringEntry(entry keyringEntry) error {
 		})
 	}
 	// The configuration lock keeps a profile from being added for the entry
-	// during the check. Without a configuration directory no profile exists,
-	// and taking the lock would create the directory.
-	if _, statErr := os.Lstat(filepath.Dir(path)); errors.Is(statErr, os.ErrNotExist) {
-		err = remove(path, path)
-	} else {
-		err = withProfileConfigLock(true, remove)
+	// during the check, also when the configuration directory is gone. The
+	// lock creates the missing directories; remove them once empty again.
+	var created []string
+	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+		if _, err := os.Lstat(dir); !errors.Is(err, os.ErrNotExist) || filepath.Dir(dir) == dir {
+			break
+		}
+		created = append(created, dir)
+	}
+	err = withProfileConfigLock(true, remove)
+	for _, dir := range created {
+		// A directory that a concurrent command filled stays, with its parents.
+		if os.Remove(dir) != nil {
+			break
+		}
 	}
 	if err != nil {
 		return err

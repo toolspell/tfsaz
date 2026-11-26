@@ -492,13 +492,13 @@ func TestProfileRemoveFindsStrandedKeyringEntries(t *testing.T) {
 	if err := store.Set(credentialService(unrecorded), unrecorded.ID, rand.Text()); err != nil {
 		t.Fatal(err)
 	}
-	gone := filepath.Join(t.TempDir(), "gone", "config.json")
+	gone := filepath.Join(t.TempDir(), "gone", "deeper", "config.json")
 	t.Setenv("TFSAZ_CONFIG", gone)
 	if got, err := run("profile", "remove", "--profile", "old", "--collection", server.URL+"/Two"); err != nil || !strings.HasPrefix(got, "Removed keyring entry") {
 		t.Fatalf("remove without a configuration = %q, %v", got, err)
 	}
-	if _, err := os.Lstat(filepath.Dir(gone)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("removal created the configuration directory: %v", err)
+	if _, err := os.Lstat(filepath.Dir(filepath.Dir(gone))); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("removal left the configuration directories its lock created: %v", err)
 	}
 	t.Setenv("TFSAZ_CONFIG", path)
 
@@ -541,7 +541,17 @@ func TestProfileRemoveFindsStrandedKeyringEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	cache := catalogCachePath(catalogCacheDir(path), *collection)
-	if err := os.MkdirAll(filepath.Dir(cache), 0o700); err != nil {
+	// A cache that cannot be deleted keeps the profile, so a retry finds it.
+	if err := os.MkdirAll(filepath.Join(cache, "blocker"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run("profile", "remove", "--profile", "renamed"); err == nil || !strings.Contains(err.Error(), "catalog cache") {
+		t.Fatalf("remove with an undeletable cache = %v", err)
+	}
+	if cfg, err := loadConfig(); err != nil || len(cfg.Profiles) != 1 {
+		t.Fatalf("a failed cache removal dropped the profile: %v", err)
+	}
+	if err := os.RemoveAll(cache); err != nil {
 		t.Fatal(err)
 	}
 	managerTestWrite(t, cache, "{}")
