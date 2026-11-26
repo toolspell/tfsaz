@@ -11,6 +11,17 @@ Deferred work, so any session or worktree can pick it up.
 - **Browser-redirect TLS key on disk:** move the leaf private key `alias-key.pem` in `<config>.browser-route`, written by `internal/az/route_managed.go`, into the OS secret store, or decide otherwise.
 - **Personal and testbed details:** audit git history and `docs/verification/` for names, machine paths, hostnames and other testbed details.
 - **License and contribution policy:** the README has placeholders for both.
+- **Secrets scan** in the pre-commit hook and CI; PATs are the core risk. Pointer: Toolspell `scripts/check-secrets.ts`.
+- **Pinned-actions check:** the workflow actions are SHA-pinned today, but nothing enforces it. Pointer: Toolspell `scripts/check-pinned.ts`.
+- **Go lint and safety checks:** golangci-lint, govulncheck and a `go mod tidy` diff check, as the Go equivalent of Toolspell's lint and typecheck steps.
+- **Doc link and anchor checker** for README, AGENTS.md and `docs/`. The docs-overhaul threads used throwaway versions of one.
+
+## At the public / PR switch
+
+- **PR checks:** PR title in conventional-commit form, PR size labels, PR limits and the stale bot. Pointers: Toolspell `.github/workflows/pr-title.yml`, `pr-size.yml`, `pr-limits.yml`, `stale-needs-more-info.yml`.
+- **Review bots:** CodeRabbit config with path instructions, Macroscope approvability, Codex review, and a `claude.yml` workflow (actor-restricted, comment-only). Pointers: Toolspell `.coderabbit.config.ts`, `.macroscope/approvability.md`, `.github/workflows/claude.yml`.
+- **Dependabot** for GitHub Actions and Go modules, plus the labels workflow. Pointers: Toolspell `.github/dependabot.yml`, `.github/workflows/labels.yml`.
+- **Agent context budget** (decided): measured AGENTS.md bytes in a JSON file, a Go test that keeps it exact, an AGENTS.md rule, and a label-gated CI check. Pointers: Toolspell `scripts/agent-context-budget.json`, `scripts/agent-docs.test.ts`, `.github/workflows/agent-context-budget.yml`.
 
 ## Code
 
@@ -27,6 +38,12 @@ Deferred work, so any session or worktree can pick it up.
   - Secret Service availability for go-keyring inside WSL.
   - Git and SSH transport across the WSL/Windows boundary.
   - T3's own adapter already mentions "Windows az running in WSL" (`AzureDevOpsCli.ts`, scope detection and `@-` stdin text): check which side's `az` T3 runs in that setup.
+
+## Tooling
+
+- **Local CI**, in two parts as in Toolspell:
+  - Run the real workflow locally with nektos/act, optionally on a remote Docker context (Toolspell `vp run ci:local`, `scripts/ci-local.ts`). A green run is evidence, not proof. act runs only Linux containers, so the macOS and Windows jobs of `.github/workflows/test.yml` need another route, for example the test machines or VMs from the test-environment runbook item.
+  - One fast, affected-only check entry point (gofmt, `go vet`, a linter, `go test` on affected packages) that agents run before committing, plus a pre-commit hook for the fast checks. Document it in `docs/operations/development.md` and the AGENTS.md "Verify" section. Pointers: Toolspell `scripts/check-changed.ts` (`vp run check:changed`, merge base with `main`, uncommitted and untracked files included) and the `staged` hook list in `vite.config.ts` (`.vite-hooks/pre-commit`).
 
 ## Docs and process
 
