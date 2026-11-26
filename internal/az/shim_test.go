@@ -73,6 +73,16 @@ func TestShimUninstall(t *testing.T) {
 			}
 			return shimPath(bin, "az")
 		}, nil, "Removed"},
+		{"helper linked through the az link", func(t *testing.T, bin, exe string) string {
+			az := shimPath(bin, "az")
+			if err := os.Symlink(exe, az); err != nil {
+				t.Skip("symbolic links unavailable:", err)
+			}
+			if err := installShimLinks(bin, az); err != nil {
+				t.Fatal(err)
+			}
+			return exe
+		}, nil, "Removed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

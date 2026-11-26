@@ -130,13 +130,10 @@ func installShimLinks(dir, executable string) (err error) {
 // Uninstall removes only what install creates: a link to this TFSaz, or on
 // Windows a copy of it. Any other file may be another tool's az.
 func uninstallShimLinks(w io.Writer, dir, executable string) error {
-	// On macOS os.Executable can name the az link it was started through,
-	// which this loop removes before it checks git-remote-tfsaz.
-	if resolved, err := filepath.EvalSymlinks(executable); err == nil {
-		executable = resolved
-	}
+	// Check every shim before removing any: the executable or a shim can be
+	// a link through the other shim, such as the az link on macOS.
 	var kept []error
-	removed := false
+	var remove []string
 	for _, name := range shimNames {
 		path := shimPath(dir, name)
 		info, err := os.Lstat(path)
@@ -151,6 +148,10 @@ func uninstallShimLinks(w io.Writer, dir, executable string) error {
 			kept = append(kept, fmt.Errorf("left %s in place: %s", path, reason))
 			continue
 		}
+		remove = append(remove, path)
+	}
+	removed := false
+	for _, path := range remove {
 		if err := os.Remove(path); err != nil {
 			kept = append(kept, err)
 			continue
