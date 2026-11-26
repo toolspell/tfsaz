@@ -1,0 +1,57 @@
+# Fails when a PR raises a value in .agents/context-budget.json above its base branch's (main, or
+# the layer below in a stack). TestAgentContextBudget keeps that file equal to the measured context,
+# so the context cannot grow by leaving the file stale.
+# To accept growth on purpose, a maintainer adds the agent-context-increase label.
+# Adapted from Toolspell's agent-context-budget.yml, itself adapted from T3 Code's (MIT).
+name: Agent context budget
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+# No concurrency group: label events arrive in bursts, and a cancelled run reports as a failed check.
+jobs:
+  budget:
+    name: Agent context budget
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      BUDGET: .agents/context-budget.json
+      ALLOW_INCREASE: ${{ contains(github.event.pull_request.labels.*.name, 'agent-context-increase') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .agents/context-budget.json
+          sparse-checkout-cone-mode: false
+          fetch-depth: 2
+          persist-credentials: false
+
+      # HEAD is the PR merged onto its base, and its first parent is the base it was built on. A freshly
+      # fetched main can hold lower values the PR never saw, and in a stack it would count the lower
+      # layers' growth as this layer's.
+      - name: Compare with the base branch
+        run: |
+          if ! git cat-file -e "HEAD^1:$BUDGET" 2>/dev/null; then
+            echo "The base branch has no agent context budget yet."
+            exit 0
+          fi
+          git show "HEAD^1:$BUDGET" > "$RUNNER_TEMP/base.json"
+          grown=$(jq -r --slurpfile base "$RUNNER_TEMP/base.json" '
+            to_entries[]
+            | select($base[0][.key] != null and .value > $base[0][.key])
+            | "\(.key): \($base[0][.key]) -> \(.value) (+\(.value - $base[0][.key]))"
+          ' "$BUDGET")
+          if [ -z "$grown" ]; then
+            echo "Agent context is not larger than on the base branch."
+            exit 0
+          fi
+          printf 'Agent context grew compared to the base branch:\n%s\n' "$grown"
+          if [ "$ALLOW_INCREASE" = "true" ]; then
+            echo "Accepted by the agent-context-increase label."
+            exit 0
+          fi
+          echo "::error file=$BUDGET::Agent context grew compared to the base branch. Cut the added text, or ask a maintainer to add the agent-context-increase label."
+          exit 1

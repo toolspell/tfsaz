@@ -179,7 +179,7 @@ func staged() bool {
 		if strings.HasSuffix(f, ".go") {
 			goFiles = append(goFiles, f)
 		}
-		if strings.HasSuffix(f, ".go") || strings.HasSuffix(f, ".md") || strings.HasPrefix(f, ".github/") {
+		if strings.HasSuffix(f, ".go") || strings.HasSuffix(f, ".md") || strings.HasPrefix(f, ".github/") || strings.HasPrefix(f, ".agents/") {
 			repoChecks = true
 		}
 	}

@@ -24,8 +24,9 @@ var tools = []string{"golangci-lint", "govulncheck", "deadcode", "actionlint", "
 func toolModules() []string { return append(slices.Clone(tools), "act") }
 
 // repoChecksRun selects the root-package tests that check the whole
-// repository: doc links and anchors, em dashes in markdown, pinned actions.
-const repoChecksRun = "TestDocLinks|TestNoEmDashInMarkdown|TestPinnedActions"
+// repository: doc links and anchors, em dashes in markdown, pinned actions,
+// the agent context budget and agent file length.
+const repoChecksRun = "TestDocLinks|TestNoEmDashInMarkdown|TestPinnedActions|TestAgentContextBudget|TestAgentFileLines"
 
 // A step is one check. A gate fails the command; a report only prints.
 type step struct {

@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -142,5 +144,85 @@ func TestNoEmDashInMarkdown(t *testing.T) {
 	}
 	if len(problems) > 0 {
 		t.Errorf("em dash (U+2014) in markdown; use a colon, comma, parentheses or a new sentence:\n%s", strings.Join(problems, "\n"))
+	}
+}
+
+// agentContextBudget records what every agent session loads, in bytes
+// (about 4 per token). The CI job "Agent context budget" fails a PR that
+// raises a value unless a maintainer adds the agent-context-increase label.
+const agentContextBudget = ".agents/context-budget.json"
+
+const maxAgentFileLines = 300
+
+// TestAgentContextBudget keeps agentContextBudget equal to the measured
+// context, so the CI comparison cannot be dodged by leaving the file stale.
+// CRLF is counted as LF, so a Windows checkout measures the same bytes.
+func TestAgentContextBudget(t *testing.T) {
+	read := func(file string) string {
+		data, err := os.ReadFile(filepath.FromSlash(file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.ReplaceAll(string(data), "\r\n", "\n")
+	}
+	skills, err := filepath.Glob(filepath.FromSlash(".agents/skills/*/SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skills) == 0 {
+		t.Fatal("no skills found in .agents/skills")
+	}
+	got := map[string]int{
+		"agentsMdBytes": len(read("AGENTS.md")),
+		"claudeMdBytes": len(read("CLAUDE.md")),
+	}
+	for _, skill := range skills {
+		m := skillFrontmatterPattern.FindStringSubmatch(read(filepath.ToSlash(skill)))
+		if m == nil {
+			t.Errorf("%s: no frontmatter between --- lines", skill)
+			continue
+		}
+		got["skillFrontmatterBytes"] += len(m[1])
+	}
+	var want map[string]int
+	if err := json.Unmarshal([]byte(read(agentContextBudget)), &want); err != nil {
+		t.Fatalf("%s: %v", agentContextBudget, err)
+	}
+	if !maps.Equal(got, want) {
+		gotJSON, _ := json.MarshalIndent(got, "", "  ")
+		t.Errorf("%s does not match the measured agent context; update it in the same commit (growth needs the maintainer's OK):\n%s", agentContextBudget, gotJSON)
+	}
+}
+
+var skillFrontmatterPattern = regexp.MustCompile(`^---\n([\s\S]*?)\n---`)
+
+// TestAgentFileLines keeps every agent-facing file short enough to read in
+// one pass.
+func TestAgentFileLines(t *testing.T) {
+	files := []string{"AGENTS.md", "CLAUDE.md"}
+	err := filepath.WalkDir(".agents", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && filepath.Ext(p) == ".md" {
+			files = append(files, filepath.ToSlash(p))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var problems []string
+	for _, file := range files {
+		data, err := os.ReadFile(filepath.FromSlash(file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if lines := bytes.Count(data, []byte("\n")) + 1; lines > maxAgentFileLines {
+			problems = append(problems, fmt.Sprintf("%s: %d lines", file, lines))
+		}
+	}
+	if len(problems) > 0 {
+		t.Errorf("agent-facing files over %d lines; split or trim them:\n%s", maxAgentFileLines, strings.Join(problems, "\n"))
 	}
 }

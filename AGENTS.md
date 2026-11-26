@@ -121,6 +121,7 @@ Default to no comment. Existing comments record what the code can't show: a serv
 - `docs/operations/`: maintainer runbooks. `docs/verification/`: dated live results, kept in full.
 - When a documented fact changes, rewrite or remove the old text. Do not append a second account.
 - Code and docs in English. No em dashes in markdown.
+- AGENTS.md, CLAUDE.md and skill frontmatter load in every session. Their bytes are recorded in `.agents/context-budget.json` (`TestAgentContextBudget`); update it in the same commit, and get the maintainer's OK for growth.
 - Write names as [Naming](docs/internals/naming.md) says, in docs, help and error texts.
 
 ## Plans and work artifacts

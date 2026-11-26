@@ -103,5 +103,10 @@
     "name": "size:XXL",
     "color": "b60205",
     "description": "1,000+ changed lines without go.sum, and without tests in mixed PRs."
+  },
+  {
+    "name": "agent-context-increase",
+    "color": "5319e7",
+    "description": "A maintainer accepts that this PR grows the context every agent session loads."
   }
 ]
