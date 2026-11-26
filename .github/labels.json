@@ -45,6 +45,16 @@
     "description": "Waiting on the reporter."
   },
   {
+    "name": "later",
+    "color": "bfdadc",
+    "description": "Deliberately deferred until something else happens first."
+  },
+  {
+    "name": "idea",
+    "color": "fef2c0",
+    "description": "Not decided yet; value and feasibility need checking first."
+  },
+  {
     "name": "dependencies",
     "color": "0366d6",
     "description": "Dependency update opened by Dependabot."
