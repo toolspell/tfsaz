@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -55,14 +56,18 @@ func TestProfileOnboardingAndLogout(t *testing.T) {
 	var firstRequests, secondRequests atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, sent, _ := r.BasicAuth()
-		var pat, account string
+		var pat, account, level string
 		switch r.URL.EscapedPath() {
 		case "/First/_apis/connectionData":
 			firstRequests.Add(1)
 			pat, account = firstPAT, "first@example.invalid"
+		case "/First/_apis":
+			pat, level = firstPAT, "7.1"
 		case "/prefix/Second%20Collection/_apis/connectionData":
 			secondRequests.Add(1)
 			pat, account = secondPAT, "second@example.invalid"
+		case "/prefix/Second%20Collection/_apis":
+			pat, level = secondPAT, "6.0"
 		default:
 			t.Error("profile login sent a request outside the configured collection")
 			http.NotFound(w, r)
@@ -71,6 +76,10 @@ func TestProfileOnboardingAndLogout(t *testing.T) {
 		if sent != pat {
 			t.Error("profile login did not use the credential for its configured collection")
 			http.Error(w, "invalid", http.StatusUnauthorized)
+			return
+		}
+		if level != "" {
+			serveTestCatalog(w, level)
 			return
 		}
 		serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":%q}}`, repoTestViewerID, account)
@@ -97,7 +106,9 @@ func TestProfileOnboardingAndLogout(t *testing.T) {
 		t.Fatal("fresh profile list must work without a credential store")
 	}
 	a.stdin = profileTestInput(t, firstPAT)
-	run("init", "--id=shared", "--collection", server.URL+"/First/", "--ca-file", filepath.Base(ca))
+	if got := run("init", "--id=shared", "--collection", server.URL+"/First/", "--ca-file", filepath.Base(ca)); strings.Contains(got, "WARNING") {
+		t.Fatalf("init warned about a compatible collection: %q", got)
+	}
 	firstCfg, err := loadConfig()
 	if err != nil || len(firstCfg.Profiles) != 1 {
 		t.Fatalf("load initialized config: %v", err)
@@ -135,7 +146,9 @@ func TestProfileOnboardingAndLogout(t *testing.T) {
 		t.Fatalf("profile list = %q, want %q", got, wantList)
 	}
 	a.stdin = profileTestInput(t, secondPAT)
-	run("devops", "login", "--organization", second.Organization)
+	if got := run("devops", "login", "--organization", second.Organization); got != "WARNING: the collection supports API 6.0 at most; TFSaz needs API 7.1 (Azure DevOps Server 2022.1 or later)\n" {
+		t.Fatalf("devops login on a server below API 7.1 wrote %q", got)
+	}
 	if got := run("account", "show", "--query", "user.name", "-o", "tsv"); got != "first@example.invalid\n" {
 		t.Fatalf("unexpected global account: %q", got)
 	}
@@ -172,6 +185,10 @@ func TestProfileConfigFilesCanReuseIDForDifferentEndpoints(t *testing.T) {
 	pat := rand.Text()
 	var foreignRequests atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions && r.URL.Path == "/First/_apis" {
+			serveTestCatalog(w, "7.1")
+			return
+		}
 		if r.URL.Path != "/First/_apis/connectionData" {
 			foreignRequests.Add(1)
 			http.NotFound(w, r)
@@ -519,8 +536,20 @@ func TestProfileRemoveFindsStrandedKeyringEntries(t *testing.T) {
 	if err := os.Remove(registry); err != nil {
 		t.Fatal(err)
 	}
+	collection, err := url.Parse(renamed.CollectionURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := catalogCachePath(catalogCacheDir(path), *collection)
+	if err := os.MkdirAll(filepath.Dir(cache), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	managerTestWrite(t, cache, "{}")
 	if got, err := run("profile", "remove", "--profile", "renamed"); err != nil || got != "Removed profile renamed\n" {
 		t.Fatalf("remove = %q, %v", got, err)
+	}
+	if _, err := os.Lstat(filepath.Dir(cache)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("profile remove left the catalog cache of its collection: %v", err)
 	}
 	if got, err := run("profile", "list"); err != nil || got != "No collection profiles configured\n" {
 		t.Fatalf("after removing every profile: %q, %v", got, err)

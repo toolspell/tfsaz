@@ -4,12 +4,12 @@
 
 Use `tfsaz doctor [PATH]` or `tfsaz doctor --json [PATH]`. Run it in the same environment as the failing program: a terminal and an app launched from Finder may resolve different executables.
 
-The report identifies the `az` selected by this process’s PATH, the config file, and the profile selected by the checkout. What it checks depends on where it runs:
+The report identifies the `az` and `git-remote-tfsaz` selected by this process’s PATH, the config file, and the profile selected by the checkout. What it checks depends on where it runs:
 
 | Context | What doctor checks |
 | --- | --- |
-| Managed checkout | Runs the repository verifier and checks the selected collection’s saved PAT. |
-| No checkout path, working directory outside Git | Checks all configured profiles in order. |
+| Managed checkout | Runs the repository verifier and checks the selected collection’s saved PAT and API version. |
+| No checkout path, working directory outside Git | Checks the PAT and API version of all configured profiles in order. |
 | Unrelated Git checkout | Skips authentication. Pass the path to your managed clone for a definite checkout result. |
 
 A failed check produces a nonzero exit, including with JSON output.
@@ -18,7 +18,8 @@ A failed check produces a nonzero exit, including with JSON output.
 
 | Symptom | What to check |
 | --- | --- |
-| `credential store locked or unavailable` | On Linux, a desktop login may have no default persistent Secret Service collection; create or unlock one. On Windows, Credential Manager can reject writes from an SSH logon; use a logon with a loaded user profile. See [credential stores](../verification/live-t3-2026-11.md#windows-11-x64-and-ubuntu-2604-arm64). |
+| `the collection supports API 6.0 at most; TFSaz needs API 7.1` | The server is older than Azure DevOps Server 2022.1 and cannot answer the API 7.1 requests T3 sends. Upgrade the server; TFSaz is tested on 2022.2. |
+| `credential store locked or unavailable` or `profile ID has no PAT` | The OS keyring of the user that runs T3. See [OS keyring requirements](configure.md#os-keyring-requirements). |
 | Git over SSH stalls on Windows | Use the OpenSSH bundled with Git for Windows and check a native `git ls-remote` first. See [Set up a checkout](checkout-setup.md). |
 | A Node client rejects the collection certificate | See [Node clients and TLS](routing.md#node-clients-and-tls). |
 | A browser shows a certificate error for an alias | See [browser routing troubleshooting](browser-routing.md#troubleshooting). |

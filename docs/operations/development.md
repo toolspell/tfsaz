@@ -48,7 +48,7 @@ deadcode only reports. It lists, per system, functions that `main` cannot reach,
 
 `.githooks/pre-commit` is versioned and runs `go run ./tools/dev staged`. It checks the staged content, not the working tree, so a partially staged file is checked as it will be committed. On Windows, Git for Windows runs it in its bundled shell.
 
-Enable it once per clone with `git config core.hooksPath .githooks`; the setup command does this. The setting lives in the clone's shared Git config, so every worktree of the clone uses the hook its own checkout contains. Check it with `git config --show-origin core.hooksPath`; turn the hook off again with `git config --unset core.hooksPath`.
+Enable it once per clone with `git config core.hooksPath .githooks`; the setup command does this. The setting lives in the clone's shared Git config, so every worktree of the clone uses the hook its own checkout contains. Check it with `git config --show-origin core.hooksPath`; turn the hook off again with `go run ./tools/dev setup -undo`. It unsets `core.hooksPath` only when the value is `.githooks`, the one setup writes, and leaves the downloaded modules and built tools in Go's caches.
 
 ## Worktree setup
 
@@ -93,11 +93,11 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 | What the run left | Undo | Check |
 | --- | --- | --- |
 | Browser routing (`route setup`) | `tfsaz route restore` with the same `TFSAZ_CONFIG` path as setup; rerun it if it stops partway. | `tfsaz route verify` reports managed browser routing as absent; the hosts file has no `# tfsaz-route` line; `~/.tfsaz/route-recovery` is gone unless another configuration still uses routing. |
-| Managed test checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`, then delete the throwaway clones. | `tfsaz repo list` is empty; `git -C PATH config --get-regexp '^remote\.origin\.'` shows the native URL. |
+| Managed test checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`, then delete the throwaway clones. For a clone already deleted, `tfsaz repo forget PATH`. | `tfsaz repo list` is empty; `git -C PATH config --get-regexp '^remote\.origin\.'` shows the native URL. |
 | Desktop link handler, Chromium extension | Select the usual default browser, run the Windows `Uninstall.ps1`, delete the exported app, directory or desktop file, and remove the extension from the browser profile. | The steps in [Desktop link handler](../user/desktop-link-handler.md) and [Chromium extension](../user/routing.md#chromium-extension). |
 | PATs of test profiles | `tfsaz profile remove --profile ID` for each test profile, before you delete the configuration that names it, then remove what `tfsaz profile list` still shows under "Keyring entries that no profile in this configuration uses" and belongs to the run. | `tfsaz profile list` shows no entry of the run; `~/.tfsaz/keyring-entries.json` is gone unless other entries remain. |
-| Shims | Delete `az` and `git-remote-tfsaz` from the test shim directory, and remove it from PATH. | `command -v az` (PowerShell: `Get-Command az`) no longer finds them. |
-| Temporary configuration | Delete the temp `TFSAZ_CONFIG` file with any `.repo-setups.json`, `.browser-route`, `.run` and `.lock` siblings, and unset the variable. A killed `route run` leaves `git-*` directories in `.run`. | The temp directory is gone. |
+| Shims | `tfsaz shim uninstall --dir DIR` for the test shim directory, and remove it from PATH. | `command -v az` (PowerShell: `Get-Command az`) no longer finds them. |
+| Temporary configuration | Delete the temp `TFSAZ_CONFIG` file with any `.repo-setups.json`, `.browser-route`, `.cache`, `.run` and `.lock` siblings, and unset the variable. A killed `route run` leaves `git-*` entries in `.run` until the next `route run` with that configuration. | The temp directory is gone. |
 
 - Live gates (`TFSAZ_LIVE_LAUNCHD`, `TFSAZ_LIVE_TASK_SCHEDULER`, `TFSAZ_T3_ROOT`) remove what they create when they finish. After an aborted run, check with `launchctl print gui/$(id -u)` (macOS) or `Get-ScheduledTask` (Windows) for leftover TFSaz entries.
 - Deleting a configuration first orphans its checkout registrations, so `repo restore` can no longer find them. Its PATs stay in the keyring; `profile list` with any configuration shows the recorded ones.

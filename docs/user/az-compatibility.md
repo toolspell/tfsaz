@@ -53,7 +53,7 @@ az devops invoke --area build --resource definitions --route-parameters 'project
 az rest --method get --url '/_apis/projects?api-version=7.1' --query 'value[].name' -o tsv
 ```
 
-For generic `devops invoke` calls, TFSaz requests `OPTIONS _apis?allHostTypes=true` from the collection, resolves the advertised route, and negotiates the requested version (default 5.0). Supply placeholders with `--route-parameters key=value` and query values with `--query-parameters key=value`. Stock T3’s existing PR and Boards calls retain their specialized handling for file contents, workflow states and links. Supply IDs that occur between fixed route segments. If multiple templates still match, use `az rest` with the explicit collection API URL.
+For generic `devops invoke` calls, TFSaz requests `OPTIONS _apis?allHostTypes=true` from the collection, resolves the advertised route, and negotiates the requested version (default 5.0). It keeps that catalog for up to 12 hours in `<config-file>.cache` beside your configuration file, and asks the server again sooner when a resource is missing from it or a read through a cached route returns HTTP 404. Listing the catalog always asks the server and refreshes the cache. The cache holds no credentials; you can delete `<config-file>.cache` at any time. Supply placeholders with `--route-parameters key=value` and query values with `--query-parameters key=value`. Stock T3’s existing PR and Boards calls retain their specialized handling for file contents, workflow states and links. Supply IDs that occur between fixed route segments. If multiple templates still match, use `az rest` with the explicit collection API URL.
 
 ## Call REST directly
 

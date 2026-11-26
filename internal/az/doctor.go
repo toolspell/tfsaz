@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -51,12 +52,9 @@ func (a app) runDoctor(ctx context.Context, args []string) error {
 	add := func(name, status, message string) {
 		report.Checks = append(report.Checks, doctorCheck{name, status, message})
 	}
-	if az, err := exec.LookPath("az"); err != nil {
-		add("az", "error", "az is unavailable on this PATH; run tfsaz shim install --dir DIR and put DIR on PATH")
-	} else if binary, err := os.Executable(); err != nil || !sameBinary(az, binary) {
-		add("az", "error", az+" differs from this TFSaz executable; check PATH order and installed version")
-	} else {
-		add("az", "ok", az)
+	for _, name := range shimNames {
+		status, message := checkShimOnPath(name)
+		add(name, status, message)
 	}
 	report.Config, err = configPath()
 	var cfg config
@@ -124,17 +122,29 @@ func (a app) runDoctor(ctx context.Context, args []string) error {
 			continue
 		}
 		client, authErr := a.client(p)
+		var level catalogVersion
+		var levelErr error
 		if authErr == nil {
 			probe, end := context.WithTimeout(ctx, 15*time.Second)
 			_, authErr = client.Identity(probe)
 			end()
+			if authErr == nil {
+				probe, end = context.WithTimeout(ctx, 20*time.Second)
+				level, levelErr = checkAPIFloor(probe, client)
+				end()
+			}
 			client.http.CloseIdleConnections()
 		}
 		name := "authentication " + p.ID
 		if authErr != nil {
 			add(name, "error", authErr.Error())
+			continue
+		}
+		add(name, "ok", "collection verified the saved PAT")
+		if levelErr != nil {
+			add("api version "+p.ID, "error", levelErr.Error())
 		} else {
-			add(name, "ok", "collection verified the saved PAT")
+			add("api version "+p.ID, "ok", fmt.Sprintf("collection supports API %d.%d", level.major, level.minor))
 		}
 	}
 	if asJSON {
@@ -157,4 +167,20 @@ func (a app) runDoctor(ctx context.Context, args []string) error {
 		}
 	}
 	return nil
+}
+
+func checkShimOnPath(name string) (status, message string) {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return "error", name + " is unavailable on this PATH; run tfsaz shim install --dir DIR and put DIR on PATH"
+	}
+	if binary, err := os.Executable(); err == nil && sameBinary(path, binary) {
+		return "ok", path
+	}
+	message = path + " differs from this TFSaz executable; check PATH order and installed version"
+	// The Windows fallback copies the binary, so an upgrade leaves the old copy.
+	if info, err := os.Lstat(path); err == nil && runtime.GOOS == "windows" && info.Mode().IsRegular() {
+		message += ". If it is a copy from an older TFSaz, delete it and rerun tfsaz shim install --dir DIR"
+	}
+	return "error", message
 }

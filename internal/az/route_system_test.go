@@ -85,7 +85,7 @@ func routeSystemTestAssets(t *testing.T) (dir, configFile, certFile, keyFile, fp
 
 func TestPrepareRouteSystemInstall(t *testing.T) {
 	dir, configFile, certFile, keyFile, fp, alias := routeSystemTestAssets(t)
-	p, err := prepareRouteSystem(true, dir, configFile, certFile, keyFile, strings.ToUpper(fp), []string{alias, alias})
+	p, err := prepareRouteSystem(true, routeSystemID(configFile), dir, configFile, certFile, keyFile, strings.ToUpper(fp), []string{alias, alias})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestPrepareRouteSystemInstall(t *testing.T) {
 			t.Fatalf("port state not persisted: %s %v", data, err)
 		}
 		// A retry reuses the same port so the privileged redirect stays valid.
-		again, err := prepareRouteSystem(true, dir, configFile, certFile, keyFile, fp, []string{alias})
+		again, err := prepareRouteSystem(true, routeSystemID(configFile), dir, configFile, certFile, keyFile, fp, []string{alias})
 		if err != nil || again.port != p.port {
 			t.Fatalf("retry port %d, want %d (%v)", again.port, p.port, err)
 		}
@@ -111,39 +111,39 @@ func TestPrepareRouteSystemInstall(t *testing.T) {
 	other := strings.Replace(alias, alias[6:10], "ffff", 1)
 	for name, call := range map[string]func() error{
 		"relative": func() error {
-			_, err := prepareRouteSystem(true, "routing", configFile, certFile, keyFile, fp, []string{alias})
+			_, err := prepareRouteSystem(true, routeSystemID(configFile), "routing", configFile, certFile, keyFile, fp, []string{alias})
 			return err
 		},
 		"fingerprint": func() error {
-			_, err := prepareRouteSystem(true, dir, configFile, certFile, keyFile, strings.Repeat("0", 64), []string{alias})
+			_, err := prepareRouteSystem(true, routeSystemID(configFile), dir, configFile, certFile, keyFile, strings.Repeat("0", 64), []string{alias})
 			return err
 		},
 		"short fingerprint": func() error {
-			_, err := prepareRouteSystem(true, dir, configFile, certFile, keyFile, "abcd", []string{alias})
+			_, err := prepareRouteSystem(true, routeSystemID(configFile), dir, configFile, certFile, keyFile, "abcd", []string{alias})
 			return err
 		},
 		"uppercase alias": func() error {
-			_, err := prepareRouteSystem(true, dir, configFile, certFile, keyFile, fp, []string{strings.ToUpper(alias)})
+			_, err := prepareRouteSystem(true, routeSystemID(configFile), dir, configFile, certFile, keyFile, fp, []string{strings.ToUpper(alias)})
 			return err
 		},
 		"shared host": func() error {
-			_, err := prepareRouteSystem(true, dir, configFile, certFile, keyFile, fp, []string{"dev.azure.com"})
+			_, err := prepareRouteSystem(true, routeSystemID(configFile), dir, configFile, certFile, keyFile, fp, []string{"dev.azure.com"})
 			return err
 		},
 		"wildcard": func() error {
-			_, err := prepareRouteSystem(true, dir, configFile, certFile, keyFile, fp, []string{"*.visualstudio.com"})
+			_, err := prepareRouteSystem(true, routeSystemID(configFile), dir, configFile, certFile, keyFile, fp, []string{"*.visualstudio.com"})
 			return err
 		},
 		"unregistered": func() error {
-			_, err := prepareRouteSystem(true, dir, configFile, certFile, keyFile, fp, []string{other})
+			_, err := prepareRouteSystem(true, routeSystemID(configFile), dir, configFile, certFile, keyFile, fp, []string{other})
 			return err
 		},
 		"cert outside dir": func() error {
-			_, err := prepareRouteSystem(true, filepath.Dir(dir), configFile, certFile, keyFile, fp, []string{alias})
+			_, err := prepareRouteSystem(true, routeSystemID(configFile), filepath.Dir(dir), configFile, certFile, keyFile, fp, []string{alias})
 			return err
 		},
 		"no aliases": func() error {
-			_, err := prepareRouteSystem(true, dir, configFile, certFile, keyFile, fp, nil)
+			_, err := prepareRouteSystem(true, routeSystemID(configFile), dir, configFile, certFile, keyFile, fp, nil)
 			return err
 		},
 	} {
@@ -158,16 +158,40 @@ func TestPrepareRouteSystemRequiresExactNames(t *testing.T) {
 	// A leaf with an extra registered-looking name does not match the request.
 	extra := "tfsaz-ffffffffffffffffffffffff.visualstudio.com"
 	certFile, keyFile, der := writeRedirectTestCert(t, dir, redirectTestCert{names: []string{alias, extra}})
-	if _, err := prepareRouteSystem(true, dir, configFile, certFile, keyFile, fingerprintHex(der), []string{alias}); err == nil {
+	if _, err := prepareRouteSystem(true, routeSystemID(configFile), dir, configFile, certFile, keyFile, fingerprintHex(der), []string{alias}); err == nil {
 		t.Fatal("accepted a leaf naming more than the requested aliases")
 	}
 }
 
 func TestPrepareRouteSystemRestoreNeedsNoAssets(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "gone")
-	p, err := prepareRouteSystem(false, dir, filepath.Join(dir, "config.json"), filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem"), strings.Repeat("ab", 32), nil)
-	if err != nil || p.certDER != nil || p.id == "" {
+	configFile, fp := filepath.Join(dir, "config.json"), strings.Repeat("ab", 32)
+	p, err := prepareRouteSystem(false, routeSystemID(configFile), dir, configFile, filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem"), fp, nil)
+	if err != nil || p.certDER != nil || p.id != routeSystemID(configFile) {
 		t.Fatalf("restore plan %+v err %v", p, err)
+	}
+	// An installation without a recorded configuration path is known by its ID.
+	p, err = prepareRouteSystem(false, routeTestID, "", "", "", "", fp, nil)
+	if err != nil || p.id != routeTestID || p.dir != "" || p.certFile != "" {
+		t.Fatalf("ID-only restore plan %+v err %v", p, err)
+	}
+	for name, call := range map[string]func() error{
+		"ID of another configuration": func() error {
+			_, err := prepareRouteSystem(false, routeTestID, dir, configFile, filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem"), fp, nil)
+			return err
+		},
+		"ID that is not a hash": func() error {
+			_, err := prepareRouteSystem(false, "../"+routeTestID, "", "", "", "", fp, nil)
+			return err
+		},
+		"setup without paths": func() error {
+			_, err := prepareRouteSystem(true, routeTestID, "", "", "", "", fp, nil)
+			return err
+		},
+	} {
+		if call() == nil {
+			t.Errorf("%s accepted", name)
+		}
 	}
 }
 

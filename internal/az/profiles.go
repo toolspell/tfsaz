@@ -435,6 +435,16 @@ func (a app) removeProfile(id string) error {
 		if err := saveConfigFile(target, original, true); err != nil {
 			return err
 		}
+		// No other profile of this configuration shares the collection, so
+		// its catalog cache would only be left behind.
+		if collection, err := url.Parse(p.CollectionURL); err == nil {
+			cache := catalogCacheDir(path)
+			if err := removeIfPresent(catalogCachePath(cache, *collection)); err != nil {
+				return fmt.Errorf("remove the catalog cache of profile %s: %w", p.ID, err)
+			}
+			// The directory stays while other collections have a cache file.
+			_ = os.Remove(cache)
+		}
 		if _, err := fmt.Fprintf(a.stdout, "Removed profile %s\n", p.ID); err != nil {
 			return err
 		}

@@ -14,7 +14,15 @@ A hard-coded `_apis/...` path skips that contract. It breaks silently when a ser
 
 How TFSaz does it, in `internal/az/catalog.go` and `apiCall.invoke` in `api_call.go`:
 
-- `fetchCatalog` sends the OPTIONS request to the profile's real collection URL on every catalog-resolved command. Nothing caches it, so a server upgrade takes effect at once; the price is one extra request per call (a live 2022.2 collection advertised 1,198 locations).
+- A catalog-resolved request goes through `Client.withCatalogRoute`, which takes the HTTP method, the resource and a function that sends the request on the resolved path and version.
+- `fetchCatalog` sends the OPTIONS request to the profile's real collection URL. The response is large (a live 2022.2 collection advertised 1,198 locations) and each `az` call is a new process, so TFSaz caches it on disk in `<config>.cache`, one file per collection named after a hash of the real collection URL. The file is the response body as the server sent it: no PAT, header or other credential. `profile remove` deletes the file of the removed collection; no other profile of that configuration can share it.
+- An entry lives 12 hours from its modification time, the `DEFAULT_MAX_AGE` of the on-disk OPTIONS cache in the extension's SDK (`devops_sdk/_file_cache.py`). A future-dated entry counts as expired.
+- A server upgrade takes effect before that: a cached catalog that cannot route a request is reloaded once, and a read (GET, HEAD, OPTIONS) that fails with HTTP 404 through a cached route reloads it once and repeats only if the route changed. A write is never repeated, as in [#13](https://github.com/toolspell/tfsaz/issues/13); its 404 only deletes the entry, so the next call fetches.
+- Several `az` processes run at once, so an entry is replaced through a temp file and a rename. A missing, corrupt or unwritable entry only means a fresh fetch; the cache never fails a command.
+- TFSaz does not check who owns the cache. A cached route still passes `bindResourceRoute` and the collection boundary, so an altered entry cannot send a request outside the collection, and whoever can write beside the configuration can already change its `collectionUrl`.
+- `az devops invoke` without `--resource` always fetches and rewrites the entry: a listing shows what the server advertises now, as the extension's does (it fetches the `allHostTypes=true` catalog per call and keeps it only in memory).
+- The [version check](#check-the-servers-api-version) also always fetches: it reports on the live server, and a cached catalog could still show the API level from before an upgrade. Its clients have no cache directory, so it leaves the entry alone.
+- Only the command dispatcher in `cli.go` sets the cache directory (`Client.catalogCache`). A `Client` without it fetches the catalog once per process.
 - TFSaz skips the extension's `_apis/resourceAreas` lookup, which picks the host per area. On Azure DevOps Server every area lives on the collection, and the extension's SDK notes that the server returns an empty list there.
 - `resolveResource` matches area and resource case-insensitively, skips locations whose `minVersion` is above the requested version, and binds the route template. Of the matches it keeps the highest `maxVersion`, then the one that omits the fewest optional slots; a remaining tie is an error, not a guess.
 - `bindResourceRoute` rejects values that could become path control segments (dot segments, `_apis`, `;`, slashes, also percent-encoded, trailing dots), so a catalog-resolved path stays inside the collection.
@@ -23,7 +31,7 @@ How TFSaz does it, in `internal/az/catalog.go` and `apiCall.invoke` in `api_call
 Where TFSaz builds routes itself today:
 
 - T3's exact `devops invoke` shapes for Git and work items (`parseStockInvoke` in `invoke.go`, `parseWitInvoke` in `workitems.go`). The reason is written in `cli.go`: TFSaz rewrites their responses (file contents, blob archives, workflow states, work-item links, comment cursors). Any other invoke falls through to the catalog.
-- The dedicated commands (`repos`, `repos pr`, `boards work-item`, `devops team`, the connection-data and identity lookups). They predate this rule and have no written reason; [#17](https://github.com/toolspell/tfsaz/issues/17) lists them. Moving them is not free: T3 allows 30 seconds per read, and an uncached catalog adds a large response to each call.
+- The dedicated commands (`repos`, `repos pr`, `boards work-item`, `devops team`, the connection-data and identity lookups). They predate this rule and have no written reason; [#17](https://github.com/toolspell/tfsaz/issues/17) lists them. With the cache, moving them adds a catalog fetch only when an entry is missing, expired or stale, which still has to fit T3's 30 seconds per read.
 - `az rest` takes the caller's URL by design and resolves nothing.
 
 ## Target API version 7.1
@@ -34,12 +42,17 @@ Where TFSaz builds routes itself today:
 - Where a version is part of the behavior TFSaz mirrors, the extension's value wins under the [compatibility contract](../../AGENTS.md#compatibility-contract): `devops invoke` defaults to `5.0` without `--api-version`, as the extension does; T3 always passes `7.1` or `7.1-preview`.
 - The connection-data (`5.0-preview.1`) and identity (`5.0`) lookups in `client.go` copy the extension's SDK clients, but they are TFSaz's own requests, not a passthrough, so the 7.1 target applies. Moving them is tracked in [#18](https://github.com/toolspell/tfsaz/issues/18).
 
-## What the server reports about versions
+## Check the server's API version
 
-Nothing uses this today. It is here for when TFSaz needs to detect what a server supports, such as the version check in [#20](https://github.com/toolspell/tfsaz/issues/20).
+`init`, `profile add`, `devops login`, `repo verify` and `doctor` compare the collection with a floor of API 7.1, previews included (`checkAPIFloor` in `catalog.go`). That is the lowest version T3's adapter sends: `7.1`, `7.1-preview` and `7.1-preview.N`.
 
-| Source | What it tells |
+- **Source.** The highest `maxVersion` of the `git/repositories` locations in the catalog stands for the server's API level. Every release T3 can use has that resource, and it follows the server's version. A `maxVersion` of 7.1 passes even where 7.1 is still a preview (`releasedVersion` below it).
+- **Severity.** `repo verify` and `doctor` report a server below the floor, or a catalog they cannot read, as an error and exit nonzero. `init`, `profile add` and `devops login` print a `WARNING:` line on stderr and still save the profile, because the PAT itself is valid. `repo verify` skips the check with a warning when the profile has no PAT; its Git checks need none.
+- **`devops login` stderr.** The extra line breaks no caller: T3 never runs `devops login`, it only names it in its sign-in hint, and the extension's own `devops login` writes `WARNING:` lines to stderr too.
+
+Sources not used:
+
+| Source | Why not |
 | --- | --- |
-| `OPTIONS _apis?allHostTypes=true` | Per resource: `minVersion`, `maxVersion`, `releasedVersion`, `resourceVersion`. The `maxVersion` of a long-lived resource such as `git/repositories` approximates the server's API level. `az devops invoke` without `--resource` lists it. |
-| `_apis/connectionData` | `deploymentType` (hosted or on-premises), `instanceId` and `deploymentId`. With a `connectOptions` value that includes services, `locationServiceData.serviceDefinitions` carries the same version fields per service. Which value fills it is unverified. |
+| `_apis/connectionData` | Reports `deploymentType`, `instanceId` and `deploymentId`. Versions per service appear in `locationServiceData.serviceDefinitions` only with a `connectOptions` value that includes services; which value fills it is unverified. |
 | `_apis/resourceAreas` | Area names and their host URLs, no versions. Empty on the server, per the extension's SDK. |

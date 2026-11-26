@@ -1,11 +1,17 @@
 package az
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestFetchCatalogUsesCollectionAndPreservesEntries(t *testing.T) {
@@ -20,7 +26,7 @@ func TestFetchCatalogUsesCollectionAndPreservesEntries(t *testing.T) {
 	}))
 	defer server.Close()
 	client := newClientForTest(t, clientTestProfile(t, server, "/tfs/Local Collection"))
-	locations, err := fetchCatalog(t.Context(), client)
+	_, locations, err := fetchCatalog(t.Context(), client)
 	if err != nil || len(locations) != 1 {
 		t.Fatalf("fetchCatalog returned %d locations, error = %v", len(locations), err)
 	}
@@ -30,6 +36,91 @@ func TestFetchCatalogUsesCollectionAndPreservesEntries(t *testing.T) {
 	path, version, err := resolveResource(locations, "CORE", "PROJECTS", "", nil)
 	if err != nil || version != "5.0" || !slices.Equal(path, []string{"_apis", "projects"}) {
 		t.Fatalf("resolveResource = %q, %q, %v", path, version, err)
+	}
+}
+
+func TestCatalogCacheEntries(t *testing.T) {
+	const served = `{"count":1,"value":[{"area":"served","resourceName":"projects","routeTemplate":"_apis/{resource}","minVersion":"1.0","maxVersion":"7.1","releasedVersion":"7.1","resourceVersion":1}]}`
+	const cached = `{"count":1,"value":[{"area":"cached","resourceName":"projects","routeTemplate":"_apis/{resource}","minVersion":"1.0","maxVersion":"7.1","releasedVersion":"7.1","resourceVersion":1}]}`
+	var fetches atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		checkClientTestAuth(t, r)
+		fetches.Add(1)
+		serveTestBody(w, served)
+	}))
+	defer server.Close()
+	profile := clientTestProfile(t, server, "/tfs/Local Collection")
+	entry := func(body string, age time.Duration) func(*testing.T, string, string) {
+		return func(t *testing.T, dir, file string) {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			modified := time.Now().Add(-age)
+			if err := os.Chtimes(file, modified, modified); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for _, tc := range []struct {
+		name     string
+		setup    func(t *testing.T, dir, file string)
+		wantArea string
+		// wantFile is the entry afterwards; empty when no entry can be written.
+		wantFile string
+	}{
+		{"missing entry", func(*testing.T, string, string) {}, "served", served},
+		{"fresh entry", entry(cached, catalogCacheMaxAge-time.Minute), "cached", cached},
+		{"expired entry", entry(cached, catalogCacheMaxAge), "served", served},
+		{"future entry", entry(cached, -time.Hour), "served", served},
+		{"corrupt entry", entry(`{"value":[{"area":`, 0), "served", served},
+		{"entry without locations", entry(`{"count":0}`, 0), "served", served},
+		{"directory in place of the entry", func(t *testing.T, _, file string) {
+			if err := os.MkdirAll(file, 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}, "served", ""},
+		{"file in place of the cache directory", func(t *testing.T, dir, _ string) {
+			if err := os.WriteFile(dir, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, "served", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fetches.Store(0)
+			client := newClientForTest(t, profile)
+			client.catalogCache = catalogCacheDir(filepath.Join(t.TempDir(), "config.json"))
+			file := client.catalogCacheFile()
+			tc.setup(t, client.catalogCache, file)
+			catalog, err := client.loadCatalog(t.Context())
+			if err != nil || len(catalog.locations) != 1 || catalog.locations[0].Area != tc.wantArea {
+				t.Fatalf("loadCatalog = %+v, %v; want area %s", catalog, err, tc.wantArea)
+			}
+			wantFetches := int32(1)
+			if catalog.cached {
+				wantFetches = 0
+			}
+			if catalog.cached != (tc.wantArea == "cached") || fetches.Load() != wantFetches {
+				t.Errorf("cached = %v after %d fetches", catalog.cached, fetches.Load())
+			}
+			data, err := os.ReadFile(file)
+			if tc.wantFile == "" && err == nil || tc.wantFile != "" && string(data) != tc.wantFile {
+				t.Errorf("cache entry = %q, %v; want %q", data, err, tc.wantFile)
+			}
+			if names, err := os.ReadDir(client.catalogCache); err == nil && (len(names) != 1 || names[0].Name() != filepath.Base(file)) {
+				t.Errorf("cache directory holds %v, want only the entry", names)
+			}
+			if tc.wantFile == "" || runtime.GOOS == "windows" {
+				return
+			}
+			for path, want := range map[string]os.FileMode{client.catalogCache: 0o700, file: 0o600} {
+				if info, err := os.Stat(path); err != nil || info.Mode().Perm() != want {
+					t.Errorf("mode of %s = %v, %v; want %v", filepath.Base(path), info.Mode().Perm(), err, want)
+				}
+			}
+		})
 	}
 }
 
@@ -199,5 +290,51 @@ func TestResolveResourceSelectsMatchingLocation(t *testing.T) {
 	path, _, err = resolveResource([]resourceLocation{item, list}, "testarea", "resource", "5.0", nil)
 	if err != nil || !slices.Equal(path, []string{"_apis", "TestArea", "Resource"}) {
 		t.Fatalf("resolve catalog list route = %q, %v", path, err)
+	}
+}
+
+// serveTestCatalog answers a catalog request with one Git repositories
+// location whose maxVersion is level.
+func serveTestCatalog(w io.Writer, level string) {
+	serveTestf(w, `{"count":1,"value":[{"area":"git","resourceName":"repositories","routeTemplate":"{project}/_apis/{area}/{resource}/{repositoryId}","minVersion":"1.0","maxVersion":%q,"releasedVersion":"6.0","resourceVersion":1}]}`, level)
+}
+
+func TestCheckAPIFloor(t *testing.T) {
+	location := func(area, resource, maxVersion string) string {
+		return `{"area":"` + area + `","resourceName":"` + resource + `","routeTemplate":"_apis/{area}/{resource}","minVersion":"1.0","maxVersion":"` + maxVersion + `","releasedVersion":"5.0","resourceVersion":1}`
+	}
+	tests := []struct {
+		name      string
+		locations []string
+		want      catalogVersion
+		err       string
+	}{
+		{"floor", []string{location("git", "repositories", "7.1")}, catalogVersion{7, 1}, ""},
+		{"preview only counts", []string{location("Git", "Repositories", "7.1")}, catalogVersion{7, 1}, ""},
+		{"newer server", []string{location("git", "repositories", "7.2")}, catalogVersion{7, 2}, ""},
+		{"highest location wins", []string{location("git", "repositories", "7.1"), location("git", "repositories", "6.0")}, catalogVersion{7, 1}, ""},
+		{"other resources are ignored", []string{location("core", "projects", "7.1"), location("git", "repositories", "7.0")}, catalogVersion{7, 0}, "supports API 7.0 at most"},
+		{"server 2020", []string{location("git", "repositories", "6.0")}, catalogVersion{6, 0}, "supports API 6.0 at most; TFSaz needs API 7.1"},
+		{"no git repositories", []string{location("core", "projects", "7.1")}, catalogVersion{}, "lists no Git repositories resource"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				serveTestBody(w, `{"value":[`+strings.Join(tc.locations, ",")+`]}`)
+			}))
+			defer server.Close()
+			level, err := checkAPIFloor(t.Context(), newClientForTest(t, clientTestProfile(t, server, "/Collection")))
+			if level != tc.want || (err == nil) != (tc.err == "") || (err != nil && !strings.Contains(err.Error(), tc.err)) {
+				t.Fatalf("checkAPIFloor = %v, %v; want %v, %q", level, err, tc.want, tc.err)
+			}
+		})
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	if _, err := checkAPIFloor(t.Context(), newClientForTest(t, clientTestProfile(t, server, "/Collection"))); err == nil ||
+		!strings.Contains(err.Error(), "could not read the collection resource catalog") {
+		t.Fatalf("checkAPIFloor on a failing catalog = %v", err)
 	}
 }

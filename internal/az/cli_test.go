@@ -2,6 +2,7 @@ package az
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type memoryStore struct {
@@ -199,9 +201,23 @@ func TestDiscoveryAndCheckoutIsolation(t *testing.T) {
 
 func TestLoginFromStdinVerifiesBeforeStoring(t *testing.T) {
 	pat := rand.Text()
+	var interrupt atomic.Pointer[context.CancelFunc]
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, password, ok := r.BasicAuth(); !ok || password != pat {
 			http.Error(w, "invalid", http.StatusUnauthorized)
+			return
+		}
+		if r.Method == http.MethodOptions {
+			if cancel := interrupt.Load(); cancel != nil {
+				(*cancel)()
+				select {
+				case <-r.Context().Done():
+				case <-time.After(10 * time.Second):
+					t.Error("login did not cancel the catalog request")
+				}
+				return
+			}
+			serveTestCatalog(w, "7.1")
 			return
 		}
 		serveTestf(w, `{"authenticatedUser":{"id":%q,"uniqueName":"fixture@example.invalid"}}`, repoTestViewerID)
@@ -212,7 +228,7 @@ func TestLoginFromStdinVerifiesBeforeStoring(t *testing.T) {
 	setConfig(t, p)
 	store := &memoryStore{values: map[string]string{}}
 	list := testKeyringList(t)
-	run := func(input string) error {
+	run := func(ctx context.Context, input string) error {
 		t.Helper()
 		r, w, err := os.Pipe()
 		if err != nil {
@@ -227,14 +243,14 @@ func TestLoginFromStdinVerifiesBeforeStoring(t *testing.T) {
 		}
 		var output bytes.Buffer
 		a := app{stdout: &output, stderr: &output, stdin: r, store: store, keyringList: list}
-		err = a.run(t.Context(), []string{"devops", "login", "--org", p.Organization})
+		err = a.run(ctx, []string{"devops", "login", "--org", p.Organization})
 		if output.Len() != 0 || (err != nil && strings.Contains(err.Error(), pat)) {
 			t.Fatal("unexpected login output")
 		}
 		return err
 	}
 	// A legacy profile moves to its per-collection service on login.
-	if err := run(pat + "\r\n"); err != nil {
+	if err := run(t.Context(), pat+"\r\n"); err != nil {
 		t.Fatalf("login failed: %v", err)
 	}
 	cfg, err := loadConfig()
@@ -246,11 +262,19 @@ func TestLoginFromStdinVerifiesBeforeStoring(t *testing.T) {
 	if len(store.values) != 1 || store.values[key] != pat {
 		t.Fatal("login did not store the PAT under the per-collection service")
 	}
-	if err := run(rand.Text()); err == nil || store.values[key] != pat {
+	if err := run(t.Context(), rand.Text()); err == nil || store.values[key] != pat {
 		t.Fatal("rejected PAT replaced a working credential")
 	}
+	ctx, cancel := context.WithCancel(t.Context())
+	interrupt.Store(&cancel)
+	delete(store.values, key)
+	if err := run(ctx, pat); !errors.Is(err, context.Canceled) || store.values[key] != "" {
+		t.Fatalf("login interrupted during the API check = %v; it must not store the PAT", err)
+	}
+	interrupt.Store(nil)
+	store.values[key] = pat
 	store.lockedProfile = p.ID
-	if err := run(pat); err == nil || !strings.Contains(err.Error(), "credential store") {
+	if err := run(t.Context(), pat); err == nil || !strings.Contains(err.Error(), "credential store") {
 		t.Fatal("write to locked store should fail")
 	}
 }
