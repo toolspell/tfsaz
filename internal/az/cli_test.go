@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type memoryStore struct {
@@ -209,7 +210,11 @@ func TestLoginFromStdinVerifiesBeforeStoring(t *testing.T) {
 		if r.Method == http.MethodOptions {
 			if cancel := interrupt.Load(); cancel != nil {
 				(*cancel)()
-				<-r.Context().Done()
+				select {
+				case <-r.Context().Done():
+				case <-time.After(10 * time.Second):
+					t.Error("login did not cancel the catalog request")
+				}
 				return
 			}
 			serveTestCatalog(w, "7.1")
