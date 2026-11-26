@@ -73,7 +73,7 @@ func routeHostsConflict(content, id string, aliases []string) error {
 		fields := strings.Fields(line)
 		for _, name := range fields[min(1, len(fields)):] {
 			if want[strings.ToLower(strings.TrimSuffix(name, "."))] {
-				return fmt.Errorf("the hosts file already has an entry for %s that tfsaz did not add; remove it first", name)
+				return fmt.Errorf("the hosts file already has an entry for %s that TFSaz did not add; remove it first", name)
 			}
 		}
 	}

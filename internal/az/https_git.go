@@ -43,7 +43,7 @@ func RunHTTPSGitHelper(ctx context.Context, args []string) error {
 	}
 	// The route launcher can install a copy when it crosses volumes.
 	if sameBinary(helper, executable) {
-		return errors.New("TFSAZ_GIT_CORE points to tfsaz itself; specify Git's original exec directory")
+		return errors.New("TFSAZ_GIT_CORE points to TFSaz itself; specify Git's original exec directory")
 	}
 	destination, err := gitHTTPSDestination(args[1])
 	if err != nil {

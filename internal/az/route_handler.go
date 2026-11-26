@@ -22,7 +22,7 @@ func exportMacLinkHandler(ctx context.Context, dest, browserBundleID string) (er
 		return errors.New("use route handler-export to export a native link handler on this platform")
 	}
 	if !macBrowserBundleID.MatchString(browserBundleID) || strings.EqualFold(browserBundleID, macLinkHandlerBundleID) {
-		return errors.New("specify the bundle ID of a browser other than the tfsaz link handler")
+		return errors.New("specify the bundle ID of a browser other than the TFSaz link handler")
 	}
 	if !validLinkPath(dest) || !strings.EqualFold(filepath.Ext(dest), ".app") || len(filepath.Base(dest)) <= len(".app") {
 		return errors.New("specify a new .app bundle path")
@@ -33,14 +33,14 @@ func exportMacLinkHandler(ctx context.Context, dest, browserBundleID string) (er
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("locate tfsaz executable: %w", err)
+		return fmt.Errorf("locate TFSaz executable: %w", err)
 	}
 	config, err := configPath()
 	if err != nil {
 		return err
 	}
 	if !absoluteLinkPath(executable) || !absoluteLinkPath(config) {
-		return errors.New("the tfsaz executable and config must have valid absolute paths")
+		return errors.New("the TFSaz executable and config must have valid absolute paths")
 	}
 
 	// Reserve the destination before building and publish the entire Contents
@@ -103,7 +103,7 @@ func macLinkHandlerSource(executable, config, open, browserBundleID string) stri
 	try
 		my routeLink(requestedURL)
 	on error
-		display dialog "tfsaz could not open this link." buttons {"OK"} default button "OK" with title "tfsaz" giving up after 15
+		display dialog "TFSaz could not open this link." buttons {"OK"} default button "OK" with title "TFSaz" giving up after 15
 	end try
 end open location
 

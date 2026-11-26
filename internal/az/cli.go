@@ -110,7 +110,7 @@ type usageError struct{ error }
 
 func (e usageError) Error() string {
 	return "unsupported invocation: " + e.error.Error() +
-		".\nThis is tfsaz, an Azure CLI compatibility tool for Azure DevOps Server. Run tfsaz --help or see https://github.com/toolspell/tfsaz#readme"
+		".\nThis is TFSaz, an Azure CLI compatibility tool for Azure DevOps Server. Run tfsaz --help or see https://github.com/toolspell/tfsaz#readme"
 }
 
 func (e usageError) Unwrap() error { return e.error }

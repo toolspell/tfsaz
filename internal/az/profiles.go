@@ -226,7 +226,7 @@ func (a app) addProfile(ctx context.Context, args []string, interactive bool) er
 			// Publish the binding before writing its secret, so an interrupted
 			// login can retry the same profile without leaving an orphaned PAT.
 			if err := publishSetupFile(target, append(data, '\n'), fileExists); err != nil {
-				return fmt.Errorf("save tfsaz configuration: %w", err)
+				return fmt.Errorf("save TFSaz configuration: %w", err)
 			}
 		}
 		if pat != "" {
@@ -250,7 +250,7 @@ func withProfileConfigLock(create bool, run func(path, target string) error) (er
 	dir := filepath.Dir(path)
 	if create {
 		if err := os.MkdirAll(dir, 0700); err != nil {
-			return fmt.Errorf("create tfsaz configuration directory: %w", err)
+			return fmt.Errorf("create TFSaz configuration directory: %w", err)
 		}
 	}
 	target, err := filepath.EvalSymlinks(path)
@@ -258,18 +258,18 @@ func withProfileConfigLock(create bool, run func(path, target string) error) (er
 		// A missing config is normal on first use. Resolve its parent so
 		// alternate spellings of the directory all acquire the same lock.
 		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-			return errors.New("could not resolve the tfsaz configuration file")
+			return errors.New("could not resolve the TFSaz configuration file")
 		}
 		dir, err = filepath.EvalSymlinks(dir)
 		target = filepath.Join(dir, filepath.Base(path))
 	}
 	if err != nil {
-		return fmt.Errorf("resolve tfsaz configuration: %w", err)
+		return fmt.Errorf("resolve TFSaz configuration: %w", err)
 	}
 	if _, err := setupFileExists(target); err != nil {
 		return err
 	}
-	release, err := acquireLockFile(target+".lock", errors.New("another profile transaction holds the tfsaz configuration lock; retry"))
+	release, err := acquireLockFile(target+".lock", errors.New("another profile transaction holds the TFSaz configuration lock; retry"))
 	if err != nil {
 		return err
 	}

@@ -22,7 +22,7 @@ func exportDesktopLinkHandler(ctx context.Context, dest, browserExecutable strin
 	// The desktop entry spec disallows '=' in the executable path. GIO
 	// checks the executable before unescaping literal percent signs.
 	if strings.ContainsAny(executable, "=%") {
-		return errors.New("the tfsaz executable path cannot contain = or % in a desktop entry")
+		return errors.New("the TFSaz executable path cannot contain = or % in a desktop entry")
 	}
 	if err := ctx.Err(); err != nil {
 		return err

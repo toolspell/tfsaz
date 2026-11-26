@@ -237,7 +237,7 @@ func stopWindowsTask(ctx context.Context, p routeSystemPlan) error {
 			return nil
 		}
 		if attempt == 20 {
-			return errors.New("a tfsaz route redirect process for this setup is still running; end it in Task Manager and retry")
+			return errors.New("a TFSaz route redirect process for this setup is still running; end it in Task Manager and retry")
 		}
 		select {
 		case <-ctx.Done():
@@ -389,7 +389,7 @@ func removeWindowsTrust(ctx context.Context, sha256Hex string) error {
 		return errors.New("the routing certificate is still in the user's trusted root store; confirm the removal dialog on the interactive desktop and rerun restore")
 	}
 	if len(other) > 0 {
-		return fmt.Errorf("the routing certificate is also trusted outside the user's own store, which tfsaz does not change; from an elevated prompt run certutil -delstore Root %s (or remove the policy entry) and rerun restore", strings.Join(other, ", "))
+		return fmt.Errorf("the routing certificate is also trusted outside the user's own store, which TFSaz does not change; from an elevated prompt run certutil -delstore Root %s (or remove the policy entry) and rerun restore", strings.Join(other, ", "))
 	}
 	return nil
 }
@@ -566,9 +566,9 @@ func windowsHostsExitMessage(err error) string {
 	case windowsHostsExitLocked:
 		return "another program is blocking writes to the hosts file; retry when it releases the file"
 	case windowsHostsExitChanged:
-		return "the hosts file changed after an interrupted tfsaz edit; compare it with " + windowsHostsJournal(routeHostsPath()) + ", then delete that journal and retry"
+		return "the hosts file changed after an interrupted TFSaz edit; compare it with " + windowsHostsJournal(routeHostsPath()) + ", then delete that journal and retry"
 	case windowsHostsExitForeign:
-		return "the hosts file gained an entry for this alias that tfsaz did not add; remove it first"
+		return "the hosts file gained an entry for this alias that TFSaz did not add; remove it first"
 	}
 	return ""
 }

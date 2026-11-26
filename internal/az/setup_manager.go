@@ -409,7 +409,7 @@ func (c setupCheckout) verifyEffective(ctx context.Context, state setupGitState)
 		}
 		if !slices.Equal(values, entry.want) {
 			if entry.key == setupSSHKey && state.ssh == "" {
-				return errors.New("core.sshCommand is customized in Git configuration; tfsaz needs the checkout SSH command and OpenSSH on PATH (use git config --show-origin --get-all core.sshCommand to locate it)")
+				return errors.New("core.sshCommand is customized in Git configuration; TFSaz needs the checkout SSH command and OpenSSH on PATH (use git config --show-origin --get-all core.sshCommand to locate it)")
 			}
 			return fmt.Errorf("effective Git setting %s differs from the expected values", entry.key)
 		}

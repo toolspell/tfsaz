@@ -210,13 +210,13 @@ func TestGitHTTPSHelperKeepsAzureRemoteAndUsesNativeTransport(t *testing.T) {
 		t.Fatalf("wrong vendor exit status or diagnostics: %d, want %d\n%s", status, wantStatus, out)
 	}
 	t.Setenv("TFSAZ_GIT_CORE", helperDir)
-	if _, out := runHelper(helper); !strings.Contains(out, "points to tfsaz itself") {
+	if _, out := runHelper(helper); !strings.Contains(out, "points to TFSaz itself") {
 		t.Fatalf("expected recursion guard: %s", out)
 	}
 	copiedCore := t.TempDir()
 	copyTestExecutable(t, binary, filepath.Join(copiedCore, gitHTTPSHelperName()))
 	t.Setenv("TFSAZ_GIT_CORE", copiedCore)
-	if _, out := runHelper(helper); !strings.Contains(out, "points to tfsaz itself") {
+	if _, out := runHelper(helper); !strings.Contains(out, "points to TFSaz itself") {
 		t.Fatalf("expected copied helper recursion guard: %s", out)
 	}
 	t.Setenv("TFSAZ_GIT_CORE", "relative")

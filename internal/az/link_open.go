@@ -42,7 +42,7 @@ func validateLinkBrowser(browser, executable string) error {
 		return errors.New("selected browser must be an executable file")
 	}
 	if sameBinary(browser, executable) {
-		return errors.New("choose a browser other than tfsaz")
+		return errors.New("choose a browser other than TFSaz")
 	}
 	return nil
 }

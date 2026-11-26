@@ -130,7 +130,7 @@ func validateRedirectLeaf(leaf *x509.Certificate, allowed map[string]bool, now t
 			return nil, errors.New("the redirect certificate must not contain wildcard names")
 		}
 		if !allowed[lower] {
-			return nil, fmt.Errorf("certificate name %s is not a registered dedicated tfsaz alias", name)
+			return nil, fmt.Errorf("certificate name %s is not a registered dedicated TFSaz alias", name)
 		}
 		names[lower] = true
 	}

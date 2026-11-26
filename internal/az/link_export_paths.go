@@ -12,7 +12,7 @@ import (
 func linkHandlerPaths(browser string) (executable, config string, err error) {
 	executable, err = os.Executable()
 	if err != nil || !absoluteLinkPath(executable) {
-		return "", "", errors.New("could not locate the tfsaz executable")
+		return "", "", errors.New("could not locate the TFSaz executable")
 	}
 	if err := validateLinkBrowser(browser, executable); err != nil {
 		return "", "", err

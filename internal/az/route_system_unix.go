@@ -47,7 +47,7 @@ func runRouteSystemPrivileged(ctx context.Context, script string) error {
 	if err != nil {
 		return fmt.Errorf("browser routing needs sudo for the hosts file and port 443: %w", err)
 	}
-	prompt := "tfsaz needs administrator rights to change the hosts file and loopback port 443. Password for %u: "
+	prompt := "TFSaz needs administrator rights to change the hosts file and loopback port 443. Password for %u: "
 	_, err = runRouteSystemCommand(ctx, nil, sudo, "-p", prompt, "--", "/bin/sh", "-c", "set -eu\numask 022\nPATH=/usr/sbin:/usr/bin:/sbin:/bin; export PATH\n"+script)
 	if err != nil {
 		return fmt.Errorf("administrator step: %w (sudo needs an interactive terminal or cached credentials)", err)

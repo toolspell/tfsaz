@@ -150,7 +150,7 @@ func (c routeCheck) targetForURL(raw string) (routeCheckTarget, error) {
 	}
 	alias := strings.ToLower(u.Host)
 	if u.Port() != "" || !c.names[alias] {
-		return routeCheckTarget{}, errors.New("the URL host is not exactly a registered dedicated tfsaz alias")
+		return routeCheckTarget{}, errors.New("the URL host is not exactly a registered dedicated TFSaz alias")
 	}
 	return c.target(alias, "requested URL", u)
 }
@@ -229,7 +229,7 @@ func (c routeCheck) checkResolver(ctx context.Context, alias string) (string, er
 		case ip.IP.Equal(net.IPv6loopback):
 			v6 = true
 		default:
-			return "", fmt.Errorf("the local resolver returns %s, which is not a tfsaz loopback address", ip.IP)
+			return "", fmt.Errorf("the local resolver returns %s, which is not a TFSaz loopback address", ip.IP)
 		}
 	}
 	if !v4 || !v6 {

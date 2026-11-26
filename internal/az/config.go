@@ -125,13 +125,13 @@ func loadConfigAt(path string) (config, error) {
 func readConfigFile(path string) (config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return config{}, fmt.Errorf("read tfsaz configuration: %w", err)
+		return config{}, fmt.Errorf("read TFSaz configuration: %w", err)
 	}
 	var cfg *config
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 	if d.Decode(&cfg) != nil || cfg == nil || d.Decode(new(any)) != io.EOF {
-		return config{}, errors.New("invalid tfsaz configuration; check JSON syntax and field names")
+		return config{}, errors.New("invalid TFSaz configuration; check JSON syntax and field names")
 	}
 	return *cfg, nil
 }

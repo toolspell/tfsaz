@@ -232,7 +232,7 @@ var nativeCommands = map[string]nativeCommand{
 		"profile logout --profile engineering",
 	},
 	"doctor": {
-		"Check tfsaz, collection profiles, credentials and current or specified checkout.",
+		"Check TFSaz, collection profiles, credentials and current or specified checkout.",
 		"[PATH] [--json]",
 		"doctor --json",
 	},
@@ -282,7 +282,7 @@ var nativeCommands = map[string]nativeCommand{
 		"route restore",
 	},
 	"route explain": {
-		"Describe how tfsaz routes an Azure DevOps web link.",
+		"Describe how TFSaz routes an Azure DevOps web link.",
 		"URL",
 		"route explain https://engineering-example.visualstudio.com/Project/_git/Repo/pullrequest/42",
 	},
@@ -327,7 +327,7 @@ var nativeCommands = map[string]nativeCommand{
 		"route browser-verify ./tfsaz-browser",
 	},
 	"route run": {
-		"Launch a program with tfsaz HTTPS routing for Git in its process tree.",
+		"Launch a program with TFSaz HTTPS routing for Git in its process tree.",
 		"-- PROGRAM [ARG ...]",
 		"route run -- git clone https://engineering-example.visualstudio.com/Project/_git/Repo",
 	},
@@ -364,7 +364,7 @@ var nativeCommands = map[string]nativeCommand{
 }
 
 var helpGroups = map[string]string{
-	"":                  "tfsaz — Azure DevOps Server for T3 Code",
+	"":                  "TFSaz — Azure DevOps Server for T3 Code",
 	"account":           "Read a collection's authenticated identity.",
 	"boards":            "Work with Azure Boards.",
 	"boards work-item":  "Read and write Azure Boards work items.",

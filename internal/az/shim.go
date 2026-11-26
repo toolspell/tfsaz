@@ -84,7 +84,7 @@ func installShimLinks(dir, executable string) (err error) {
 		case err != nil:
 			return err
 		case !sameBinary(path, executable):
-			return fmt.Errorf("%s already exists and does not point to this tfsaz installation; choose a separate directory", path)
+			return fmt.Errorf("%s already exists and does not point to this TFSaz installation; choose a separate directory", path)
 		}
 	}
 	if err := os.MkdirAll(dir, 0755); err != nil {

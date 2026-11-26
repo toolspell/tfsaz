@@ -152,12 +152,12 @@ func TestRouteCheckFailures(t *testing.T) {
 	remote.lookup = func(context.Context, string) ([]net.IPAddr, error) {
 		return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}, {IP: net.ParseIP("192.0.2.1")}}, nil
 	}
-	expect("non-loopback answer", remote, "not a tfsaz loopback")
+	expect("non-loopback answer", remote, "not a TFSaz loopback")
 	other := check
 	other.lookup = func(context.Context, string) ([]net.IPAddr, error) {
 		return []net.IPAddr{{IP: net.ParseIP("127.0.0.2")}}, nil
 	}
-	expect("other loopback", other, "not a tfsaz loopback")
+	expect("other loopback", other, "not a TFSaz loopback")
 	ipv4Only := check
 	ipv4Only.lookup = func(context.Context, string) ([]net.IPAddr, error) {
 		return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil

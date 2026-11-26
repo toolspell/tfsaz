@@ -54,7 +54,7 @@ func (a app) runDoctor(ctx context.Context, args []string) error {
 	if az, err := exec.LookPath("az"); err != nil {
 		add("az", "error", "az is unavailable on this PATH; run tfsaz shim install --dir DIR and put DIR on PATH")
 	} else if binary, err := os.Executable(); err != nil || !sameBinary(az, binary) {
-		add("az", "error", az+" differs from this tfsaz executable; check PATH order and installed version")
+		add("az", "error", az+" differs from this TFSaz executable; check PATH order and installed version")
 	} else {
 		add("az", "ok", az)
 	}

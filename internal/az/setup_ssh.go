@@ -36,7 +36,7 @@ func setupSSHCommand(r setupRecord) (string, error) {
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return "", errors.New("locate tfsaz executable for Git SSH command")
+		return "", errors.New("locate TFSaz executable for Git SSH command")
 	}
 	// Prefer the installation link (for example Homebrew's bin/tfsaz)
 	// when it resolves to this binary. Versioned install directories can move.

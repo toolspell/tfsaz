@@ -60,7 +60,7 @@ type routeSystemState struct {
 
 func manageRouteSystem(ctx context.Context, install bool, dir, configFile, certFile, keyFile, leafSHA256 string, aliases []string) error {
 	if runtime.GOOS != "windows" && os.Geteuid() == 0 {
-		return errors.New("run browser routing setup as your own user, not as root; tfsaz asks for administrator rights only for the hosts file and port 443")
+		return errors.New("run browser routing setup as your own user, not as root; TFSaz asks for administrator rights only for the hosts file and port 443")
 	}
 	p, err := prepareRouteSystem(install, dir, configFile, certFile, keyFile, leafSHA256, aliases)
 	if err != nil {
@@ -164,7 +164,7 @@ func prepareRouteSystem(install bool, dir, configFile, certFile, keyFile, leafSH
 		p.exe, err = filepath.EvalSymlinks(p.exe)
 	}
 	if err != nil {
-		return routeSystemPlan{}, fmt.Errorf("locate the tfsaz executable: %w", err)
+		return routeSystemPlan{}, fmt.Errorf("locate the TFSaz executable: %w", err)
 	}
 	if p.port, err = routeSystemServicePort(p.dir, p.id); err != nil {
 		return routeSystemPlan{}, err
