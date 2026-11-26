@@ -78,7 +78,7 @@ Setup creates a self-signed 90-day leaf (ECDSA P-256, `CA:FALSE`, exact alias na
 
 ### The on-disk key exception
 
-The leaf's private key `alias-key.pem` lives in `<config>.browser-route`, beside the certificate and the installation identity. It is the one secret outside the keyring. The directory is owner-only (mode 700 with 600 files on macOS and Linux, a protected ACL for the user and SYSTEM on Windows). Moving it into the keyring is in the [backlog](docs/backlog.md#before-going-public).
+The leaf's private key `alias-key.pem` lives in `<config>.browser-route`, beside the certificate and the installation identity. It is the one secret outside the keyring. The directory is owner-only (mode 700 with 600 files on macOS and Linux, a protected ACL for the user and SYSTEM on Windows). Moving it into the keyring is in the [backlog](docs/backlog.md#code).
 
 Whoever holds the key can impersonate the alias hosts to this user's browsers, which trust the leaf. It cannot impersonate the real collection or obtain a PAT.
 

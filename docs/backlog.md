@@ -7,30 +7,6 @@ Deferred work, so any session or worktree can pick it up.
 - Keep entries short: the decision and where to start.
 - A class after an entry's title records its triage: (b) a missing feature, (c) needs a live machine, the testbed or another OS to verify, (d) not a bug.
 
-## Before going public
-
-- **Keys and certificates only in the secret store, plus a `trust` command** (decided design, 26.11.2026). No private key or certificate file on disk; public trust lives in the OS trust stores, everything else in the keyring (go-keyring). Reads cause no prompt once the store is unlocked: macOS goes through `/usr/bin/security`, which creates and reads the entry; Windows Credential Manager is bound to the user; GNOME Keyring and KWallet unlock at login. Steps:
-  1. **Alias key and certificate in the keyring:** `route setup` stores the leaf key and certificate (about 230 and 700 bytes, within Windows' 2,560-byte limit) instead of `alias-key.pem` and the certificate in `<config>.browser-route` (`internal/az/route_managed.go`). The redirector reads them once at start and keeps them in memory. Migration: it still loads an existing old file until the next `route setup` moves it into the keyring and deletes it, so a binary update never breaks a working install. Manual setup imports a PEM via stdin (for example `tfsaz route key import --cert ...`), never as an argument. `route restore` deletes the entries; verify shows where the key lives. Headless Linux without a Secret Service gets a clear error and a setup guide, no silent file fallback (T3 Code's server stores secrets as 0600 files; T3's desktop checks `isEncryptionAvailable` before trusting safeStorage, which is the pattern to copy). Live check: one click on a synthetic link per OS.
-  2. **`tfsaz trust check`**, read-only and part of `doctor`: a TLS handshake against each collection, reporting who trusts it (OS store, Linux NSS for browsers, Firefox, Git over HTTPS).
-  3. **`tfsaz trust add` / `remove`** per collection: show the chain and fingerprint, ask for confirmation (trust on first use), install with the OS mechanisms `route setup` already uses (macOS login keychain, Windows user Root store, Linux system bundle and NSS), keep a receipt in the keyring, and remove exactly what was added. Git: report only; Windows can use the OS store via `http.sslBackend=schannel`, other platforms would need a CA file. Node is out of scope: T3's Azure adapter makes no HTTPS requests of its own, and `route verify-node` stays.
-  4. **Retire `caFile`:** the per-profile CA file (`config.go:22`, read in `client.go:51`) gives way to OS trust from step 3, or to a CA kept in the keyring for TFSaz-only trust.
-
-  Until step 1 lands, AGENTS.md and [SECURITY.md](../SECURITY.md) name `alias-key.pem` as the one on-disk exception.
-- **History rewrite before going public:** the audit on 26.11.2026 (gitleaks v8.30.1 over all refs, plus greps over the full history and commit messages) found no secrets, hosts, IPs, collection URLs or accounts. Three things should still go:
-  - the developer's machine path to the T3 checkout in AGENTS.md (added in `89e90eb`, removed in `a8e2385`);
-  - research pointers to a private repository in the same commits;
-  - a sentence about a deferred integration in the AGENTS.md intro, from `89e90eb` until its removal on 26.11.2026. It's not repo content.
-
-  Do it last, right before the switch, so later commits can't bring in new problems:
-  1. Re-run the audit on the commits made since.
-  2. On a fresh clone, run `git filter-repo --replace-text <rules> --refs main`. Keep the rules file outside the repo, because it contains the path.
-  3. Check that `git log -p main` no longer contains any of the removed strings.
-  4. Force-push `main`.
-
-  Testbed names in `docs/verification/` (PR numbers, collection names) were judged acceptable. Never push the local T3 checkpoint refs (`refs/t3/...`), so no `git push --mirror` or `--all`.
-- **Low-value comment analyzer** (optional): a custom analyzer as the Go equivalent of Toolspell's `no-low-value-comments`. Pointer: Toolspell `oxlint-plugin-toolspell/rules/`.
-- **Agent skills:** a testbed/VM verification skill in `.agents/skills/` (pairs with the test-environment runbook item).
-
 ## At the public / PR switch
 
 - **Required checks:** require `PR title`, `Agent context budget` and the roll-up job `Check` of `.github/workflows/test.yml` in the ruleset, not the individual CI jobs ([CI](operations/development.md#required-check)).
@@ -45,6 +21,8 @@ Deferred work, so any session or worktree can pick it up.
 ## Later
 
 - **Vouch and contribution triage** for outside contributors, with PR limits and the stale bot for `needs-more-info`. All wait until outside contributions open. Pointers: Toolspell `.github/workflows/vouch.yml`, `.github/VOUCHED.td`, `.agents/skills/contribution-triage/`, `pr-limits.yml`, `stale-needs-more-info.yml`.
+- **Low-value comment analyzer** (optional): a custom analyzer as the Go equivalent of Toolspell's `no-low-value-comments`. Pointer: Toolspell `oxlint-plugin-toolspell/rules/`.
+- **Agent skills:** a testbed/VM verification skill in `.agents/skills/` (pairs with the test-environment runbook item).
 - **Prebuilt releases and an update process:** the README states there is no release yet.
   - Binaries for macOS, Windows and Linux with published checksums. Sign and notarize on macOS; sign with Authenticode on Windows.
   - Release tooling (for example goreleaser) and a written process: version bump, changelog, Go patch check. `go.mod`'s `go` line guarantees that every build uses at least the Go patch release it names, which govulncheck found clean when it was set. At release time, check for a newer patch, raise the `go` line if one exists, and build with it.
@@ -57,6 +35,13 @@ Deferred work, so any session or worktree can pick it up.
 
 ## Code
 
+- **Keys and certificates only in the secret store, plus a `trust` command** (decided design, 26.11.2026). No private key or certificate file on disk; public trust lives in the OS trust stores, everything else in the keyring (go-keyring). Reads cause no prompt once the store is unlocked: macOS goes through `/usr/bin/security`, which creates and reads the entry; Windows Credential Manager is bound to the user; GNOME Keyring and KWallet unlock at login. Steps:
+  1. **Alias key and certificate in the keyring:** `route setup` stores the leaf key and certificate (about 230 and 700 bytes, within Windows' 2,560-byte limit) instead of `alias-key.pem` and the certificate in `<config>.browser-route` (`internal/az/route_managed.go`). The redirector reads them once at start and keeps them in memory. Migration: it still loads an existing old file until the next `route setup` moves it into the keyring and deletes it, so a binary update never breaks a working install. Manual setup imports a PEM via stdin (for example `tfsaz route key import --cert ...`), never as an argument. `route restore` deletes the entries; verify shows where the key lives. Headless Linux without a Secret Service gets a clear error and a setup guide, no silent file fallback (T3 Code's server stores secrets as 0600 files; T3's desktop checks `isEncryptionAvailable` before trusting safeStorage, which is the pattern to copy). Live check: one click on a synthetic link per OS.
+  2. **`tfsaz trust check`**, read-only and part of `doctor`: a TLS handshake against each collection, reporting who trusts it (OS store, Linux NSS for browsers, Firefox, Git over HTTPS).
+  3. **`tfsaz trust add` / `remove`** per collection: show the chain and fingerprint, ask for confirmation (trust on first use), install with the OS mechanisms `route setup` already uses (macOS login keychain, Windows user Root store, Linux system bundle and NSS), keep a receipt in the keyring, and remove exactly what was added. Git: report only; Windows can use the OS store via `http.sslBackend=schannel`, other platforms would need a CA file. Node is out of scope: T3's Azure adapter makes no HTTPS requests of its own, and `route verify-node` stays.
+  4. **Retire `caFile`:** the per-profile CA file (`config.go:22`, read in `client.go:51`) gives way to OS trust from step 3, or to a CA kept in the keyring for TFSaz-only trust.
+
+  Until step 1 lands, AGENTS.md and [SECURITY.md](../SECURITY.md) name `alias-key.pem` as the one on-disk exception.
 - **Retries for on-premises outages:** on-premises servers go down more often than the cloud service. Add reasonable, bounded retries with backoff for idempotent reads (GET, catalog `OPTIONS`) on connection errors, timeouts and 502/503/504. Never retry writes blindly, and keep within T3's time budget per call (about 30 s per read). Keep "rejected credentials" and "unreachable server" distinct in diagnostics, as AGENTS.md requires.
 - **Rate limits and performance:** handle `429` and `Retry-After`, and Azure DevOps' throttling headers (`X-RateLimit-*`). Measure the time per command as T3 calls it (`TFSAZ_TRACE` already logs elapsed time), then optimize where it matters, e.g. the uncached resource-location catalog (about 1.200 entries on 2022.2) and repeated `connectionData` or identity lookups. This ties in with the catalog-cache decision in the REST-routes entry.
 - **REST routes that bypass the catalog** ([REST API](internals/rest-api.md#resolve-routes-through-the-catalog)): these build `_apis` paths directly with no written reason. Resolve them through `fetchCatalog`/`resolveResource`, or write the reason at the call site. First decide how to cache the catalog (the extension keeps an on-disk OPTIONS cache), because T3 allows 30 seconds per read and a 2022.2 catalog has about 1,200 entries. All in `internal/az/`:
@@ -115,6 +100,7 @@ Code gaps against [Reversible and verifiable system changes](../AGENTS.md#revers
   - The live testbed checks in `docs/verification/` (both collections, Git transports, browser routing) predate these changes.
 - **Native test runs not done:** the Windows tests were only compiled and vetted from macOS. The Linux suite ran in a Docker container without a desktop session (no GIO, systemd user session or real Chromium NSS). The macOS and Windows CI matrix and the new Checks job have never run on GitHub; the first push covers that.
 - **Doc steps not run:** the per-OS check and undo commands added to SECURITY.md, `docs/user/browser-routing.md` ("Check what is installed"), `install.md` (uninstall) and `checkout-setup.md` in `30b8c05` and `2850c23` were taken from the code. Run each once on its OS.
+- **Doc link check misses markdown outside `docs/`** (b): `TestDocLinks` (`docs_links_test.go`) scans only `.go` files, README.md, AGENTS.md and `docs/**/*.md`, so links in SECURITY.md, CONTRIBUTING.md, `.agents/skills/`, `.github/` and `.macroscope/` go unchecked; a dead SECURITY.md anchor slipped through on 26.11.2026. Scan every tracked markdown file outside `.reference-apps/`.
 - **Unit coverage gaps:** `internal/az` statement coverage is 69.5% (26.11.2026). Lowest: `preserve_git.go` 0% and `setup_manager.go` 29%, both mostly exercised through a built binary, which in-process coverage does not count, so check them before writing tests; `route_cli.go` 22%, `setup_transport.go` 25%, `shim.go` 40%, `teams.go` 47%, `https_git.go` 55%. Add focused tests where behavior can break, per [Testing](internals/testing.md), not to raise a number.
 
 ## Docs and process

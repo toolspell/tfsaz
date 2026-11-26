@@ -199,6 +199,8 @@ Every workflow that runs on PRs must also work for [stacked pull requests](https
 - Merging a stack through the API needs the asynchronous merge endpoint.
 - Stacks cannot span forks, so only people with write access stack.
 
+Push only `main` and PR branches by name. Never `git push --mirror` or `--all`: T3 Code keeps local checkpoint refs under `refs/t3/` that must not reach GitHub.
+
 ## Reference checkouts
 
 Agents and maintainers read upstream reference code (T3 Code, Azure CLI, the Azure DevOps CLI extension, knack) only from the gitignored `.reference-apps/` folder. [T3 compatibility](../internals/t3-compatibility.md#references) explains what each one is for.
