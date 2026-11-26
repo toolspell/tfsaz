@@ -183,8 +183,10 @@ func (a app) runWithHTTPSGit(ctx context.Context, args []string) (err error) {
 		_ = os.Remove(parent)
 	}()
 	shim := filepath.Join(overlay, helper)
-	if err := os.Link(binary, shim); err != nil {
-		// Hard links can cross neither volumes nor filesystem boundaries.
+	// Windows refuses to delete a hard link to an executable that is still
+	// running, and this process runs until it removes the overlay. Hard links
+	// also cross neither volumes nor filesystem boundaries. Copy in both cases.
+	if runtime.GOOS == "windows" || os.Link(binary, shim) != nil {
 		if err := copyGitSupportFile(binary, shim); err != nil {
 			return err
 		}
