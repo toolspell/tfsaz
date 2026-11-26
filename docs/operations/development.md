@@ -25,13 +25,15 @@ Tests use temporary Git repositories, loopback HTTP/TLS servers and a test crede
 
 ### Repo checks
 
-Go tests in the root package that read the whole tree. Every `go test` of `.` runs them, so `check` and CI do too, and the hook runs them as `go test -count=1 -run 'TestDocLinks|TestNoEmDashInMarkdown|TestPinnedActions' .`. They always check everything: renaming a heading breaks links in other files.
+Go tests in the root package that read the whole tree. Every `go test` of `.` runs them, so `check` and CI do too, and the hook runs them as `go test -count=1 -run '<repoChecksRun>' .` (the list is in `tools/dev/run.go`). They always check everything: renaming a heading breaks links in other files.
 
 | Test | What it checks |
 | --- | --- |
 | `TestDocLinks` (`docs_links_test.go`) | Relative links and heading anchors in README.md, AGENTS.md and `docs/`, plus every `https://github.com/toolspell/tfsaz` URL in Go code and docs, such as the links in CLI help and error texts. |
 | `TestPinnedActions` (`repo_checks_test.go`) | Every `uses:` in `.github/workflows/` and `.github/actions/` names a full 40-hex commit SHA followed by a `# vX` version comment. Local `./` actions are exempt; `docker://` images need a `sha256` digest. |
 | `TestNoEmDashInMarkdown` (`repo_checks_test.go`) | No em dash (U+2014) in any markdown file Git tracks or would track; reports `file:line`. |
+| `TestAgentContextBudget` (`repo_checks_test.go`) | `.agents/context-budget.json` equals the measured bytes of AGENTS.md, CLAUDE.md and the skills' frontmatter, which load in every agent session. CRLF counts as LF. |
+| `TestAgentFileLines` (`repo_checks_test.go`) | AGENTS.md, CLAUDE.md and every markdown file under `.agents/` stay at 300 lines or fewer. |
 
 ### Lint
 
@@ -130,7 +132,7 @@ The workflow also passes the base to `ci-checks`, which ignores it: every gate t
 
 ### Path filter
 
-`ci-changes` lists the files changed since the [change base](#change-base). The test matrix is skipped only when every file is outside the code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml`, `.golangci.yml` and the tool modules `tools/<tool>/`. Any other file runs the matrix, including every workflow and file types nobody listed yet. Without a base, or when the diff fails, the matrix runs and the log says why. The list is `testIrrelevant` in `tools/dev/ci.go`.
+`ci-changes` lists the files changed since the [change base](#change-base). The test matrix is skipped only when every file is outside the code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml`, `.golangci.yml` and the tool modules `tools/<tool>/`. Any other file runs the matrix, including every workflow and file types nobody listed yet. Without a base, or when the diff fails, the matrix runs and the log says why. The list is `testIrrelevant` in `tools/dev/ci.go`.
 
 Checks always runs, so a docs-only change still gets the doc link, em dash and pinned-action checks. Skipping the matrix matters in a private repository, where a macOS minute counts ten times and a Windows minute twice.
 
@@ -138,7 +140,7 @@ The filter is a job, not `paths-ignore` on the trigger: a workflow that does not
 
 ### Required check
 
-`Check` is the one status a ruleset should require (planned for the public switch, see the [backlog](../backlog.md#at-the-public--pr-switch)). It stays stable when jobs are renamed, added or skipped; requiring the individual matrix jobs would not.
+`Check` is the one CI status a ruleset should require, next to `PR title` and `Agent context budget` from [GitHub automation](#github-automation) (planned for the public switch, see the [backlog](../backlog.md#at-the-public--pr-switch)). It stays stable when jobs are renamed, added or skipped; requiring the individual matrix jobs would not.
 
 ### Caching
 
@@ -172,6 +174,13 @@ These files in `.github/` take effect once they are pushed to GitHub; locally th
 | `labels.json`, `workflows/labels.yml` | The label set. The workflow creates and updates these labels on a push to `main` that changes them, or on manual dispatch. It never deletes a label. |
 | `ISSUE_TEMPLATE/` | Bug report and feature request forms. Blank issues are off; security reports go to `SECURITY.md`. |
 | `pull_request_template.md` | Problem, Change, Verification and a macOS, Windows and Linux checklist. |
+| `workflows/pr-title.yml`, `scripts/pr-title.cjs` | Check `PR title`: the title is a Conventional Commit subject (`type(scope): what changed`), because the squash merge uses it as the commit subject. A title edit reruns only this check. |
+| `workflows/pr-size.yml`, `scripts/pr-size.cjs` | Sets one `size:XS` to `size:XXL` label by changed lines, ignoring whitespace. `go.sum` files never count; `_test.go` files and `testdata/` count only in a PR that touches nothing else. Comments when a PR adds 10 or more test functions net. Runs on `pull_request_target` from the default branch and only diffs the PR's commits. |
+| `workflows/agent-context-budget.yml` | Check `Agent context budget`: fails when a value in `.agents/context-budget.json` is higher than on the PR's base branch. |
+
+To grow the agent context on purpose, update `.agents/context-budget.json` to the values `TestAgentContextBudget` prints, and ask a maintainer to add the `agent-context-increase` label. The check reruns on the label event.
+
+Every workflow that runs on PRs must also work for [stacked pull requests](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs), where a layer's base is the branch below it, not `main`. Compare with the merge commit's first parent (`HEAD^1`) or `pull_request.base.sha`, never a freshly fetched `main`, so each layer is judged on its own change. `github.event.pull_request.stack` exists only for stacked PRs; guard it with `!= null`.
 
 Pin every workflow action to a full commit SHA with a `# vX.Y.Z` comment (`TestPinnedActions` enforces it); Dependabot keeps both current. Check a new pin with `git ls-remote https://github.com/OWNER/REPO refs/tags/vX.Y.Z*` (use the `^{}` line for annotated tags).
 

@@ -33,20 +33,19 @@ Deferred work, so any session or worktree can pick it up.
 
 ## At the public / PR switch
 
-- **PR checks:** PR title in conventional-commit form, PR size labels, PR limits and the stale bot. Pointers: Toolspell `.github/workflows/pr-title.yml`, `pr-size.yml`, `pr-limits.yml`, `stale-needs-more-info.yml`.
 - **Review bots and review rules:** CodeRabbit config with path instructions, Macroscope approvability, Codex review, and a `claude.yml` workflow (actor-restricted, comment-only). Add a "Code review rules" section to AGENTS.md that maps areas to the docs owning their rules, and Macroscope check-run agents such as test-signal. Pointers: Toolspell `.coderabbit.config.ts`, `.macroscope/approvability.md`, `.macroscope/check-run-agents/`, `.github/workflows/claude.yml`.
-- **Required check:** make the roll-up job `Check` of `.github/workflows/test.yml` the required check in the ruleset, not the individual jobs ([CI](operations/development.md#required-check)).
+- **Required checks:** require `PR title`, `Agent context budget` and the roll-up job `Check` of `.github/workflows/test.yml` in the ruleset, not the individual CI jobs ([CI](operations/development.md#required-check)).
 - **Repo settings and rulesets** (Toolspell's phase-1 setup):
   - squash-only merges and auto-delete of merged branches;
   - a ruleset on `main` with required checks, the strict up-to-date rule and no force push;
   - secret scanning with push protection, private vulnerability reporting and the org security configuration.
 - **Security contact link:** `.github/ISSUE_TEMPLATE/config.yml` links `SECURITY.md` as the place to report vulnerabilities, and [SECURITY.md](../SECURITY.md#report-a-vulnerability) sends reporters to GitHub's private vulnerability reporting once the repository is public. Enable private vulnerability reporting at the switch, or both lead to a policy with no private channel.
 - **CodeQL default setup for Go plus Copilot Autofix**, both free for public repositories.
-- **Vouch and contribution triage** for outside contributors. Pointers: Toolspell `.github/workflows/vouch.yml`, `.github/VOUCHED.td`, `.agents/skills/contribution-triage/`.
-- **Agent context budget** (decided): measured AGENTS.md bytes in a JSON file, a Go test that keeps it exact, an AGENTS.md rule, and a label-gated CI check. Pointers: Toolspell `scripts/agent-context-budget.json`, `scripts/agent-docs.test.ts`, `.github/workflows/agent-context-budget.yml`.
+- **Anonymous fetch in PR size:** once the repository is public, set `persist-credentials: false` in `.github/workflows/pr-size.yml` again and fetch the PR head anonymously, as in Toolspell, so the `pull_request_target` clone keeps no token.
 
 ## Later
 
+- **Vouch and contribution triage** for outside contributors, with PR limits and the stale bot for `needs-more-info`. All wait until outside contributions open. Pointers: Toolspell `.github/workflows/vouch.yml`, `.github/VOUCHED.td`, `.agents/skills/contribution-triage/`, `pr-limits.yml`, `stale-needs-more-info.yml`.
 - **Prebuilt releases and an update process:** the README states there is no release yet.
   - Binaries for macOS, Windows and Linux with published checksums. Sign and notarize on macOS; sign with Authenticode on Windows.
   - Release tooling (for example goreleaser) and a written process: version bump, changelog, Go patch check. `go.mod`'s `go` line guarantees that every build uses at least the Go patch release it names, which govulncheck found clean when it was set. At release time, check for a newer patch, raise the `go` line if one exists, and build with it.
