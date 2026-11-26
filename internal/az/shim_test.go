@@ -120,9 +120,74 @@ func TestShimUninstall(t *testing.T) {
 		})
 	}
 	a := app{stdout: io.Discard, stderr: io.Discard}
-	for _, args := range [][]string{{"shim", "uninstall"}, {"shim", "remove", "--dir", t.TempDir()}} {
+	for _, args := range [][]string{
+		{"shim", "uninstall"}, {"shim", "remove", "--dir", t.TempDir()},
+		{"shim", "install"}, {"shim", "install", "--dir", ""}, {"shim", "install", "--path", t.TempDir()},
+	} {
 		if err := a.run(t.Context(), args); ExitCode(err) != 2 {
 			t.Errorf("%v: %v", args, err)
 		}
+	}
+}
+
+// Package managers can replace a versioned executable on upgrade, so install
+// links to the stable TFSaz on PATH only when it is this same file.
+func TestShimInstallTarget(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		// stable creates the TFSaz on PATH and reports whether shims should link to it.
+		stable func(t *testing.T, path string) bool
+	}{
+		{"PATH has this executable", func(t *testing.T, path string) bool {
+			if err := os.Link(exe, path); err != nil {
+				t.Skip("hard links unavailable:", err)
+			}
+			return true
+		}},
+		{"PATH has another executable", func(t *testing.T, path string) bool {
+			if err := os.WriteFile(path, []byte("other"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			return false
+		}},
+		{"PATH has none", func(t *testing.T, path string) bool { return false }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			stable := shimPath(filepath.Join(dir, "pkg"), "tfsaz")
+			if err := os.Mkdir(filepath.Dir(stable), 0700); err != nil {
+				t.Fatal(err)
+			}
+			want := exe
+			if tc.stable(t, stable) {
+				want = stable
+			}
+			t.Setenv("PATH", filepath.Dir(stable))
+			bin := filepath.Join(dir, "bin")
+			var out bytes.Buffer
+			a := app{stdout: &out, stderr: io.Discard}
+			// A second install finds its own shims and changes nothing.
+			for range 2 {
+				if err := a.runShim([]string{"install", "--dir", bin}); err != nil {
+					t.Fatalf("install: %v", err)
+				}
+			}
+			if !strings.Contains(out.String(), "shims in "+bin) {
+				t.Errorf("install output %q does not name %s", &out, bin)
+			}
+			for _, name := range shimNames {
+				target, err := os.Readlink(shimPath(bin, name))
+				if err != nil {
+					t.Skip("install copied the executable instead of linking it:", err)
+				}
+				if target != want {
+					t.Errorf("%s links to %s, want %s", name, target, want)
+				}
+			}
+		})
 	}
 }
