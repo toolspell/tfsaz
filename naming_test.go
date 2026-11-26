@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -38,6 +39,10 @@ func TestNaming(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// Binary content has no names to check.
+		if bytes.IndexByte(data, 0) >= 0 {
+			continue
+		}
 		for _, p := range namingProblems(file, string(data)) {
 			problems = append(problems, fmt.Sprintf("%s:%d: %s", file, p.line, p.reason))
 		}
@@ -56,8 +61,9 @@ var (
 	// What may follow a lowercase tfsaz in code: a command or option, which
 	// makes it the command line, or a version, as `--version` prints it.
 	namingCommand = regexp.MustCompile(`^ (init|profile|repo|route|doctor|shim|help|trace|account|devops|repos|boards|rest|--[a-z]|[0-9]|%s|["'` + "`" + `])`)
-	// Commands written with the product name, as in "run TFSaz init".
-	namingProductAsCommand = regexp.MustCompile(`^ (init|repo|route|doctor|shim|--[a-z])\b`)
+	// Commands written with the product name, as in "run TFSaz init". A bare
+	// "TFSaz profile" is the glossary term, so profile needs a subcommand.
+	namingProductAsCommand = regexp.MustCompile(`^ (init|repo|route|doctor|shim|help|account|devops|repos|boards|rest|profile (add|list|logout)|--[a-z])\b`)
 	namingFence            = regexp.MustCompile("^\\s*(```|~~~)")
 	namingCodeSpan         = regexp.MustCompile("`[^`]*`")
 )
@@ -233,6 +239,9 @@ func TestNamingProblems(t *testing.T) {
 		{"repository URL", "a.md", "[repo](https://github.com/toolspell/tfsaz)", nil},
 		{"anchor", "a.md", "[x](b.md#what-tfsaz-changes)", nil},
 		{"product as a command", "a.md", "Run TFSaz init first.", []string{"command written with the product name"}},
+		{"product with a profile command", "a.md", "Run TFSaz profile list.", []string{"command written with the product name"}},
+		{"product with an Azure CLI command", "a.md", "Run TFSaz repos pr list.", []string{"command written with the product name"}},
+		{"product profile as a term", "a.md", "A TFSaz profile names a collection.", nil},
 		{"product as a verb subject", "a.md", "TFSaz routes the call.", nil},
 		{"capitalized misspelling", "a.go", `x := "Tfsaz Links"`, []string{"misspelled name"}},
 		{"PascalCase identifier", "a.go", `id := "TfsazLinks." + n; ns := "Toolspell.Tfsaz.Links"`, nil},
