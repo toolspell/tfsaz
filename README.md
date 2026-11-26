@@ -55,7 +55,7 @@ Early alpha. Version 0.1.0, no release and no prebuilt binaries yet: build it fr
 
 ## Contributing
 
-The repository is not open for outside contributions yet. [CONTRIBUTING.md](CONTRIBUTING.md) has the rules that apply once it is, and [SECURITY.md](SECURITY.md) how to report a vulnerability.
+For now only maintainers can open issues and pull requests. [CONTRIBUTING.md](CONTRIBUTING.md) has the rules that apply once that changes, and [SECURITY.md](SECURITY.md) how to report a vulnerability.
 
 ## License
 

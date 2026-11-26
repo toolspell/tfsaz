@@ -7,20 +7,10 @@ Deferred work, so any session or worktree can pick it up.
 - Keep entries short: the decision and where to start.
 - A class after an entry's title records its triage: (b) a missing feature, (c) needs a live machine, the testbed or another OS to verify, (d) not a bug.
 
-## At the public / PR switch
-
-- **Required checks:** require `PR title`, `Agent context budget` and the roll-up job `Check` of `.github/workflows/test.yml` in the ruleset, not the individual CI jobs ([CI](operations/development.md#required-check)).
-- **Repo settings and rulesets** (Toolspell's phase-1 setup):
-  - squash-only merges and auto-delete of merged branches;
-  - a ruleset on `main` with required checks, the strict up-to-date rule and no force push;
-  - secret scanning with push protection, private vulnerability reporting and the org security configuration.
-- **Security contact link:** `.github/ISSUE_TEMPLATE/config.yml` links `SECURITY.md` as the place to report vulnerabilities, and [SECURITY.md](../SECURITY.md#report-a-vulnerability) sends reporters to GitHub's private vulnerability reporting once the repository is public. Enable private vulnerability reporting at the switch, or both lead to a policy with no private channel.
-- **CodeQL default setup for Go plus Copilot Autofix**, both free for public repositories.
-- **Anonymous fetch in PR size:** once the repository is public, set `persist-credentials: false` in `.github/workflows/pr-size.yml` again and fetch the PR head anonymously, as in Toolspell, so the `pull_request_target` clone keeps no token.
-
 ## Later
 
 - **Vouch and contribution triage** for outside contributors, with PR limits and the stale bot for `needs-more-info`. All wait until outside contributions open. Pointers: Toolspell `.github/workflows/vouch.yml`, `.github/VOUCHED.td`, `.agents/skills/contribution-triage/`, `pr-limits.yml`, `stale-needs-more-info.yml`.
+- **Claude workflow inactive:** `.github/workflows/claude.yml` stays inactive until the maintainer sets the repository secret `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`); deliberately skipped at the public switch on 26.11.2026.
 - **Low-value comment analyzer** (optional): a custom analyzer as the Go equivalent of Toolspell's `no-low-value-comments`. Pointer: Toolspell `oxlint-plugin-toolspell/rules/`.
 - **Agent skills:** a testbed/VM verification skill in `.agents/skills/` (pairs with the test-environment runbook item).
 - **Prebuilt releases and an update process:** the README states there is no release yet.
@@ -98,7 +88,7 @@ Code gaps against [Reversible and verifiable system changes](../AGENTS.md#revers
   - `TestStockT3Adapter` (`TFSAZ_T3_ROOT`, a full T3 tree at the pinned revision) last ran before `046b231`. Since then, commits changed help and error texts of commands T3 calls (`7d43625`, `79108f8`), error handling across commands (`bbd33fa`, `1d38e4c`), the setup PAT lookup (`8914edf`) and lock, recovery and `route run` cleanup (`429e125`). T3's matched substrings were kept, but nothing proved it end to end. Run it on all three OS where possible.
   - The live system tests (`TFSAZ_LIVE_LAUNCHD`, `TFSAZ_LIVE_TASK_SCHEDULER`) have not run since the route changes in `429e125`; they need a disposable test session.
   - The live testbed checks in `docs/verification/` (both collections, Git transports, browser routing) predate these changes.
-- **Native test runs not done:** the Windows tests were only compiled and vetted from macOS. The Linux suite ran in a Docker container without a desktop session (no GIO, systemd user session or real Chromium NSS). The macOS and Windows CI matrix and the new Checks job have never run on GitHub; the first push covers that.
+- **Native runs with a desktop session not done:** the CI matrix (macOS, Windows, Linux) and the Checks job run on GitHub; their first run found the Windows `route run` bug fixed in `0f08c37`. CI runners have no desktop session, so the paths that need one (GIO, a systemd user session, a real Chromium NSS database) have not run natively. Run the suite once per OS in a disposable desktop session.
 - **Doc steps not run:** the per-OS check and undo commands added to SECURITY.md, `docs/user/browser-routing.md` ("Check what is installed"), `install.md` (uninstall) and `checkout-setup.md` in `43a7dee` and `429e125` were taken from the code. Run each once on its OS.
 - **Doc link check misses markdown outside `docs/`** (b): `TestDocLinks` (`docs_links_test.go`) scans only `.go` files, README.md, AGENTS.md and `docs/**/*.md`, so links in SECURITY.md, CONTRIBUTING.md, `.agents/skills/`, `.github/` and `.macroscope/` go unchecked; a dead SECURITY.md anchor slipped through on 26.11.2026. Scan every tracked markdown file outside `.reference-apps/`.
 - **Unit coverage gaps:** `internal/az` statement coverage is 69.5% (26.11.2026). Lowest: `preserve_git.go` 0% and `setup_manager.go` 29%, both mostly exercised through a built binary, which in-process coverage does not count, so check them before writing tests; `route_cli.go` 22%, `setup_transport.go` 25%, `shim.go` 40%, `teams.go` 47%, `https_git.go` 55%. Add focused tests where behavior can break, per [Testing](internals/testing.md), not to raise a number.
