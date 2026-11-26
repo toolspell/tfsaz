@@ -171,14 +171,16 @@ func (a app) runWithHTTPSGit(ctx context.Context, args []string) (err error) {
 		return err
 	}
 	parent := filepath.Clean(file) + ".run"
-	overlay, err := makeRouteRunOverlay(parent)
+	if err := removeStaleRouteRunOverlays(parent); err != nil {
+		_, _ = fmt.Fprintf(a.stderr, "tfsaz: %v\n", err)
+	}
+	run, err := makeRouteRunOverlay(parent)
 	if err != nil {
 		return err
 	}
+	overlay := run.dir
 	defer func() {
-		if removeErr := os.RemoveAll(overlay); removeErr != nil {
-			err = errors.Join(err, removeErr)
-		}
+		err = errors.Join(err, run.remove())
 		// Another run's overlay keeps the parent; its removal error says only that.
 		_ = os.Remove(parent)
 	}()
@@ -202,21 +204,15 @@ func (a app) runWithHTTPSGit(ctx context.Context, args []string) (err error) {
 	if a.stdin == nil || !term.IsTerminal(int(a.stdin.Fd())) {
 		cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never")
 	}
-	return cmd.Run()
-}
-
-// A run that ends concurrently may remove the empty parent between the
-// MkdirAll and the MkdirTemp, so recreate it once.
-func makeRouteRunOverlay(parent string) (string, error) {
-	for attempt := 0; ; attempt++ {
-		if err := os.MkdirAll(parent, 0700); err != nil {
-			return "", err
-		}
-		overlay, err := os.MkdirTemp(parent, "git-")
-		if err == nil || attempt > 0 || !errors.Is(err, os.ErrNotExist) {
-			return overlay, err
-		}
+	if err := cmd.Start(); err != nil {
+		return err
 	}
+	if err := run.recordChild(cmd.Process.Pid); err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return err
+	}
+	return cmd.Wait()
 }
 
 // Git scripts source libraries relative to git --exec-path. PATH alone cannot

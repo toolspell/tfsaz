@@ -139,6 +139,11 @@ func TestGitHTTPSHelperKeepsAzureRemoteAndUsesNativeTransport(t *testing.T) {
 	if out, err := wrappedGit(root, "ls-remote", strings.TrimSuffix(alias, "Tool%20Kit")+"RequiresAuth"); err == nil || !strings.Contains(out, "terminal prompts disabled") {
 		t.Fatalf("expected a non-interactive authentication failure: %v\n%s", err, out)
 	}
+	// A killed run whose launched process has exited too.
+	if err := os.MkdirAll(configPath+".run/git-killed", 0700); err != nil {
+		t.Fatal(err)
+	}
+	managerTestWrite(t, configPath+".run/git-killed.lock", "")
 	// Git for Windows may print the exec path with forward slashes.
 	if out, err := wrappedGit(root, "--exec-path"); err != nil || !strings.EqualFold(filepath.Dir(filepath.FromSlash(strings.TrimSpace(out))), configPath+".run") {
 		t.Fatalf("route run overlay %q is not beside TFSAZ_CONFIG: %v", out, err)
