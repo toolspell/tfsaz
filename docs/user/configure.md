@@ -63,11 +63,29 @@ Interactive `init` already stores the PAT. For a hand-written profile, a profile
 tfsaz devops login --organization https://engineering-example.visualstudio.com
 ```
 
-Enter the PAT at the hidden prompt, or pipe one line from a secret provider on stdin. Login verifies the PAT against the collection before saving it in the OS keyring under the stable profile ID. The backend is Keychain on macOS, Credential Manager on Windows, and Secret Service on Linux.
+Enter the PAT at the hidden prompt, or pipe one line from a secret provider on stdin. Login verifies the PAT against the collection before saving it in the OS keyring under the stable profile ID. The OS keyring must be available in that session; see [OS keyring requirements](#os-keyring-requirements).
 
 New profiles use `credentialVersion: 2`, which scopes the keyring service to the collection URL (`tfsaz/v2/` plus a hash of it). Older profiles without this field use the original `tfsaz` service. Preserve the existing credential version when editing a profile so it can still find its saved PAT. For the same reason, run `devops login` again after changing the `collectionUrl` of a version 2 profile.
 
 `tfsaz profile logout --profile ID` removes the selected local credential and keeps the profile configured. Server-side token revocation is separate.
+
+### OS keyring requirements
+
+Login saves the PAT in the keyring of the OS user who runs it, and the T3 backend reads it from there. Run both as the same OS user, in sessions where that user's keyring is available.
+
+| OS | Keyring | What it needs |
+| --- | --- | --- |
+| macOS | Keychain | The login keychain, which macOS unlocks when you log in. Nothing to set up. |
+| Windows | Credential Manager | A password-backed logon with the user profile loaded, such as an interactive desktop session. Credential Manager can reject writes from an SSH logon; run login from an interactive desktop session as that user instead. |
+| Linux | Secret Service | A Secret Service provider, such as GNOME Keyring, on the session's D-Bus with an unlocked default collection. A desktop login may come without a default persistent collection; create one, for example in Passwords and Keys (Seahorse), and make it the default. A session without a desktop, such as SSH or a T3 server started by a service manager, needs a provider started and unlocked in that session. |
+
+When the keyring is missing or locked:
+
+- `init`, `devops login` and `profile logout` stop with `credential store locked or unavailable for profile ID`. `devops login` and `profile logout` change nothing. For a new profile, `init` has already saved the profile configuration and says the login can be retried. Fix the session and run the same command again. `init --no-login` still writes the profile without touching the keyring.
+- Commands T3 runs fail with the same message. If the keyring is reachable but holds no PAT for the profile, for example because login ran as another user or in another session's keyring, they report `profile ID has no PAT; use az devops login --organization URL`.
+- `tfsaz doctor` run from a directory outside Git checks the PAT of every profile; in a managed checkout it checks only that checkout's profile. Run it in the same environment as T3. See [Diagnose](diagnose.md#run-doctor).
+
+The setups tested so far are recorded in [Windows 11 and Ubuntu verification](../verification/live-t3-2026-11.md#windows-11-x64-and-ubuntu-2604-arm64).
 
 ### Remove a profile
 

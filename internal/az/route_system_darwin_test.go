@@ -27,7 +27,7 @@ func TestRouteSystemDarwinInstallAndRestore(t *testing.T) {
 	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	p, err := prepareRouteSystem(true, dir, configFile, certFile, keyFile, fp, []string{alias})
+	p, err := prepareRouteSystem(true, routeSystemID(configFile), dir, configFile, certFile, keyFile, fp, []string{alias})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestRouteSystemDarwinInstallAndRestore(t *testing.T) {
 	}
 
 	*calls = nil
-	r, err := prepareRouteSystem(false, dir, configFile, certFile, keyFile, fp, nil)
+	r, err := prepareRouteSystem(false, routeSystemID(configFile), dir, configFile, certFile, keyFile, fp, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ func TestMacTrustRemovalWithOnlyRecoveryCertificate(t *testing.T) {
 	if err := os.Rename(cert, receipt); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := prepareRouteSystem(false, dir, file, cert, key, fp, []string{alias})
+	plan, err := prepareRouteSystem(false, routeSystemID(file), dir, file, cert, key, fp, []string{alias})
 	if err != nil {
 		t.Fatal(err)
 	}
