@@ -210,7 +210,7 @@ Deferred work lives in [GitHub issues](https://github.com/toolspell/tfsaz/issues
 - **Size:** one `size:XS` to `size:XXL` label as an estimate of the PR's changed lines, on the scale `pr-size.yml` applies to PRs. Issues labeled `later` (deferred until something else happens) or `idea` (value and feasibility unchecked) get no size.
 - **Open questions:** when the work needs a maintainer's answer first, label it `needs-decision` and list the questions under "Open questions". `needs-more-info` is for outside reporters.
 - **Dependencies:** when one issue cannot sensibly start before another lands, add GitHub's "blocked by" relation and say why under "Depends on" in the blocked issue. Mention a looser relation in the text only.
-- **Assignee:** whoever drives the work, a maintainer or the person an agent works for, is assigned when the work starts.
+- **Starting work:** assign whoever drives it (a maintainer, or the person an agent works for), then cross-check the issue against the current code before you rely on its paths or claims.
 - **Closing:** the PR closes its issues with a closing keyword (`Closes #<n>`). GitHub applies it only when the PR merges into `main`, so a stacked layer's keyword takes effect when its stack lands. Use `Refs #<n>` instead when work remains, and note in the issue what remains.
 
 ## Reference checkouts

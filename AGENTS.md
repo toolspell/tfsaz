@@ -105,7 +105,6 @@ TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter 
 - Open a PR only when asked. One request is one PR.
 - Title: a conventional commit in plain language, such as `fix(setup): restore no longer leaves a lock file`. PRs are squash merged, so it becomes the commit on `main`.
 - Body: fill in the [PR template](.github/pull_request_template.md). The problem in a sentence or two, then how you fixed it. End with the model and harness that did the work.
-- Close the PR's issues with `Closes #<n>`; use `Refs #<n>` while work remains.
 - Babysit a PR with `watch_pull_request`; never poll checks or reviews.
 - Workflows that run on PRs must work for stacked PRs: [GitHub workflows](docs/operations/development.md#github-workflows).
 - Outside contributions follow [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -136,7 +135,7 @@ Default to no comment. Existing comments record what the code can't show: a serv
 | Everyone | [README.md](README.md): what TFSaz is, how it works, features, status, constraints, docs index. [SECURITY.md](SECURITY.md): what TFSaz protects, scope, reporting |
 | Operators and script authors | `docs/user/`: getting started, install, configure, checkout setup, what works in T3, diagnose, routing, browser routing (managed and manual), desktop link handler, Azure CLI compatibility |
 | Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why TFSaz is needed, adapter files, keeping coverage current), [REST API](docs/internals/rest-api.md) (catalog routes, API version policy), [testing](docs/internals/testing.md) (test rules), [naming](docs/internals/naming.md) (how to write TFSaz, the `az` shim, Microsoft's Azure CLI and the glossary terms) |
-| Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI. `docs/verification/`: dated live records. [Issues](https://github.com/toolspell/tfsaz/issues): deferred work |
+| Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI, issues. `docs/verification/`: dated live records |
 
 ## Documentation rules
 
@@ -149,6 +148,6 @@ Default to no comment. Existing comments record what the code can't show: a serv
 - AGENTS.md, CLAUDE.md and skill frontmatter load in every session. Their bytes are recorded in `.agents/context-budget.json` (`TestAgentContextBudget`); update it in the same commit, and get the maintainer's OK for growth.
 - Write names as [Naming](docs/internals/naming.md) says, in docs, help and error texts.
 
-## Plans, work artifacts and issues
+## Plans and work artifacts
 
-Do not commit plans, research notes or scratch files; keep them outside the worktree. Deferred work goes to a [GitHub issue](https://github.com/toolspell/tfsaz/issues), labeled, sized and linked as [Issues](docs/operations/development.md#issues) says. Before you work on one, assign its driver and cross-check it against the current code.
+Do not commit plans, research notes or scratch files; keep them outside the worktree. Deferred work goes to a GitHub issue. Before you file, start or close one, read [Issues](docs/operations/development.md#issues).
