@@ -439,12 +439,24 @@ func TestRepoSetupDriftAcrossAllRecords(t *testing.T) {
 	if err := a.runRepo(t.Context(), []string{"verify"}); err == nil || !strings.Contains(err.Error(), "generated SSH configuration has drifted") {
 		t.Fatalf("verify all returned %v", err)
 	}
-	if err := a.runRepo(t.Context(), []string{"restore", other}); err == nil {
-		t.Fatal("restore accepted a manually edited SSH config")
+	if err := a.runRepo(t.Context(), []string{"restore", other}); err == nil || !strings.Contains(err.Error(), "repo restore --force") {
+		t.Fatalf("restore of a manually edited SSH config returned %v", err)
 	}
 	data, err := os.ReadFile(records[1].SSHConfig)
 	if err != nil || string(data) != "manually changed" {
 		t.Fatalf("manual edit was lost: %q, %v", data, err)
+	}
+	a.stdout.Reset()
+	managerTestRun(t, a, "restore", "--force", other)
+	if got := a.stdout.String(); !strings.Contains(got, "  "+records[1].SSHConfig+"\n    current:  edited, differs from the generated file\n    recorded: (deleted)\n") {
+		t.Fatalf("force restore output = %q", got)
+	}
+	if _, err := os.Lstat(records[1].SSHConfig); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("force restore left the SSH config: %v", err)
+	}
+	managerTestState(t, setupCheckout{repo: other, gitDir: records[1].GitDir}, setupGitState{url: managerTestOrigin})
+	if got := managerTestRecords(t); len(got) != 1 || got[0] != records[0] {
+		t.Fatalf("records = %+v", got)
 	}
 }
 
@@ -581,10 +593,116 @@ func TestRepoSetupHTTPSOverrideAndManualOriginDrift(t *testing.T) {
 	managerTestRun(t, a, "setup", "--ssh-url", managerTestOrigin)
 	r := managerTestRecords(t)[0]
 	managerTestGit(t, c.repo, "remote", "set-url", "origin", managerTestOrigin)
-	if err := a.runRepo(t.Context(), []string{"restore"}); err == nil {
-		t.Fatal("restore accepted a manually edited origin")
+	if err := a.runRepo(t.Context(), []string{"restore"}); err == nil || !strings.Contains(err.Error(), "repo restore --force") {
+		t.Fatalf("restore of a manually edited origin returned %v", err)
 	}
 	managerTestState(t, c, setupGitState{url: managerTestOrigin, ssh: r.SSHCommand})
+
+	managerTestGit(t, c.repo, "config", "--add", setupOriginKey, r.RemoteURL)
+	managerTestGit(t, c.repo, "config", setupVCSKey, "manual")
+	if err := a.runRepo(t.Context(), []string{"restore"}); err == nil || !strings.Contains(err.Error(), "repo restore --force") {
+		t.Fatalf("restore of two origin URLs returned %v", err)
+	}
+	a.stdout.Reset()
+	managerTestRun(t, a, "restore", "--force")
+	want := fmt.Sprintf("Overwriting in %s:\n  %s\n    current:  %s\n    current:  %s\n    recorded: %s\n  %s\n    current:  %s\n    recorded: (unset)\n  %s\n    current:  generated file\n    recorded: (deleted)\nrestore complete for %s\n",
+		c.repo, setupOriginKey, managerTestOrigin, r.RemoteURL, httpsOrigin, setupSSHKey, r.SSHCommand, r.SSHConfig, c.repo)
+	if got := a.stdout.String(); got != want {
+		t.Fatalf("force restore output = %q, want %q", got, want)
+	}
+	managerTestState(t, c, setupGitState{url: httpsOrigin, vcs: "manual"})
+	if _, err := os.Lstat(r.SSHConfig); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("force restore left the SSH config: %v", err)
+	}
+	if records := managerTestRecords(t); len(records) != 0 {
+		t.Fatalf("records = %+v", records)
+	}
+	if err := a.runRepo(t.Context(), []string{"restore", "--force"}); err == nil || !strings.Contains(err.Error(), "no setup recorded") {
+		t.Fatalf("second force restore returned %v", err)
+	}
+}
+
+func TestRepoForgetDeletedOrMovedCheckout(t *testing.T) {
+	a, out, c := managerTestRepo(t)
+	managerTestRun(t, a, "setup", "--managed-ssh")
+	r := managerTestRecords(t)[0]
+	root := filepath.Dir(c.repo)
+	a.cwd = root
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"forget"}, "needs the checkout path"},
+		{[]string{"forget", c.repo, "--force"}, "unsupported option"},
+		{[]string{"forget", c.repo}, "still exists; run repo restore"},
+		{[]string{"forget", filepath.Join(root, "never set up")}, "no setup recorded"},
+	} {
+		if err := a.runRepo(t.Context(), tc.args); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("repo %q returned %v, want %q", tc.args, err, tc.want)
+		}
+	}
+	if got := managerTestRecords(t); len(got) != 1 || got[0] != r {
+		t.Fatalf("refused forget changed records: %+v", got)
+	}
+
+	moved := filepath.Join(root, "moved checkout")
+	if err := os.Rename(c.repo, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.runRepo(t.Context(), []string{"restore", moved}); err == nil || !strings.Contains(err.Error(), "no setup recorded") {
+		t.Fatalf("restore of the moved checkout returned %v", err)
+	}
+	if err := a.runRepo(t.Context(), []string{"restore", c.repo}); err == nil ||
+		!strings.Contains(err.Error(), "no longer exists") || !strings.Contains(err.Error(), "repo forget "+setupCommandPath(c.repo)) {
+		t.Fatalf("restore of the missing checkout returned %v", err)
+	}
+	movedConfig := filepath.Join(moved, ".git", "config")
+	before, err := os.ReadFile(movedConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	managerTestRun(t, a, "forget", filepath.Base(c.repo))
+	if want := fmt.Sprintf("forgot %s\nOriginal origin: %s\nRecorded origin: %s\nGenerated SSH configuration: %s\n", r.Repo, r.OriginalURL, r.RemoteURL, filepath.Base(r.SSHConfig)); out.String() != want {
+		t.Fatalf("forget output = %q, want %q", out, want)
+	}
+	if got := managerTestRecords(t); len(got) != 0 {
+		t.Fatalf("records = %+v", got)
+	}
+	if after, err := os.ReadFile(movedConfig); err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("forget changed the moved checkout: %v", err)
+	}
+	if err := a.runRepo(t.Context(), []string{"forget", c.repo}); err == nil || !strings.Contains(err.Error(), "no setup recorded") {
+		t.Fatalf("second forget returned %v", err)
+	}
+}
+
+func TestRepoForgetRefusesSurvivingGitDirectory(t *testing.T) {
+	a, _, c := managerTestRepo(t)
+	managerTestGit(t, c.repo, "-c", "user.name=Tester", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "Initial")
+	root := filepath.Dir(c.repo)
+	bare := filepath.Join(root, "common.git")
+	managerTestGit(t, root, "clone", "--bare", c.repo, bare)
+	managerTestGit(t, bare, "remote", "set-url", "origin", managerTestOrigin)
+	linked := filepath.Join(root, "linked worktree")
+	managerTestGit(t, bare, "worktree", "add", "-b", "linked", linked)
+	managerTestRun(t, a, "setup", "--managed-ssh", linked)
+	r := managerTestRecords(t)[0]
+	if err := os.RemoveAll(linked); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.runRepo(t.Context(), []string{"forget", linked}); err == nil || !strings.Contains(err.Error(), "Git directory "+r.GitDir) {
+		t.Fatalf("forget with a surviving Git directory returned %v", err)
+	}
+	if err := a.runRepo(t.Context(), []string{"restore", linked}); err == nil || !strings.Contains(err.Error(), "Git directory "+r.GitDir) {
+		t.Fatalf("restore with a surviving Git directory returned %v", err)
+	}
+	if got := managerTestRecords(t); len(got) != 1 || got[0] != r {
+		t.Fatalf("refused forget changed records: %+v", got)
+	}
+	managerTestGit(t, bare, "worktree", "prune")
+	managerTestGit(t, bare, "worktree", "add", linked, "linked")
+	managerTestRun(t, a, "restore", linked)
 }
 
 func TestRepoRestoreWithMissingSSHConfigAndExternalOverride(t *testing.T) {
@@ -611,4 +729,60 @@ func TestRepoSetupChecksSSHWithGitConfigUnlocked(t *testing.T) {
 		t.Fatalf("concurrent Git config write was lost: %v", err)
 	}
 	managerTestRun(t, a, "restore")
+}
+
+func TestSetupCommandPathQuotesForTheShell(t *testing.T) {
+	for _, tc := range []struct {
+		goos, path, want string
+	}{
+		{"linux", "/tmp/checkout", "/tmp/checkout"},
+		{"linux", "/tmp/checkout with spaces", "'/tmp/checkout with spaces'"},
+		{"darwin", `/tmp/checkout\name`, `'/tmp/checkout\name'`},
+		{"linux", "/tmp/it's $HOME", `'/tmp/it'\''s $HOME'`},
+		{"windows", `C:\work\checkout`, `C:\work\checkout`},
+		{"windows", `C:\work\check out`, `'C:\work\check out'`},
+		{"windows", "C:\\work\\$draft\u2019x \u201cy\u201d", "'C:\\work\\$draft\u2019\u2019x \u201cy\u201d'"},
+		{"windows", `C:\work\$repo`, `'C:\work\$repo'`},
+		{"windows", "C:\\work\\it's `x`", "'C:\\work\\it''s `x`'"},
+	} {
+		got := setupCommandPathFor(tc.goos, tc.path)
+		if got != tc.want {
+			t.Errorf("setupCommandPathFor(%s, %q) = %s, want %s", tc.goos, tc.path, got, tc.want)
+			continue
+		}
+		if (tc.goos == "windows") != (runtime.GOOS == "windows") {
+			continue
+		}
+		var parsed string
+		var err error
+		if runtime.GOOS == "windows" {
+			parsed, err = managerTestPowerShellArgument(t, got)
+		} else {
+			var out []byte
+			out, err = exec.Command("sh", "-c", "printf '%s' "+got).Output()
+			parsed = string(out)
+		}
+		if err != nil || parsed != tc.path {
+			t.Errorf("the shell parsed %s as %q, %v, want %q", got, parsed, err, tc.path)
+		}
+	}
+}
+
+func managerTestPowerShellArgument(t *testing.T, argument string) (string, error) {
+	t.Helper()
+	shell, err := exec.LookPath("pwsh")
+	if err != nil {
+		if shell, err = exec.LookPath("powershell"); err != nil {
+			t.Skip("PowerShell unavailable")
+		}
+	}
+	out := filepath.Join(t.TempDir(), "argument.txt")
+	cmd := exec.Command(shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+		"function record { [IO.File]::WriteAllText($env:TFSAZ_TEST_OUT, $args[0]) }; record "+argument)
+	cmd.Env = append(os.Environ(), "TFSAZ_TEST_OUT="+out)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("%w: %s", err, output)
+	}
+	data, err := os.ReadFile(out)
+	return string(data), err
 }

@@ -91,7 +91,7 @@ The setups tested so far are recorded in [Windows 11 and Ubuntu verification](..
 
 TFSaz has no command that removes a profile from the configuration. To remove one:
 
-1. Run `tfsaz repo restore PATH` for each checkout of that collection in `tfsaz repo list`.
+1. Run `tfsaz repo restore PATH` for each checkout of that collection in `tfsaz repo list`, or `tfsaz repo forget PATH` for one whose clone you deleted.
 2. Run `tfsaz profile logout --profile ID`.
 3. Delete the profile from the configuration file.
 

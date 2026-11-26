@@ -45,7 +45,7 @@ Undo the parts you set up, in this order, then remove TFSaz itself. Run each com
 | --- | --- |
 | 1. Browser routing | `tfsaz route restore`; the last one also removes `~/.tfsaz`. See [Refresh or remove](browser-routing.md#refresh-or-remove). |
 | 2. Link handler and extension | Choose your usual default browser and remove the handler as described in [Desktop link handler](desktop-link-handler.md). Remove the Chromium extension from the browser profile and delete its export directory. |
-| 3. Checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`. |
+| 3. Checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`, or `tfsaz repo forget PATH` for one whose clone you deleted. |
 | 4. PATs | `tfsaz profile logout --profile ID` for each profile in `tfsaz profile list`. |
 | 5. Configuration | Delete the configuration file and any `.repo-setups.json`, `.browser-route`, `.run` or `.lock` entries left beside it. For the default location, delete the `tfsaz` folder under your OS user configuration directory (see [Configure](configure.md#configuration-file)). |
 | 6. Shims and binary | `tfsaz shim uninstall --dir DIR` for the shim directory, then delete `tfsaz` (`tfsaz.exe` on Windows) and remove the directory from the PATH of T3 and your shell. |

@@ -267,9 +267,14 @@ var nativeCommands = map[string]nativeCommand{
 		"repo list",
 	},
 	"repo restore": {
-		"Restore the checkout's saved Git settings offline.",
-		"[PATH]",
+		"Restore the checkout's saved Git settings offline. If they have drifted from the record, --force prints each value it overwrites, current and recorded, then restores the recorded original values.",
+		"[PATH] [--force]",
 		"repo restore ./checkout",
+	},
+	"repo forget": {
+		"Remove the record of a deleted or moved checkout from the setup registry. Changes no checkout and refuses while the checkout or its Git directory still exists; run repo restore there instead.",
+		"PATH",
+		"repo forget /path/to/deleted-checkout",
 	},
 	"route setup": {
 		"Configure browser redirects for this configuration’s registered repository aliases on this machine.",
