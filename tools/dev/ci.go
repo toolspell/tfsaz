@@ -46,13 +46,13 @@ func testIrrelevant(f string) bool {
 	if toolModule(f) != "" {
 		return true
 	}
-	for _, prefix := range []string{"docs/", ".agents/", ".claude/", ".githooks/", ".github/ISSUE_TEMPLATE/", ".github/scripts/"} {
+	for _, prefix := range []string{"docs/", ".agents/", ".claude/", ".githooks/", ".macroscope/", ".github/ISSUE_TEMPLATE/", ".github/scripts/"} {
 		if strings.HasPrefix(f, prefix) {
 			return true
 		}
 	}
 	switch f {
-	case ".claude", ".github/pull_request_template.md", ".github/labels.json", ".github/dependabot.yml", ".gitleaks.toml", ".golangci.yml":
+	case ".claude", ".coderabbit.config.ts", ".github/pull_request_template.md", ".github/labels.json", ".github/dependabot.yml", ".gitleaks.toml", ".golangci.yml":
 		return true
 	}
 	return strings.HasSuffix(f, ".md")

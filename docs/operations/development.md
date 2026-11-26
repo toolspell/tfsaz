@@ -132,7 +132,7 @@ The workflow also passes the base to `ci-checks`, which ignores it: every gate t
 
 ### Path filter
 
-`ci-changes` lists the files changed since the [change base](#change-base). The test matrix is skipped only when every file is outside the code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml`, `.golangci.yml` and the tool modules `tools/<tool>/`. Any other file runs the matrix, including every workflow and file types nobody listed yet. Without a base, or when the diff fails, the matrix runs and the log says why. The list is `testIrrelevant` in `tools/dev/ci.go`.
+`ci-changes` lists the files changed since the [change base](#change-base). The test matrix is skipped only when every file is outside the code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the review bot files `.macroscope/` and `.coderabbit.config.ts`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml`, `.golangci.yml` and the tool modules `tools/<tool>/`. Any other file runs the matrix, including every workflow and file types nobody listed yet. Without a base, or when the diff fails, the matrix runs and the log says why. The list is `testIrrelevant` in `tools/dev/ci.go`.
 
 Checks always runs, so a docs-only change still gets the doc link, em dash and pinned-action checks. Skipping the matrix matters in a private repository, where a macOS minute counts ten times and a Windows minute twice.
 
@@ -177,12 +177,27 @@ These files in `.github/` take effect once they are pushed to GitHub; locally th
 | `workflows/pr-title.yml`, `scripts/pr-title.cjs` | Check `PR title`: the title is a Conventional Commit subject (`type(scope): what changed`), because the squash merge uses it as the commit subject. A title edit reruns only this check. |
 | `workflows/pr-size.yml`, `scripts/pr-size.cjs` | Sets one `size:XS` to `size:XXL` label by changed lines, ignoring whitespace. `go.sum` files never count; `_test.go` files and `testdata/` count only in a PR that touches nothing else. Comments when a PR adds 10 or more test functions net. Runs on `pull_request_target` from the default branch and only diffs the PR's commits. |
 | `workflows/agent-context-budget.yml` | Check `Agent context budget`: fails when a value in `.agents/context-budget.json` is higher than on the PR's base branch. |
+| `workflows/claude.yml` | Runs Claude Code when the account in the repository variable `CLAUDE_ALLOWED_ACTOR` mentions `@claude` in an issue, a PR or a review; unset, nobody can start it. It reads code and CI results and writes comments, never pushes. Needs the secret `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`). |
 
 To grow the agent context on purpose, update `.agents/context-budget.json` to the values `TestAgentContextBudget` prints, and ask a maintainer to add the `agent-context-increase` label. The check reruns on the label event.
 
-Every workflow that runs on PRs must also work for [stacked pull requests](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs), where a layer's base is the branch below it, not `main`. Compare with the merge commit's first parent (`HEAD^1`) or `pull_request.base.sha`, never a freshly fetched `main`, so each layer is judged on its own change. `github.event.pull_request.stack` exists only for stacked PRs; guard it with `!= null`.
-
 Pin every workflow action to a full commit SHA with a `# vX.Y.Z` comment (`TestPinnedActions` enforces it); Dependabot keeps both current. Check a new pin with `git ls-remote https://github.com/OWNER/REPO refs/tags/vX.Y.Z*` (use the `^{}` line for annotated tags).
+
+### Review bots
+
+Macroscope reads [`.macroscope/`](../../.macroscope): `approvability.md` (what needs human review), `ignore.md` (skipped files) and the check-run agents in `check-run-agents/`. CodeRabbit reads [`.coderabbit.config.ts`](../../.coderabbit.config.ts), which it evaluates on its side, so the repository needs no Node toolchain for it. Codex reads [Code review rules](../../AGENTS.md#code-review-rules) in AGENTS.md. All three point at the rules in AGENTS.md, `docs/internals/` and `SECURITY.md`; change a rule and the bot file that repeats it together.
+
+## GitHub workflows
+
+These are the rules for `main`; the ruleset that enforces them is applied at the public switch ([backlog](../backlog.md#at-the-public--pr-switch)). `main` takes only squash-merged PRs that are up to date and pass `Check`, `PR title` and `Agent context budget`. Bring a Dependabot PR up to date with a `@dependabot rebase` comment, not "Update branch": Dependabot stops rebasing a PR once someone else pushed to it.
+
+Every workflow that runs on PRs must also work for [stacked pull requests](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs):
+
+- A `pull_request` workflow runs for every layer of a stack, as if the layer targeted `main`.
+- A layer's base is the branch below it, not `main`. Compare with the merge commit's first parent (`HEAD^1`) or `pull_request.base.sha`, never a freshly fetched `main`, so each layer is judged on its own change. The CI [change base](#change-base) does this.
+- `github.event.pull_request.stack` exists only for stacked PRs; guard it with `!= null`.
+- Merging a stack through the API needs the asynchronous merge endpoint.
+- Stacks cannot span forks, so only people with write access stack.
 
 ## Reference checkouts
 

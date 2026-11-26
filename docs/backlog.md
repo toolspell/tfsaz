@@ -33,7 +33,6 @@ Deferred work, so any session or worktree can pick it up.
 
 ## At the public / PR switch
 
-- **Review bots and review rules:** CodeRabbit config with path instructions, Macroscope approvability, Codex review, and a `claude.yml` workflow (actor-restricted, comment-only). Add a "Code review rules" section to AGENTS.md that maps areas to the docs owning their rules, and Macroscope check-run agents such as test-signal. Pointers: Toolspell `.coderabbit.config.ts`, `.macroscope/approvability.md`, `.macroscope/check-run-agents/`, `.github/workflows/claude.yml`.
 - **Required checks:** require `PR title`, `Agent context budget` and the roll-up job `Check` of `.github/workflows/test.yml` in the ruleset, not the individual CI jobs ([CI](operations/development.md#required-check)).
 - **Repo settings and rulesets** (Toolspell's phase-1 setup):
   - squash-only merges and auto-delete of merged branches;

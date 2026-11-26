@@ -100,6 +100,30 @@ TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter 
   - Fixtures carry no identities, internal URLs or secrets. Offline and live results stay separate; live gates stay opt-in.
 - Pick a mechanical guard by what it reads: a pattern inside one Go file belongs to golangci-lint (`.golangci.yml`); a check across files, on Markdown or on whether files exist is a Go test, like `TestDocLinks` in `docs_links_test.go`. A deliberate exception carries a written reason.
 
+## Pull requests
+
+- Open a PR only when asked. One request is one PR.
+- Title: a conventional commit in plain language, such as `fix(setup): restore no longer leaves a lock file`. PRs are squash merged, so it becomes the commit on `main`.
+- Body: fill in the [PR template](.github/pull_request_template.md). The problem in a sentence or two, then how you fixed it. End with the model and harness that did the work.
+- Babysit a PR with `watch_pull_request`; never poll checks or reviews.
+- Workflows that run on PRs must work for stacked PRs: [GitHub workflows](docs/operations/development.md#github-workflows).
+- Outside contributions follow [CONTRIBUTING.md](CONTRIBUTING.md).
+- Ask Codex for a second review (`@codex review`) only after a significant change since its last review: new behavior, a redesign of reviewed logic, or a new change to credentials, system changes or a command T3 calls. Not for fixes of review findings, rebases, docs, tests or formatting.
+
+## Code review rules
+
+Review each changed file against the doc that owns its rules, and read that doc first:
+
+- Commands T3 calls: [Compatibility contract](#compatibility-contract) and [T3 compatibility](docs/internals/t3-compatibility.md).
+- REST calls (`invoke.go`, `catalog.go`, `rest_url.go`, `generic_http.go`, `api_*.go`): [REST API](docs/internals/rest-api.md).
+- PATs, collection selection and authenticated HTTP: [Credentials](#credentials), [Architecture](docs/internals/architecture.md#authentication-and-routing-rules) and the trust model in [SECURITY.md](SECURITY.md).
+- Changes outside TFSaz's configuration (`setup_*`, `preserve_*`, `route_*`, `https_*`, `link_*`, `shim*`): [Reversible and verifiable system changes](#reversible-and-verifiable-system-changes), [Security-affecting features are intended](#security-affecting-features-are-intended) and [What TFSaz changes on the machine](SECURITY.md#what-tfsaz-changes-on-the-machine).
+- OS-specific code and user doc steps: [Platform parity](#platform-parity).
+- Tests: [Testing](docs/internals/testing.md); ask for a test only as it allows.
+- Docs, help and error texts: [Documentation rules](#documentation-rules) and [Naming](docs/internals/naming.md).
+
+Review bots repeat these rules in their own files ([Development](docs/operations/development.md#review-bots)); change a rule and those files together.
+
 ## Code comments
 
 Default to no comment. Existing comments record what the code can't show: a server quirk ("Server 2022.2 accepts adding an empty tag string but keeps existing tags"), a T3 expectation (time budgets, path encoding) or a security reason. Keep new ones to that, in a line or two. Don't narrate steps or record history.
