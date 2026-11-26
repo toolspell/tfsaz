@@ -50,6 +50,25 @@ These files in `.github/` take effect once they are pushed to GitHub; locally th
 
 Pin every workflow action to a full commit SHA with a `# vX.Y.Z` comment (`TestPinnedActions` enforces it); Dependabot keeps both current. Check a new pin with `git ls-remote https://github.com/OWNER/REPO refs/tags/vX.Y.Z*` (use the `^{}` line for annotated tags).
 
+## Reference checkouts
+
+Agents and maintainers read upstream reference code (T3 Code, Azure CLI, the Azure DevOps CLI extension, knack) only from the gitignored `.reference-apps/` folder. [T3 compatibility](../internals/t3-compatibility.md#references) explains what each one is for.
+
+```sh
+go run ./tools/syncrepos                 # all entries
+go run ./tools/syncrepos --repo t3code   # one entry
+```
+
+- Run it from anywhere inside the repository; each worktree gets its own folder. It needs Git and network access, and about 11 MB in total.
+- For each entry it clones or fetches only the pinned commit, applies the sparse paths, checks out that commit, resets local edits and stray files, and verifies the HEAD, the sparse patterns, a clean tree and that every listed path exists. A second run that finds everything in place downloads nothing.
+- Tests and CI never need it; `go test ./...` skips the folder.
+
+To bump a pin, edit the entry in `tools/syncrepos/main.go` (tag, full commit, sparse paths) and run the sync. It fails if a listed path no longer exists at the new commit. The `t3code` pin moves together with the T3 revision in [T3 compatibility](../internals/t3-compatibility.md#keeping-coverage-current); the steps per entry are in the skills `.agents/skills/reference-t3code` and `.agents/skills/reference-azure-cli`.
+
+### Agent skills
+
+Skills live in `.agents/skills/`, which Codex reads. Claude Code reads `.claude/skills`, a committed symlink to `../.agents/skills`. On Windows, Git checks out that symlink as a plain text file unless symlinks are enabled: turn on Developer Mode and clone with `git clone -c core.symlinks=true`. Otherwise Claude Code finds no project skills there; the skill files themselves stay readable in `.agents/skills/`.
+
 ## Stock T3 adapter test
 
 The opt-in integration test builds the actual executable and runs T3's existing Azure adapter against it. It requires Git, Node with TypeScript support (tested with Node 26), a T3 source tree with its lockfile dependencies installed, and a usable OS keyring. It creates a random keyring entry for its loopback server and removes the entry at the end.
@@ -60,7 +79,7 @@ TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter 
 
 In PowerShell, set `$env:TFSAZ_T3_ROOT = 'C:\path\to\t3code'`, then run the same `go test` command. Use a logon with a loaded user profile and an accessible Credential Manager. For unattended Linux runs, start an unlocked Secret Service collection on the test session's D-Bus. The fixture uses its own random keyring entry.
 
-Users do not need a T3 source checkout; only this test does.
+Users do not need a T3 source checkout; only this test does. The sparse `.reference-apps/t3code` cannot serve it, because it holds only the adapter sources and no dependencies.
 
 ## Opt-in live system tests
 

@@ -20,3 +20,6 @@
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Reference checkouts synced by go run ./tools/syncrepos
+/.reference-apps/

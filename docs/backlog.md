@@ -33,7 +33,7 @@ Deferred work, so any session or worktree can pick it up.
   - **Workflow run:** run the real workflow locally with nektos/act, optionally on a remote Docker context (Toolspell `vp run ci:local`, `scripts/ci-local.ts`). A green run is evidence, not proof. act runs only Linux containers, so the macOS and Windows jobs of `.github/workflows/test.yml` need another route, for example the test machines or VMs from the test-environment runbook item.
   - **Checks before a commit or push:** one fast, affected-only entry point (gofmt, `go vet`, a linter, `go test` on affected packages) that agents run before committing, and a `ready` entry point next to it for the full local suite before a push. Document both in `docs/operations/development.md` and the AGENTS.md "Verify" section. Pointers: Toolspell `scripts/check-changed.ts` (`vp run check:changed`, merge base with `main`, uncommitted and untracked files included) and `ready` in `package.json`.
   - **Pre-commit hook:** a versioned `.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks`, running `gofmt -l`, `go vet`, `gitleaks --staged` and the em-dash check on staged files. Pointers: Toolspell `.vite-hooks/pre-commit`, which runs `vp staged` with the `staged:` list in `vite.config.ts` (format, lint, naming, pinned actions, gitleaks `--staged`).
-- **Agent skills:** keep skills in `.agents/skills/`, linked to `.claude/skills`, as Toolspell does. Candidates: a `reference-t3code` skill (pairs with the reference-repo item) and a testbed/VM verification skill (pairs with the test-environment runbook item).
+- **Agent skills:** a testbed/VM verification skill in `.agents/skills/` (pairs with the test-environment runbook item).
 
 ## At the public / PR switch
 
@@ -51,6 +51,7 @@ Deferred work, so any session or worktree can pick it up.
 ## Later
 
 - **Release pipeline:** signed or checksummed binaries for macOS, Windows and Linux (for example with goreleaser). The README states there is no release yet.
+- **Skills link on Windows:** `.claude/skills` is a committed symlink, which Git checks out as a text file on Windows without `core.symlinks`, so Claude Code sees no project skills there. Let the worktree setup script below create a directory junction instead, and verify it on Windows.
 - **Worktree setup script**, run as the T3 project's "Setup Worktree" script when a worktree is created, so new agent worktrees are ready to use. For Go probably just `go mod download` plus enabling the hooks path. Pointer: Toolspell `scripts/setup-worktree.ts`.
 
 ## Code
@@ -85,5 +86,4 @@ Deferred work, so any session or worktree can pick it up.
   - `docs/operations/development.md`: T3 adapter test prerequisites, Windows logon with a loaded profile for Credential Manager, an unlocked Secret Service collection on Linux, the live system test variables.
   - `docs/verification/live-t3-2026-11.md`: server version 2022.2, two collections on one server (one name with a space) with distinct aliases, T3 Nightly with an isolated data directory, GNOME Keyring session on Ubuntu, password-backed Windows logon, explicitly trusted testbed CA, Git for Windows' OpenSSH.
   - `docs/verification/browser-routing.md`: disposable browser profiles, Windows over SSH versus RDP, `t3 browser setup` for AppArmor on Ubuntu.
-- **Reference repos in a dotfolder:** adopt Toolspell's approach of pinned, read-only reference checkouts in a gitignored dotfolder (Toolspell: `.reference-apps/` synced by `scripts/sync-repos.ts`, each entry with a pinned commit and sparse-checkout exclusions; its AGENTS.md says to read reference code only from there, never from another checkout on the machine). Candidates: `pingdotgg/t3code` (pinned to the commit `docs/internals/t3-compatibility.md` names), `Azure/azure-cli`, `Azure/azure-devops-cli-extension`. Then point AGENTS.md and `t3-compatibility.md` at that folder instead of "a T3 Code checkout" and GitHub links.
 - **Structure-phase rule:** remove the structure-phase no-code-changes rule from AGENTS.md once the repo setup is done.

@@ -4,22 +4,30 @@ T3's invocation of `az` is the compatibility contract. This page records where t
 
 ## References
 
-Use a T3 Code source checkout ([upstream](https://github.com/pingdotgg/t3code)) as the source and documentation reference. The initial investigation used commit `c478fde9fe`; the explanation below was rechecked against a later nightly. Check the actual adapter and its tests when implementing a command.
+Read reference code only from the gitignored `.reference-apps/` folder, synced with `go run ./tools/syncrepos` ([Development](../operations/development.md#reference-checkouts)). Each entry is a sparse checkout of a pinned commit, so file paths and citations stay valid until someone re-pins. Never read it from another checkout or installation on the machine, which may be a fork or at another revision.
 
-In T3's `packages/source-control-azure-devops` package, start with these files:
+| Entry | Pin | Role |
+| --- | --- | --- |
+| `t3code` | `v0.1.13-nightly.20261125.5258` (`bf961f8121`), the revision below | The compatibility contract: what T3 calls and consumes. Skill: `reference-t3code`. |
+| `azure-cli` | `azure-cli-2.93.0` | Behavioral reference for `az`: command surface, parsing, output, errors and exit codes. Skill: `reference-azure-cli`. |
+| `azure-devops-cli-extension` | `20261117.1` (1.0.12) | Behavioral reference for the DevOps commands, `devops invoke`, connection data and identity lookups. Skill: `reference-azure-cli`. |
+| `knack` | `v0.14.0`, the version azure-cli pins | The CLI framework under azure-cli: `-o` formats, `--query` and parser exit codes. Skill: `reference-azure-cli`. |
+
+They are references, not templates: tfsaz reproduces observable behavior and copies no code. Where T3's calls and Microsoft's `az` differ, T3 wins.
+
+In T3's `packages/source-control-azure-devops` package, start with these files and their tests:
 
 | File | What it defines |
 | --- | --- |
 | `src/shared/definition.ts` | Remote and PR URL recognition |
 | `src/server/AzureDevOpsCli.ts` | Argument rewriting |
 | `src/server/AzureDevOpsPullRequestCli.ts` and `src/server/AzureDevOpsPullRequestProvider.ts` | The JSON and exit behavior T3 consumes |
-
-T3's source-control user guide is `docs/user/source-control.md` in that checkout.
-
-Microsoft's [Azure CLI](https://github.com/Azure/azure-cli) and [Azure DevOps CLI extension](https://github.com/Azure/azure-devops-cli-extension) are behavioral references. The extension's `azure-devops/azext_devops/dev/common/identities.py` illustrates the collection connection-data lookup.
-
 | `src/server/AzureDevOpsSourceControlProvider.ts` | The discovery probes (`--version`, `account show`) and the install hint |
 | `src/server/azureCliLauncher.ts` | How T3 finds `az` on Windows |
+
+T3's source-control user guide is `docs/user/source-control.md` in that checkout. The extension's `azure-devops/azext_devops/dev/common/identities.py` illustrates the collection connection-data lookup.
+
+`TestStockT3Adapter` cannot use the sparse checkout: it needs a full T3 source tree with its dependencies installed, passed as `TFSAZ_T3_ROOT` ([Development](../operations/development.md#stock-t3-adapter-test)).
 
 ## Why stock T3 cannot reach Azure DevOps Server
 
@@ -59,5 +67,5 @@ How tfsaz bridges each gap:
 
 The user page [What works in T3](../user/t3-features.md) states what the stock adapter can do with tfsaz, and the [command table](../user/az-compatibility.md#commands-t3-calls) lists the implemented calls. Both are tied to the T3 revision above.
 
-- When moving to a newer T3 revision, repeat the audit: compare the stock source-control, PR and issue providers and their tests with the CLI dispatcher, then update both pages, the T3 constraint in the [README](../../README.md#before-you-use-it) and the revision.
+- When moving to a newer T3 revision, repeat the audit: compare the stock source-control, PR and issue providers and their tests with the CLI dispatcher, then update both pages, the T3 constraint in the [README](../../README.md#before-you-use-it), the revision and the `t3code` pin in `tools/syncrepos/main.go`.
 - Record new live checks in [`docs/verification/`](../verification/), not on the user pages.

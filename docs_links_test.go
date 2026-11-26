@@ -29,7 +29,7 @@ func TestDocLinks(t *testing.T) {
 			return err
 		}
 		p = filepath.ToSlash(p)
-		if d.IsDir() && (p == ".git" || p == "testdata" || strings.HasSuffix(p, "/testdata")) {
+		if d.IsDir() && (p == ".git" || p == ".reference-apps" || p == "testdata" || strings.HasSuffix(p, "/testdata")) {
 			return filepath.SkipDir
 		}
 		if !d.IsDir() && (strings.HasSuffix(p, ".go") || p == "README.md" || p == "AGENTS.md" || strings.HasPrefix(p, "docs/") && strings.HasSuffix(p, ".md")) {

@@ -55,6 +55,8 @@ macOS, Linux and Windows are fully supported at feature parity. Platform-specifi
   - `route_*.go`, `https_*.go`, `link_*.go`, `browser_target.go`: routing. `*_darwin.go`, `*_linux.go`, `*_windows.go` hold the OS integration.
   - `t3_test.go`: the stock T3 adapter test. `testdata/`: fixtures.
 - `.github/workflows/test.yml`: CI on macOS, Windows and Ubuntu.
+- `tools/syncrepos`: syncs the reference checkouts. `.agents/skills/`: agent skills, linked as `.claude/skills`.
+- `.reference-apps/<name>`: gitignored, pinned sparse checkouts of T3 Code, Azure CLI, the Azure DevOps CLI extension and knack, synced with `go run ./tools/syncrepos [--repo <name>]`. Read reference code only there, never from another checkout or installation on this machine, which may be a fork or at another revision. Never edit or import from it.
 
 ## Verify
 
@@ -67,7 +69,7 @@ TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter 
 ```
 
 - While iterating, run focused tests (`go test -count=1 ./internal/az -run 'TestName'`). Run the full suite once at the end; `internal/az` takes about 35 s. Details: [Development](docs/operations/development.md).
-- When a change touches a command T3 calls, run `TestStockT3Adapter` (the last line; needs a T3 checkout with dependencies installed). Without one, say in the handoff that it did not run.
+- When a change touches a command T3 calls, run `TestStockT3Adapter` (the last line; needs a full T3 source tree with dependencies installed, which the sparse `.reference-apps/t3code` is not). Without one, say in the handoff that it did not run.
 - Before you write or review a test, read [Testing](docs/internals/testing.md), the one home of the test rules. Short version:
   - A bug fix starts with a test that fails before the fix. Extend an existing table or case before you add a test.
   - Isolate every test: temp `TFSAZ_CONFIG`, `memoryStore`, stubbed `runRouteSystemCommand`, temp `HOME`/`USERPROFILE`, isolated Git config, loopback servers ([Ways to hurt yourself](#ways-to-hurt-yourself)).
@@ -89,7 +91,7 @@ Default to no comment. Existing comments record what the code can't show: a serv
 | Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why tfsaz is needed, adapter files, keeping coverage current), [testing](docs/internals/testing.md) (test rules) |
 | Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI. `docs/verification/`: dated live records. [`docs/backlog.md`](docs/backlog.md): deferred work, including the code-reference scan |
 
-When implementing a command, read the T3 adapter and its tests first; [T3 compatibility](docs/internals/t3-compatibility.md) names the files.
+When implementing a command, read the T3 adapter and its tests first (skill `reference-t3code`); [T3 compatibility](docs/internals/t3-compatibility.md) names the files. For how Microsoft's `az` parses, formats output and fails, the behavioral reference tfsaz mimics, use skill `reference-azure-cli`. Both are references, not templates.
 
 ## Documentation rules
 
