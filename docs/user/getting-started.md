@@ -12,8 +12,8 @@ What changes for you:
 | --- | --- |
 | `az` on the T3 backend | `az` is tfsaz. If you also use Microsoft's Azure CLI, keep it in a separate directory and choose PATH order per process. See [Install](install.md#put-the-shim-on-t3s-path). |
 | Sign-in | A PAT per collection in the OS keyring instead of `az login`. If T3 asks you to run `az login` or `az devops login`, run `tfsaz devops login --organization URL`. See [Configure](configure.md). |
-| Your checkout's `origin` | `repo setup` replaces it with an Azure-style URL on a generated `tfsaz-<24 hex>.visualstudio.com` host, which T3 recognizes. Git still reaches the real server over the original HTTPS or SSH transport. `repo restore` brings back the original URL. See [Set up a checkout](checkout-setup.md). |
-| Links T3 opens | Links use the Azure-style host. Without [routing](routing.md), public DNS resolves that host to Azure, not to your server. |
+| Your checkout's `origin` | `repo setup` replaces it with a synthetic URL on a generated `tfsaz-<24 hex>.visualstudio.com` alias host, which T3 recognizes. Git still reaches the real server over the original HTTPS or SSH transport. `repo restore` brings back the original URL. See [Set up a checkout](checkout-setup.md). |
+| Links T3 opens | Links use the alias host. Without [routing](routing.md), public DNS resolves that host to Azure, not to your server. |
 
 ## Quickstart
 

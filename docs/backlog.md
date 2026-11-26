@@ -17,9 +17,8 @@ Deferred work, so any session or worktree can pick it up.
   - leftovers such as large or stray files.
 
   If something turns up, the history has to be rewritten. That is easiest before anyone else clones the repo.
-- **Naming guidelines:** check or create them. tfsaz stands for itself but has no product name yet, and it shims the `az` CLI command, so a guideline on how to write and refer to tfsaz, the `az` shim, `git-remote-tfsaz` and Microsoft's Azure CLI is important. Pointers: Toolspell `docs/internals/naming.md`, `scripts/check-naming.ts`.
+- **Decide the product name:** tfsaz is a working name. A rename also changes persisted names (keyring services, `TFSAZ_` variables, `~/.tfsaz`, `tfsaz-<24 hex>` alias hosts, `remote.origin.vcs=tfsaz`, link handler IDs) and needs a migration. [Naming](internals/naming.md#tfsaz-is-a-working-name) lists them.
 - **License decision and CONTRIBUTING.md:** the README has only placeholders, and GitHub shows no license.
-- **SECURITY.md:** threat model and reporting path, covering PAT handling, the redirect listener and the hosts and trust-store changes. The repo has none. Pointer: Toolspell `SECURITY.md`.
 - **CI path filter:** skip the 3-OS test matrix (about 5 minutes) on docs-only changes, using affected detection. Pointer: Toolspell `scripts/ci-changes.ts`.
 - **Secrets scan in CI:** run gitleaks over the pushed commits in CI, as `go run ./tools/dev ready` does locally (pinned in `tools/gitleaks`, config `.gitleaks.toml`). PATs are the core risk. Pointer: Toolspell `scripts/check-secrets.ts`.
 - **Local checks in CI:** CI runs only `go vet` and `go test -race`. Add golangci-lint new issues, `go mod tidy -diff`, actionlint and govulncheck, using the pinned tool modules (`tools/<name>/go.mod`).
@@ -35,7 +34,7 @@ Deferred work, so any session or worktree can pick it up.
   - squash-only merges and auto-delete of merged branches;
   - a ruleset on `main` with required checks, the strict up-to-date rule and no force push;
   - secret scanning with push protection, private vulnerability reporting and the org security configuration.
-- **Security contact link:** `.github/ISSUE_TEMPLATE/config.yml` links `SECURITY.md` as the place to report vulnerabilities. Enable private vulnerability reporting at the switch, or the link leads to a policy with no private channel.
+- **Security contact link:** `.github/ISSUE_TEMPLATE/config.yml` links `SECURITY.md` as the place to report vulnerabilities, and [SECURITY.md](../SECURITY.md#report-a-vulnerability) sends reporters to GitHub's private vulnerability reporting once the repository is public. Enable private vulnerability reporting at the switch, or both lead to a policy with no private channel.
 - **CodeQL default setup for Go plus Copilot Autofix**, both free for public repositories.
 - **Vouch and contribution triage** for outside contributors. Pointers: Toolspell `.github/workflows/vouch.yml`, `.github/VOUCHED.td`, `.agents/skills/contribution-triage/`.
 - **Agent context budget** (decided): measured AGENTS.md bytes in a JSON file, a Go test that keeps it exact, an AGENTS.md rule, and a label-gated CI check. Pointers: Toolspell `scripts/agent-context-budget.json`, `scripts/agent-docs.test.ts`, `.github/workflows/agent-context-budget.yml`.
@@ -56,6 +55,13 @@ Deferred work, so any session or worktree can pick it up.
   - darwin only: `linkHandlerPaths` (`link_open.go:50`); `writeRootFile`, `reserveRoutePort`, `ownsRoutePort`, `releaseRoutePort` and the const `routePortOwner` in `route_system_unix.go`, which only linux uses.
   - linux only: `editRouteHosts` (`route_system_hosts.go:24`). windows only: `routeHostsShell` and `shellQuote` (`route_system_hosts.go:91`, `:134`), and the test helpers `routeSystemCall` and `fakeRouteSystemCommands` (`route_system_test.go:254`, `:261`).
 - **Real keyring in managed-SSH setup:** `internal/az/setup_route.go:217` reads the system keyring when managed-SSH `repo setup` runs on an HTTPS origin without `--ssh-url`. Tests avoid it only because they use `ssh://` origins.
+- **Texts that break the [naming rules](internals/naming.md)**, in help and error strings and agent files:
+  - `internal/az/help.go:235` (`doctor`): "Check the CLI" should say tfsaz.
+  - `internal/az/help.go:131` (`rest --url`): "organization alias" should be "Azure-style alias".
+  - `internal/az/help.go:379` (`route`): "Azure-style URLs" should be "synthetic URLs".
+  - `internal/az/help.go:380`, `internal/az/shim.go:69`, `internal/az/shim.go:106`: "launchers", "CLI and Git helper launchers", "tfsaz launcher" should be "shims" (`az` and `git-remote-tfsaz`).
+  - "Microsoft's `az`" should be "Microsoft's Azure CLI" in AGENTS.md (the line after the docs map), `.agents/skills/reference-azure-cli/SKILL.md:8` and `.agents/skills/reference-t3code/SKILL.md:35`.
+  - `internal/az/preserve_git.go:27` ("the tfsaz remote helper") and `internal/az/setup_transport.go:76` ("Git transport helper") should name `git-remote-tfsaz`.
 - **Tests that poll with `time.Sleep`:** candidates for waiting on an event instead ([Testing](internals/testing.md#waiting)). Four calls in three files:
   - `internal/az/route_system_darwin_test.go:286` (`TestInheritedRedirectServes`): retries an HTTPS GET every 100 ms until the child serves. The child could signal readiness instead.
   - `internal/az/link_export_linux_test.go:101` (`TestDesktopLinkHandlerGIOArguments`): polls a trace file every 10 ms after `gio launch`. GIO starts the receiver detached, so there may be no event to wait on; if so, keep it and add the reason as a comment.
@@ -71,6 +77,7 @@ Deferred work, so any session or worktree can pick it up.
   - Secret Service availability for go-keyring inside WSL.
   - Git and SSH transport across the WSL/Windows boundary.
   - T3's own adapter already mentions "Windows az running in WSL" (`AzureDevOpsCli.ts`, scope detection and `@-` stdin text): check which side's `az` T3 runs in that setup.
+- **Windows check of the routing key directory:** on macOS and Linux, the redirector refuses a key file readable by group or others, and setup checks the directory's mode and owner. On Windows, setup sets a protected ACL but nothing checks it later (`internal/az/route_redirect.go:83`, `routeSystemOwnedByUser` in `route_system_windows.go`).
 - **Platform parity gaps** the docs reveal:
   - Linux is documented and tested only on Ubuntu (systemd, nftables, sudo, GIO).
   - Browser trust coverage per OS: check Chrome/Chromium (and Edge) on macOS, Windows and Linux as well as Firefox. Managed setup trusts automatically only in some combinations; Firefox needs manual trust everywhere; the manual trust table covers only Chromium on Ubuntu.

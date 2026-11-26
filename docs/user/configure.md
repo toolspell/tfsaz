@@ -20,7 +20,7 @@ Use **Settings → Source control & issues → Rescan** to confirm discovery in 
 
 ## Configuration file
 
-Alternatively, create `tfsaz/config.json` under your OS user configuration directory, or set `TFSAZ_CONFIG` to the absolute path of your configuration file for both the CLI and T3. For T3 Desktop launched from Finder, the default location avoids relying on a custom variable reaching its backend.
+Alternatively, create `tfsaz/config.json` under your OS user configuration directory, or set `TFSAZ_CONFIG` to the absolute path of your configuration file for both manual tfsaz runs and T3. For T3 Desktop launched from Finder, the default location avoids relying on a custom variable reaching its backend.
 
 | OS | Default configuration directory |
 | --- | --- |
@@ -51,7 +51,7 @@ Alternatively, create `tfsaz/config.json` under your OS user configuration direc
 
 - Give each collection a unique, stable ID.
 - Use its full collection URL, including any port and virtual directory.
-- Optional aliases are full collection or Azure-style organization URLs that select the same profile.
+- Optional aliases are full collection URLs or Azure-style aliases that select the same profile.
 - Every authenticated request uses the profile's `collectionUrl`. Redirects fail closed.
 - TLS uses system trust plus the optional PEM CA file, whose path can be relative to the configuration file.
 

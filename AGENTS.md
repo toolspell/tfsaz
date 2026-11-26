@@ -29,7 +29,7 @@ macOS, Linux and Windows are fully supported at feature parity. Platform-specifi
 - **collection**: one Azure DevOps Server project collection, addressed by its real HTTPS URL including port and virtual directory.
 - **profile**: a configured collection with a stable ID, its Azure-style alias, optional extra aliases and CA, and a PAT in the keyring. Profiles are ordered; discovery uses that order.
 - **Azure-style alias**: a `*.visualstudio.com` organization URL that T3 recognizes and tfsaz maps to a profile's real collection.
-- **synthetic URL**: an Azure-style URL on a generated alias host `tfsaz-<24 hex>.visualstudio.com`, one per project and repository. T3 sees it; nothing on the network serves it unless routing is set up.
+- **synthetic URL**: a URL on a generated alias host `tfsaz-<24 hex>.visualstudio.com`, one per project and repository. T3 sees it; nothing on the network serves it unless routing is set up.
 - **native URL**: the real HTTPS or SSH URL of a repository on the server.
 - **shim**: the `az` and `git-remote-tfsaz` names that `shim install` creates for the tfsaz binary. `main.go` picks the behavior by program name.
 - **managed checkout**: a clone after `repo setup`: the synthetic origin for T3, the native target in its common Git config, registered in `<config>.repo-setups.json`.
@@ -84,9 +84,9 @@ Default to no comment. Existing comments record what the code can't show: a serv
 
 | Audience | Where |
 | --- | --- |
-| Everyone | [README.md](README.md): what tfsaz is, how it works, features, status, constraints, docs index |
+| Everyone | [README.md](README.md): what tfsaz is, how it works, features, status, constraints, docs index. [SECURITY.md](SECURITY.md): what tfsaz protects, scope, reporting |
 | Operators and script authors | `docs/user/`: getting started, install, configure, checkout setup, what works in T3, diagnose, routing, browser routing (managed and manual), desktop link handler, Azure CLI compatibility |
-| Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why tfsaz is needed, adapter files, keeping coverage current), [testing](docs/internals/testing.md) (test rules) |
+| Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why tfsaz is needed, adapter files, keeping coverage current), [testing](docs/internals/testing.md) (test rules), [naming](docs/internals/naming.md) (how to write tfsaz, the `az` shim, Microsoft's Azure CLI and the glossary terms) |
 | Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI. `docs/verification/`: dated live records. [`docs/backlog.md`](docs/backlog.md): deferred work, including the code-reference scan |
 
 When implementing a command, read the T3 adapter and its tests first (skill `reference-t3code`); [T3 compatibility](docs/internals/t3-compatibility.md) names the files. For how Microsoft's `az` parses, formats output and fails, the behavioral reference tfsaz mimics, use skill `reference-azure-cli`. Both are references, not templates.
@@ -99,6 +99,7 @@ When implementing a command, read the T3 adapter and its tests first (skill `ref
 - `docs/operations/`: maintainer runbooks. `docs/verification/`: dated live results, kept in full.
 - When a documented fact changes, rewrite or remove the old text. Do not append a second account.
 - Code and docs in English. No em dashes in markdown.
+- Write names as [Naming](docs/internals/naming.md) says, in docs, help and error texts.
 
 ## Plans and work artifacts
 

@@ -6,7 +6,7 @@ Install tfsaz on the machine running the T3 backend, whether you use the install
 
 Build with Go 1.26 or newer, or use an installed tfsaz executable.
 
-**macOS and Linux.** From the tfsaz source directory, build the CLI, install the two helper names and enable them in the current shell.
+**macOS and Linux.** From the tfsaz source directory, build tfsaz, create the two shims and enable them in the current shell.
 
 ```sh
 mkdir -p "$HOME/.local/bin"

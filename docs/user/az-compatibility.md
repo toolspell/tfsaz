@@ -2,16 +2,16 @@
 
 ## Commands T3 calls
 
-These are the Azure CLI calls used by the stock T3 adapter at revision `c478fde9fe`. Use the `tfsaz` executable directly for manual calls, or use `az` with the tfsaz launcher first on PATH.
+These are the `az` calls used by the stock T3 adapter at revision `c478fde9fe`. Use the `tfsaz` executable directly for manual calls, or `az` with the `az` shim first on PATH.
 
 | Command | Behavior |
 | --- | --- |
 | `az --version` | Prints the tfsaz version before configuration or authentication. |
 | `az account show --query user.name -o tsv` | Prints the first verified login in profile order. Fails if none verify. |
-| `az account show --query user` | Returns the verified login for the selected collection as JSON. If connection data gives a bare account, the CLI queries the same collection for its qualified login. |
+| `az account show --query user` | Returns the verified login for the selected collection as JSON. If connection data gives a bare account, tfsaz queries the same collection for its qualified login. |
 | `az repos create --project P --name NAME` | Creates a Git repository in the selected project. |
 | `az repos show` | Returns repository details, including clone URLs and default branch. |
-| `az repos pr show --id N` | Returns the PR with its Azure-style web link. |
+| `az repos pr show --id N` | Returns the PR with its web link on the Azure-style alias. |
 | `az repos pr list` | Returns a JSON array with T3's repository, branch, status, creator/reviewer and paging filters. |
 | `az repos pr create` and `az repos pr update` | Create draft or ready PRs, edit title and description, change draft or lifecycle status, configure auto-complete, and complete with merge or squash. |
 | `az repos pr reviewer add` and `remove` | Resolve reviewers within the collection and update the selected PR. |
@@ -32,7 +32,7 @@ Use `devops login --organization URL` to set up the on-premises PAT, including w
 
 ## Select the collection
 
-For API requests, an explicit `--organization` or `--org` selects the profile even from a checkout belonging to another collection. Outside a recognized checkout, supply the organization and any required project and repository. Work-item links use the selected Azure-style organization. WIQL queries and batch reads use HTTP POST to retrieve data.
+For API requests, an explicit `--organization` or `--org` selects the profile even from a checkout belonging to another collection. Outside a recognized checkout, supply the organization and any required project and repository. Work-item links use the selected Azure-style alias. WIQL queries and batch reads use HTTP POST to retrieve data.
 
 ```sh
 az account show --query user -o json --org https://engineering-example.visualstudio.com
@@ -44,7 +44,7 @@ az boards work-item show --org https://engineering-example.visualstudio.com --id
 
 ## Discover and call REST resources
 
-From a configured checkout, list the selected collection’s live resource catalog with `az devops invoke`. Outside a checkout, add `--org` and the configured organization or collection URL. Each row includes the server’s area, resource name, route template and version range. Area and resource selectors are case-insensitive. JMESPath comparisons use the casing in the returned JSON.
+From a configured checkout, list the selected collection’s live resource catalog with `az devops invoke`. Outside a checkout, add `--org` and the profile's Azure-style alias or collection URL. Each row includes the server’s area, resource name, route template and version range. Area and resource selectors are case-insensitive. JMESPath comparisons use the casing in the returned JSON.
 
 ```sh
 az devops invoke --area build --query '[].[resourceName,routeTemplate]' -o tsv
@@ -53,11 +53,11 @@ az devops invoke --area build --resource definitions --route-parameters 'project
 az rest --method get --url '/_apis/projects?api-version=7.1' --query 'value[].name' -o tsv
 ```
 
-For generic `devops invoke` calls, `tfsaz` requests `OPTIONS _apis?allHostTypes=true` from the collection, resolves the advertised route, and negotiates the requested version (default 5.0). Supply placeholders with `--route-parameters key=value` and query values with `--query-parameters key=value`. Stock T3’s existing PR and Boards calls retain their specialized handling for file contents, workflow states and links. Supply IDs that occur between fixed route segments. If multiple templates still match, use `az rest` with the explicit collection API URL.
+For generic `devops invoke` calls, tfsaz requests `OPTIONS _apis?allHostTypes=true` from the collection, resolves the advertised route, and negotiates the requested version (default 5.0). Supply placeholders with `--route-parameters key=value` and query values with `--query-parameters key=value`. Stock T3’s existing PR and Boards calls retain their specialized handling for file contents, workflow states and links. Supply IDs that occur between fixed route segments. If multiple templates still match, use `az rest` with the explicit collection API URL.
 
 ## Call REST directly
 
-`az rest --url` accepts a configured collection’s real HTTPS URL, its Azure-style alias, or a collection-relative API path in a recognized checkout. The CLI routes REST (`_apis`), Analytics (`_odata`) and Artifacts (`_packaging`) paths directly to the configured collection and refuses redirects. Both REST commands default to GET and accept explicit HEAD, OPTIONS, POST, PUT, PATCH and DELETE. Write requests operate with the selected PAT’s permissions.
+`az rest --url` accepts a configured collection’s real HTTPS URL, its Azure-style alias, or a collection-relative API path in a recognized checkout. tfsaz routes REST (`_apis`), Analytics (`_odata`) and Artifacts (`_packaging`) paths directly to the configured collection and refuses redirects. Both REST commands default to GET and accept explicit HEAD, OPTIONS, POST, PUT, PATCH and DELETE. Write requests operate with the selected PAT’s permissions.
 
 ### Request bodies, headers and output
 

@@ -4,11 +4,11 @@ tfsaz is a standalone Go CLI that lets an unmodified T3 Code use Azure DevOps Se
 
 ## Authentication and routing rules
 
-These rules hold for every command. Change them only deliberately.
+These rules hold for every command. Change them only deliberately, and update [SECURITY.md](../../SECURITY.md), which lists the resulting boundaries, in the same change.
 
 ### Profiles
 
-- Keep an ordered list of collection profiles. Each has a stable ID, an Azure-style organization alias, and its full, real HTTPS collection URL.
+- Keep an ordered list of collection profiles. Each has a stable ID, an Azure-style alias, and its full, real HTTPS collection URL.
 - Preserve collection path prefixes, ports, and names containing spaces.
 - Treat LAN and Tailscale addresses as aliases for a profile only when explicitly configured.
 - Support the OS trust store and a profile-specific CA for private TLS.
@@ -30,19 +30,19 @@ These rules hold for every command. Change them only deliberately.
 
 ### Sending credentials
 
-- Map the recognized Azure-style organization to its real collection before sending credentials.
+- Map the recognized Azure-style alias to its real collection before sending credentials.
 - Send a PAT only to the configured collection and guard redirects accordingly: they fail closed.
-- Return PR web links under the same Azure-style repository identity that T3 used to select the checkout.
+- Return PR web links under the same alias host that T3 used to select the checkout.
 
 ## Design decisions
 
 ### Azure-style aliases instead of native URLs
 
-Stock T3 enables its Azure provider only for a recognized Azure-style remote. The server's native HTTPS or SSH URL alone does not enable it. tfsaz therefore gives T3 a synthetic `*.visualstudio.com` identity and keeps the native URL for everything that talks to the server.
+Stock T3 enables its Azure provider only for a remote on `dev.azure.com` or `*.visualstudio.com`. The server's native HTTPS or SSH URL alone does not enable it. tfsaz therefore gives T3 an Azure-style alias and keeps the native URL for everything that talks to the server.
 
 - T3 groups some viewer reads by host. Several collections need distinct recognized hostnames, or "my PRs" mixes them up.
 - Each project/repository pair gets its own stable hostname. A repository-bound alias accepts only paths of that project and repository.
-- Every code path that sends a credential or opens a connection must map the alias to the real collection first. Without a local hosts entry, public DNS resolves the synthetic names to Azure.
+- Every code path that sends a credential or opens a connection must map the alias to the real collection first. Without a local hosts entry, public DNS resolves the alias hosts to Azure.
 
 ### Git keeps the native transport
 
@@ -50,7 +50,7 @@ A managed checkout keeps the synthetic origin for T3 and sets `remote.origin.vcs
 
 - Plain Git must keep working with T3 closed and `TFSAZ_CONFIG` unset. Do not make the helper depend on the tfsaz config or the keyring.
 - Storing the target in the common Git directory makes linked worktrees, including ones created later by Git or T3, share one mapping.
-- Git authenticates with its own HTTPS or SSH credentials. Git does not receive the CLI's PAT.
+- Git authenticates with its own HTTPS or SSH credentials. Git does not receive the profile's PAT.
 
 ### Credential service per collection
 

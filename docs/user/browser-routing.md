@@ -1,6 +1,6 @@
 # Browser routing for registered aliases
 
-Use `tfsaz route setup` to open a managed Azure-style link directly in a browser, including T3's built-in Browser panel. The local service redirects the browser to the real collection, where browser sign-in takes place. It serves exact `tfsaz-<24 hex>.visualstudio.com` names registered by `tfsaz init` or `tfsaz repo setup`, including a matching alias explicitly configured on a profile.
+Use `tfsaz route setup` to open a managed checkout's synthetic URLs directly in a browser, including T3's built-in Browser panel. The local service redirects the browser to the real collection, where browser sign-in takes place. It serves exact `tfsaz-<24 hex>.visualstudio.com` names registered by `tfsaz init` or `tfsaz repo setup`, including a matching alias explicitly configured on a profile.
 
 Alternatives:
 
@@ -47,7 +47,7 @@ Setup creates one 90-day certificate for the current set of exact registered ali
 
 ### Check a link
 
-Use `tfsaz route verify 'AZURE_STYLE_PR_URL'` to check a particular link. The CLI checks local resolution, makes a HEAD request through each loopback address on port 443, verifies the exact managed certificate and compares the redirect with the configured destination.
+Use `tfsaz route verify 'AZURE_STYLE_PR_URL'` to check a particular link. tfsaz checks local resolution, makes a HEAD request through each loopback address on port 443, verifies the exact managed certificate and compares the redirect with the configured destination.
 
 Then open the printed URL in the browser you actually use and compare the address bar with the expected URL. It should show the real collection, including the query and fragment. This last step checks that browser's trust and proxy configuration.
 
@@ -56,7 +56,7 @@ Then open the printed URL in the browser you actually use and compare the addres
 - Stop opening alias links before running `tfsaz route restore`, which removes the managed installation.
 - Restore uses the saved identity and works after a checkout or collection profile has been removed. Rerun restore if the OS cleanup is interrupted.
 - After adding or retiring aliases, or before the 90-day certificate expires, run restore followed by setup to refresh the certificate and hosts entries. Clones and worktrees sharing an existing alias can reuse the current certificate.
-- Public DNS can resolve the synthetic names between those commands.
+- Public DNS can resolve the alias hosts between those commands.
 
 ### Troubleshooting
 
