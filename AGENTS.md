@@ -25,7 +25,7 @@ tfsaz solves the problem from outside, against the real installed T3 Code app or
 
 ### Security-affecting features are intended
 
-Some features deliberately change a machine's security state: local trust for a leaf certificate, hosts entries, a loopback listener on port 443, firewall rules, link handlers. tfsaz users are developers who accept that knowingly. Do not remove or weaken such a feature as "insecure". Instead, make sure the user docs and [SECURITY.md](SECURITY.md) say exactly what it changes, why, and how to undo it. Using tfsaz requires trust; transparency earns it.
+Some features deliberately change a machine's security state: local trust for a leaf certificate, hosts entries, a loopback listener on port 443, firewall rules, link handlers. tfsaz users are developers who accept that knowingly. Do not remove or weaken such a feature as "insecure", and do not reject an idea or a possible solution for that reason: tfsaz only works through creative approaches. Instead, make sure the user docs and [SECURITY.md](SECURITY.md) say exactly what it changes, why, and how to undo it. Using tfsaz requires trust; transparency earns it.
 
 ### Credentials
 
@@ -39,7 +39,7 @@ Details and the remaining routing rules: [Architecture](docs/internals/architect
 
 ### Platform parity
 
-macOS, Linux and Windows are fully supported at feature parity. Platform-specific implementations are fine (launchd, systemd, Task Scheduler). A feature or doc step that misses a platform is a gap to report, not a design choice.
+macOS, Linux and Windows are fully supported at feature parity. Platform-specific implementations are fine (launchd, systemd, Task Scheduler). Parity is required to complete a PR, so consider all three platforms in every change, even when a first shot or an experiment is only tried on one. A feature or doc step that misses a platform is a gap to report, not a design choice.
 
 ## Glossary
 
@@ -54,7 +54,7 @@ macOS, Linux and Windows are fully supported at feature parity. Platform-specifi
 
 ## Ways to hurt yourself
 
-1. **Using the real configuration.** Without `TFSAZ_CONFIG`, tfsaz reads the developer's config in the OS user config directory, plus `<config>.repo-setups.json` and `<config>.browser-route` beside it. In tests and manual runs, set `TFSAZ_CONFIG` to an absolute path in a temp directory.
+1. **Using the real configuration.** Without `TFSAZ_CONFIG`, tfsaz reads the developer's config in the OS user config directory, plus `<config>.repo-setups.json` and `<config>.browser-route` beside it. In tests and manual runs, set `TFSAZ_CONFIG` to an absolute path in a temp directory. `route run` still writes helper files to `<OS user config dir>/tfsaz/run`, so isolate it with a temp `HOME` / `%AppData%` as well.
 2. **Writing the real keyring.** `init`, `devops login` and `profile logout` write or delete OS keyring entries (`tfsaz` or `tfsaz/v2/<hash>`). Tests inject the in-memory store through `app{store: ...}`; never use `systemStore` in a test. Only `TestStockT3Adapter` touches the real keyring, with a random entry it removes. Trap: managed-SSH `repo setup` on an HTTPS origin without `--ssh-url` reads the system keyring (`internal/az/setup_route.go`, in the [backlog](docs/backlog.md)).
 3. **Running `route setup` or `route restore` on this machine.** They edit the system hosts file (no override exists), trust stores (login keychain, Windows user Root store, NSS databases), launchd LaunchAgents, systemd units with an nftables table via sudo, or a scheduled task, and write `~/.tfsaz/route-recovery`. Tests replace `runRouteSystemCommand` and set a temp `HOME`, `USERPROFILE` and `TFSAZ_CONFIG`. Keep it that way.
 4. **Rewriting real checkouts.** `repo setup` and `repo restore` change `remote.origin.*` and `core.sshCommand` of the target clone and register it. Run them only on throwaway clones in temp directories, with `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM` isolating Git. Never point them at this worktree or the developer's clones.
