@@ -802,11 +802,13 @@ func TestRepoVerifyChecksCollectionAPI(t *testing.T) {
 	defer server.Close()
 	tests := []struct {
 		name, collection, stored string
+		locked                   bool
 		stdout, stderr, err      string
 	}{
 		{name: "floor", collection: "7.1", stored: clientTestPassword, stdout: "verified API 7.1 for profile test-collection\n"},
 		{name: "below floor", collection: "6.0", stored: clientTestPassword, err: "profile test-collection: the collection supports API 6.0 at most"},
 		{name: "no PAT skips the check", collection: "7.1", stderr: "WARNING: API version not checked: profile test-collection has no PAT"},
+		{name: "locked store fails", collection: "7.1", stored: clientTestPassword, locked: true, err: "API version not checked: credential store locked or unavailable"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -814,6 +816,9 @@ func TestRepoVerifyChecksCollectionAPI(t *testing.T) {
 			store := &memoryStore{values: map[string]string{}}
 			if tc.stored != "" {
 				store.values[p.ID] = tc.stored
+			}
+			if tc.locked {
+				store.lockedProfile = p.ID
 			}
 			var stdout, stderr bytes.Buffer
 			a := app{stdout: &stdout, stderr: &stderr, store: store}

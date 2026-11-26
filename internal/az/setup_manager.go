@@ -1301,9 +1301,12 @@ func (a app) verifySetupAPI(ctx context.Context, cfg config, id string) error {
 		return fmt.Errorf("profile %s is not configured", id)
 	}
 	client, err := a.client(cfg.Profiles[i])
-	if err != nil {
+	if errors.As(err, &missingPATError{}) {
 		_, err = fmt.Fprintf(a.stderr, "WARNING: API version not checked: %v\n", err)
 		return err
+	}
+	if err != nil {
+		return fmt.Errorf("API version not checked: %w", err)
 	}
 	defer client.http.CloseIdleConnections()
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
