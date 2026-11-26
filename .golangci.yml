@@ -13,8 +13,9 @@ linters:
     warn-unused: true
     rules:
       # Go's convention exempts error strings that start with a proper noun, and
-      # docs/internals/naming.md capitalizes these names. ST1005 cannot tell a
-      # proper noun from a capitalized word, so only these starts are exempt.
+      # docs/internals/naming.md capitalizes these names, the product name
+      # TFSaz included. ST1005 cannot tell a proper noun from a capitalized
+      # word, so only these starts are exempt.
       - linters: [staticcheck]
         text: "ST1005:"
-        source: '(errors\.New|fmt\.Errorf)\("(Azure DevOps|Git|Node)\b'
+        source: '(errors\.New|fmt\.Errorf)\("(Azure DevOps|Git|Node|TFSaz)\b'

@@ -1,4 +1,4 @@
-// Command dev runs tfsaz's local developer checks and worktree setup.
+// Command dev runs TFSaz's local developer checks and worktree setup.
 //
 //	go run ./tools/dev check [-base main]  fast check of this branch's changes, before a commit
 //	go run ./tools/dev ready               full local suite, before a push
