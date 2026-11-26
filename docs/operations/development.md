@@ -8,7 +8,14 @@
 
 ## Native suite
 
-Run `go vet ./...` and `go test -count=1 ./...` for the native suite. Tests use temporary Git repositories, loopback HTTP/TLS servers and a test credential store.
+Run the checks in this order:
+
+1. `gofmt -l .` must print nothing. It lists files that need `gofmt -w`.
+2. `go vet ./...`.
+3. While iterating, focused tests: `go test -count=1 ./internal/az -run 'TestName'`. `-run` takes a regular expression, so `'TestA|TestB'` runs both.
+4. Once at the end, the full suite: `go test -count=1 ./...`. The `internal/az` package takes about 35 s.
+
+Tests use temporary Git repositories, loopback HTTP/TLS servers and a test credential store. The rules for writing them are in [Testing](../internals/testing.md).
 
 The suite also checks links: `TestDocLinks` in `docs_links_test.go` verifies relative links and heading anchors in README.md, AGENTS.md and `docs/`, plus every `https://github.com/toolspell/tfsaz` URL in Go code and docs.
 
@@ -49,7 +56,5 @@ These tests change real OS state and skip unless their variable is set. Run them
 
 ## Test data and records
 
-- Strip identities, internal URLs and secrets from fixtures.
-- Keep offline fixture results separate from live results.
-- When a live test needs a PAT, request it through T3's secret input. Use a disposable test credential for revocation tests.
+- Rules for fixtures, live gates and test PATs: [Testing](../internals/testing.md#fixtures-and-live-tests).
 - Record dated live results in [`docs/verification/`](../verification/), not in user guides. Current records: [offline fixtures and native suites](../verification/offline-fixtures.md), [live T3 results](../verification/live-t3-2026-11.md) and [browser routing](../verification/browser-routing.md).

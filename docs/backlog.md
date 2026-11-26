@@ -59,6 +59,10 @@ Deferred work, so any session or worktree can pick it up.
 ## Code
 
 - **Real keyring in managed-SSH setup:** `internal/az/setup_route.go:217` reads the system keyring when managed-SSH `repo setup` runs on an HTTPS origin without `--ssh-url`. Tests avoid it only because they use `ssh://` origins.
+- **Tests that poll with `time.Sleep`:** candidates for waiting on an event instead ([Testing](internals/testing.md#waiting)). Four calls in three files:
+  - `internal/az/route_system_darwin_test.go:286` (`TestInheritedRedirectServes`): retries an HTTPS GET every 100 ms until the child serves. The child could signal readiness instead.
+  - `internal/az/link_export_linux_test.go:101` (`TestDesktopLinkHandlerGIOArguments`): polls a trace file every 10 ms after `gio launch`. GIO starts the receiver detached, so there may be no event to wait on; if so, keep it and add the reason as a comment.
+  - `internal/az/route_system_windows_test.go:475` and `:482` (`TestWindowsScheduledServiceRestartsFailedAction`, live gate): polls the task's retries every second, then sleeps 12 s to prove no restart after stop. The 12 s sleep is on purpose: it outlasts the supervisor's 10 s retry delay (`route_system_windows.go:146`), and a restart that did not happen has no event; add that reason as a comment. The 1 s poll could stay for the same reason.
 
 ## Platforms
 

@@ -56,22 +56,25 @@ macOS, Linux and Windows are fully supported at feature parity. Platform-specifi
   - `t3_test.go`: the stock T3 adapter test. `testdata/`: fixtures.
 - `.github/workflows/test.yml`: CI on macOS, Windows and Ubuntu.
 
-## Tests and fixtures
-
-- Strip identities, internal URLs and secrets from fixtures.
-- Keep offline fixture results separate from live results.
-- When a live test needs a PAT, request it through T3's secret input. Use a disposable credential for revocation tests.
-
 ## Verify
 
 ```sh
+gofmt -l .                     # must print nothing
 go vet ./...
 go test -count=1 ./...
 go test -race -count=1 ./...   # what CI runs; Windows x64 needs MinGW-w64
 TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter -v ./internal/az
 ```
 
-The last one is opt-in and needs a T3 checkout with dependencies installed. Details: [Development](docs/operations/development.md).
+- While iterating, run focused tests (`go test -count=1 ./internal/az -run 'TestName'`). Run the full suite once at the end; `internal/az` takes about 35 s. Details: [Development](docs/operations/development.md).
+- When a change touches a command T3 calls, run `TestStockT3Adapter` (the last line; needs a T3 checkout with dependencies installed). Without one, say in the handoff that it did not run.
+- Before you write or review a test, read [Testing](docs/internals/testing.md), the one home of the test rules. Short version:
+  - A bug fix starts with a test that fails before the fix. Extend an existing table or case before you add a test.
+  - Isolate every test: temp `TFSAZ_CONFIG`, `memoryStore`, stubbed `runRouteSystemCommand`, temp `HOME`/`USERPROFILE`, isolated Git config, loopback servers ([Ways to hurt yourself](#ways-to-hurt-yourself)).
+  - Wait on a channel, process exit or `ctx.Done()`, never on `time.Sleep`.
+  - OS-specific tests use file suffixes or build tags; check the other two platforms.
+  - Fixtures carry no identities, internal URLs or secrets. Offline and live results stay separate; live gates stay opt-in.
+- Pick a mechanical guard by what it reads: a pattern inside one Go file belongs to golangci-lint (planned, [backlog](docs/backlog.md)); a check across files, on Markdown or on whether files exist is a Go test, like `TestDocLinks` in `docs_links_test.go`. A deliberate exception carries a written reason.
 
 ## Code comments
 
@@ -83,7 +86,7 @@ Default to no comment. Existing comments record what the code can't show: a serv
 | --- | --- |
 | Everyone | [README.md](README.md): what tfsaz is, how it works, features, status, constraints, docs index |
 | Operators and script authors | `docs/user/`: getting started, install, configure, checkout setup, what works in T3, diagnose, routing, browser routing (managed and manual), desktop link handler, Azure CLI compatibility |
-| Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why tfsaz is needed, adapter files, keeping coverage current) |
+| Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why tfsaz is needed, adapter files, keeping coverage current), [testing](docs/internals/testing.md) (test rules) |
 | Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI. `docs/verification/`: dated live records. [`docs/backlog.md`](docs/backlog.md): deferred work, including the code-reference scan |
 
 When implementing a command, read the T3 adapter and its tests first; [T3 compatibility](docs/internals/t3-compatibility.md) names the files.
