@@ -4,7 +4,7 @@
 
 Use `tfsaz doctor [PATH]` or `tfsaz doctor --json [PATH]`. Run it in the same environment as the failing program: a terminal and an app launched from Finder may resolve different executables.
 
-The report identifies the `az` selected by this process’s PATH, the config file, and the profile selected by the checkout. What it checks depends on where it runs:
+The report identifies the `az` and `git-remote-tfsaz` selected by this process’s PATH, the config file, and the profile selected by the checkout. What it checks depends on where it runs:
 
 | Context | What doctor checks |
 | --- | --- |

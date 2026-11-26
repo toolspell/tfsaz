@@ -30,7 +30,7 @@ Besides its configuration file, `<config>.repo-setups.json` and `<config>.browse
 
 | Change | Why | Undo | Check |
 | --- | --- | --- | --- |
-| `az` and `git-remote-tfsaz` in the chosen directory (`shim install`; symlinks, or copies on Windows without symlink rights) | T3 runs `az`; Git runs the remote helper | Delete both files ([Uninstall](docs/user/install.md#uninstall)) | `doctor` checks the `az` on its own PATH |
+| `az` and `git-remote-tfsaz` in the chosen directory (`shim install`; symlinks, or copies on Windows without symlink rights) | T3 runs `az`; Git runs the remote helper | `shim uninstall`; it keeps copies from an older TFSaz, delete those by hand ([Uninstall](docs/user/install.md#uninstall)) | `doctor` checks the `az` and `git-remote-tfsaz` on its own PATH |
 | A keyring entry per profile, service `tfsaz/v2/<hash>` or `tfsaz`, account the profile ID (`init`, `profile add`, `devops login`) | The PAT | `profile logout` | `doctor` (online) |
 | The clone's `remote.origin.url`, `remote.origin.vcs`, `remote.origin.tfsazBinding` or `core.sshCommand`, and a `.ssh.conf` in its Git directory (`repo setup`) | T3 recognizes only Azure-style remotes; Git keeps the native transport | `repo restore` | `repo show`, `repo verify`, `repo list` |
 | Hosts lines, a trusted leaf, a loopback service and, on Linux, an nftables redirect (`route setup`) | A browser reaches the real collection from a synthetic URL | `route restore` | `route verify`, plus the names in [Check what is installed](docs/user/browser-routing.md#check-what-is-installed) |

@@ -35,7 +35,9 @@ func TestDoctorChecksOnlyCheckoutCredential(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	copyTestExecutable(t, exe, testExecutable(filepath.Join(bin, "az")))
+	if err := installShimLinks(bin, exe); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	gitAt(t, dir, "init", "--quiet")
 	gitAt(t, dir, "remote", "add", "origin", second.Organization+"/Example/_git/Repo")
@@ -52,10 +54,35 @@ func TestDoctorChecksOnlyCheckoutCredential(t *testing.T) {
 	if report.SelectedProfile != "second" || !slices.Equal(store.reads, []string{"second"}) || strings.Contains(out.String(), "hidden-test-token") {
 		t.Fatal("diagnostic failed to isolate checkout credentials")
 	}
+	statuses := func(report doctorReport) map[string]string {
+		status := map[string]string{}
+		for _, c := range report.Checks {
+			status[c.Name] = c.Status
+		}
+		return status
+	}
+	if status := statuses(report); status["az"] != "ok" || status["git-remote-tfsaz"] != "ok" {
+		t.Fatalf("shim checks: %v", status)
+	}
 	delete(store.values, "second")
+	stale := shimPath(bin, "git-remote-tfsaz")
+	if err := os.Remove(stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("older fixture"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	out.Reset()
 	if err := a.runDoctor(t.Context(), []string{"--json"}); err == nil || !json.Valid(out.Bytes()) {
 		t.Fatal("doctor should emit a parseable report and fail on a missing PAT")
+	}
+	report = doctorReport{}
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if status := statuses(report); status["az"] != "ok" || status["git-remote-tfsaz"] != "error" ||
+		status["authentication second"] != "error" {
+		t.Fatalf("stale shim and missing PAT checks: %v", status)
 	}
 }
 
