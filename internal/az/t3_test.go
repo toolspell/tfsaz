@@ -21,7 +21,8 @@ import (
 )
 
 // This opt-in test runs T3's actual process-spawning adapter. It writes one
-// disposable, random loopback credential to the OS keyring under a fresh ID.
+// disposable, random loopback credential to the OS keyring under a fresh ID,
+// and its name to the keyring entry list in the home directory.
 func TestStockT3Adapter(t *testing.T) {
 	root := os.Getenv("TFSAZ_T3_ROOT")
 	if root == "" {
@@ -144,6 +145,7 @@ func TestStockT3Adapter(t *testing.T) {
 	p := clientTestProfile(t, server, prefix)
 	p.ID = "offline-" + rand.Text()
 	p.Organization = "https://fixture.visualstudio.com"
+	p.CredentialVersion = collectionCredentialVersion
 	setConfig(t, p)
 	bin := t.TempDir()
 	exe := testExecutable(filepath.Join(bin, "az"))
@@ -153,8 +155,16 @@ func TestStockT3Adapter(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Cleanup(func() {
-		if err := keyring.Delete(keyringService, p.ID); err != nil && !errors.Is(err, keyring.ErrNotFound) {
-			t.Errorf("remove fixture keyring entry %s: %v", p.ID, err)
+		// Logout also removes the entry's name from the list.
+		if out, err := exec.Command(exe, "profile", "logout", "--profile", p.ID).CombinedOutput(); err != nil {
+			t.Errorf("remove fixture keyring entry %s: %v: %s", p.ID, err, out)
+			cfg, err := loadConfig()
+			if err == nil {
+				err = keyring.Delete(credentialService(cfg.Profiles[0]), p.ID)
+			}
+			if err != nil && !errors.Is(err, keyring.ErrNotFound) {
+				t.Errorf("remove fixture keyring entry %s: %v", p.ID, err)
+			}
 		}
 	})
 	login := exec.Command(exe, "devops", "login", "--organization", p.Organization)

@@ -180,7 +180,8 @@ func runManagedRoute(ctx context.Context, args []string, out io.Writer, system r
 	}
 	// Runs after the unlock below: the last restore leaves no recovery directory.
 	defer removeEmptyRouteRecovery(recovery)
-	unlock, err := acquireRouteRecoveryLock(recovery, receipt+".lock")
+	lock := receipt + ".lock"
+	unlock, err := acquireLockInDir(recovery, lock, fmt.Errorf("another repository setup transaction holds %s; retry", lock))
 	if err != nil {
 		return err
 	}
@@ -288,20 +289,6 @@ const routeNothingRecorded = "No installation recorded for this configuration. I
 func routeStateExists(path string) bool {
 	_, err := os.Lstat(path)
 	return !errors.Is(err, os.ErrNotExist)
-}
-
-// A concurrent restore may remove the empty recovery directory between the
-// MkdirAll and the lock, so recreate it once.
-func acquireRouteRecoveryLock(recovery, path string) (func() error, error) {
-	for attempt := 0; ; attempt++ {
-		if err := os.MkdirAll(recovery, 0700); err != nil {
-			return nil, err
-		}
-		unlock, err := acquireSetupLock(path)
-		if err == nil || attempt > 0 || !errors.Is(err, os.ErrNotExist) {
-			return unlock, err
-		}
-	}
 }
 
 // removeEmptyRouteRecovery removes the recovery directory and ~/.tfsaz once no

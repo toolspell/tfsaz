@@ -72,7 +72,7 @@ Then open the printed URL in the browser you actually use and compare the addres
 - Restore uses the saved identity and works after a checkout or collection profile has been removed, and after the configuration file is deleted. Run it with the same configuration path (`TFSAZ_CONFIG` or the default) as setup: the installation ID comes from that path, and under another path restore reports "No installation recorded" and changes nothing. Rerun restore if the OS cleanup is interrupted.
 - Restore keeps files you added to `<config-file>.browser-route` and stops with a message; move them out and rerun it.
 - On Windows, restore removes the leaf only from the current user's Root store. If a copy is also in the Local Machine store, restore stops and asks you to remove it from an elevated prompt.
-- Once `route restore` has succeeded for every configuration that used routing, `~/.tfsaz` is gone as well.
+- Once `route restore` has succeeded for every configuration that used routing, `~/.tfsaz/route-recovery` is gone as well, and `~/.tfsaz` once nothing else is in it.
 - On Linux, run restore with the same `XDG_CONFIG_HOME` as setup, or the user unit stays behind.
 - After adding or retiring aliases, or before the 90-day certificate expires, run restore followed by setup to refresh the certificate and hosts entries. Clones and worktrees sharing an existing alias can reuse the current certificate.
 - Public DNS can resolve the alias hosts between those commands.

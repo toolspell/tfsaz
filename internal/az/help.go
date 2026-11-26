@@ -201,6 +201,7 @@ type nativeCommand struct {
 
 // Extra help text for native commands whose one-line summary is not enough.
 var nativeCommandNotes = map[string]string{
+	"profile remove": "Restore the profile's managed checkouts first; tfsaz repo list shows them. Server-side token revocation is separate. --service takes a service that tfsaz profile list shows. For an entry written before TFSaz recorded its entries, give the profile ID and the collection URL it was saved for with --collection, or use --service " + keyringService + " for the legacy service that older profiles share. Another configuration may still use a legacy entry.",
 	"route setup":    "Run on the host and under the account where the browser runs. For the web client’s Browser panel this is the T3 server. Setup uses the exact registered alias names, a local leaf certificate, hosts entries and a supervised loopback listener. System integration requires OS privileges. Rerun setup after interruption, or run route restore to undo it. See https://github.com/toolspell/tfsaz/blob/main/docs/user/browser-routing.md#what-setup-installs for what setup installs and needs on each platform.",
 	"route verify":   "Checks the local resolver and both loopback addresses on port 443 using the managed certificate. Open the printed alias URL in your intended browser and compare the address bar with the expected destination to confirm browser trust and routing.",
 	"route restore":  "Stop using alias links before restoring public name resolution. Uses the saved installation identity for the selected configuration. After removing or adding checkout aliases, or when the certificate expires, run restore and then setup.",
@@ -222,7 +223,7 @@ var nativeCommands = map[string]nativeCommand{
 		"profile add" + collectionExample + " --id engineering --no-login",
 	},
 	"profile list": {
-		"List configured collection profiles in discovery order.",
+		"List configured collection profiles in discovery order with their PAT state, then recorded keyring entries that no profile in this configuration uses.",
 		"",
 		"profile list",
 	},
@@ -230,6 +231,11 @@ var nativeCommands = map[string]nativeCommand{
 		"Remove the saved PAT for a profile.",
 		"--profile ID",
 		"profile logout --profile engineering",
+	},
+	"profile remove": {
+		"Remove a profile and its saved PAT, or with --collection or --service only a keyring entry that no profile in this configuration uses.",
+		"--profile ID [--collection URL | --service SERVICE]",
+		"profile remove --profile engineering",
 	},
 	"doctor": {
 		"Check TFSaz, collection profiles, credentials and current or specified checkout.",

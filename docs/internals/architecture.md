@@ -54,7 +54,15 @@ A managed checkout keeps the synthetic origin for T3 and sets `remote.origin.vcs
 
 ### Credential service per collection
 
-New profiles (`credentialVersion: 2`) store their PAT under a keyring service derived from a hash of the collection URL, because a profile ID alone may be reused in another config file. Older profiles use the plain `tfsaz` service. Changing a version 2 profile's `collectionUrl` therefore orphans its stored PAT.
+New profiles (`credentialVersion: 2`) store their PAT under a keyring service derived from a hash of the collection URL, because a profile ID alone may be reused in another config file. Older profiles use the plain `tfsaz` service, which configurations with the same profile ID share. A login or logout moves such a profile to version 2 and keeps the shared entry; only an explicit `profile remove` with `--service` set to `tfsaz` deletes it, because another configuration may still use it.
+
+### Recorded keyring entries
+
+go-keyring cannot enumerate entries, so changing a profile's ID or `collectionUrl`, or deleting the config, would strand its PAT where no command finds it. TFSaz therefore records the service and account of every entry it writes in `~/.tfsaz/keyring-entries.json`, outside the config directory, so the record outlives the config, as `~/.tfsaz/route-recovery` does.
+
+- Record the name before writing the secret, and drop it after deleting the entry, so an interrupted command leaves at most a name without an entry, never an entry without a name.
+- The list is shared by every configuration of the OS user. An entry no profile of the current config uses may belong to another config, so TFSaz shows such entries and deletes one only on explicit request.
+- Entries written before the list existed are not recorded; `profile remove --collection` finds them by profile ID and collection URL.
 
 ### Routing compared with a proxy
 

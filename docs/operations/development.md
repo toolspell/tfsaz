@@ -92,15 +92,15 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 
 | What the run left | Undo | Check |
 | --- | --- | --- |
-| Browser routing (`route setup`) | `tfsaz route restore` with the same `TFSAZ_CONFIG` path as setup; rerun it if it stops partway. | `tfsaz route verify` reports managed browser routing as absent; the hosts file has no `# tfsaz-route` line; `~/.tfsaz` is gone unless another configuration still uses routing. |
+| Browser routing (`route setup`) | `tfsaz route restore` with the same `TFSAZ_CONFIG` path as setup; rerun it if it stops partway. | `tfsaz route verify` reports managed browser routing as absent; the hosts file has no `# tfsaz-route` line; `~/.tfsaz/route-recovery` is gone unless another configuration still uses routing. |
 | Managed test checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`, then delete the throwaway clones. | `tfsaz repo list` is empty; `git -C PATH config --get-regexp '^remote\.origin\.'` shows the native URL. |
 | Desktop link handler, Chromium extension | Select the usual default browser, run the Windows `Uninstall.ps1`, delete the exported app, directory or desktop file, and remove the extension from the browser profile. | The steps in [Desktop link handler](../user/desktop-link-handler.md) and [Chromium extension](../user/routing.md#chromium-extension). |
-| PATs of test profiles | `tfsaz profile logout --profile ID` for each test profile, before you delete the configuration that names it. | Your OS keyring shows no `tfsaz` entry for that profile ID. |
+| PATs of test profiles | `tfsaz profile remove --profile ID` for each test profile, before you delete the configuration that names it, then remove what `tfsaz profile list` still shows under "Keyring entries that no profile in this configuration uses" and belongs to the run. | `tfsaz profile list` shows no entry of the run; `~/.tfsaz/keyring-entries.json` is gone unless other entries remain. |
 | Shims | Delete `az` and `git-remote-tfsaz` from the test shim directory, and remove it from PATH. | `command -v az` (PowerShell: `Get-Command az`) no longer finds them. |
 | Temporary configuration | Delete the temp `TFSAZ_CONFIG` file with any `.repo-setups.json`, `.browser-route`, `.run` and `.lock` siblings, and unset the variable. A killed `route run` leaves `git-*` directories in `.run`. | The temp directory is gone. |
 
 - Live gates (`TFSAZ_LIVE_LAUNCHD`, `TFSAZ_LIVE_TASK_SCHEDULER`, `TFSAZ_T3_ROOT`) remove what they create when they finish. After an aborted run, check with `launchctl print gui/$(id -u)` (macOS) or `Get-ScheduledTask` (Windows) for leftover TFSaz entries.
-- Deleting a configuration first orphans its PATs and checkout registrations, so `profile logout` and `repo restore` can no longer find them.
+- Deleting a configuration first orphans its checkout registrations, so `repo restore` can no longer find them. Its PATs stay in the keyring; `profile list` with any configuration shows the recorded ones.
 
 ## CI
 
@@ -244,7 +244,7 @@ Skills live in `.agents/skills/`, which Codex reads. Claude Code reads `.claude/
 
 ## Stock T3 adapter test
 
-The opt-in integration test builds the actual executable and runs T3's existing Azure adapter against it. It requires Git, Node with TypeScript support (tested with Node 26), a T3 source tree with its lockfile dependencies installed, and a usable OS keyring. It creates a random keyring entry for its loopback server and removes the entry at the end.
+The opt-in integration test builds the actual executable and runs T3's existing Azure adapter against it. It requires Git, Node with TypeScript support (tested with Node 26), a T3 source tree with its lockfile dependencies installed, and a usable OS keyring. It creates a random keyring entry for its loopback server, with its name in `~/.tfsaz/keyring-entries.json`, and removes both at the end.
 
 ```sh
 TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter -v ./internal/az

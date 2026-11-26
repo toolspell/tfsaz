@@ -43,10 +43,10 @@ Undo the parts you set up, in this order, then remove TFSaz itself. Run each com
 
 | Step | What to do |
 | --- | --- |
-| 1. Browser routing | `tfsaz route restore`; the last one also removes `~/.tfsaz`. See [Refresh or remove](browser-routing.md#refresh-or-remove). |
+| 1. Browser routing | `tfsaz route restore`; the last one also removes `~/.tfsaz/route-recovery`. See [Refresh or remove](browser-routing.md#refresh-or-remove). |
 | 2. Link handler and extension | Choose your usual default browser and remove the handler as described in [Desktop link handler](desktop-link-handler.md). Remove the Chromium extension from the browser profile and delete its export directory. |
 | 3. Checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`. |
-| 4. PATs | `tfsaz profile logout --profile ID` for each profile in `tfsaz profile list`. |
+| 4. Profiles and PATs | `tfsaz profile remove --profile ID` for each profile in `tfsaz profile list`. Then remove each entry that `profile list` still shows under "Keyring entries that no profile in this configuration uses", as described in [Find and remove leftover keyring entries](configure.md#find-and-remove-leftover-keyring-entries). The last removal also deletes `~/.tfsaz/keyring-entries.json` and, once empty, `~/.tfsaz`. |
 | 5. Configuration | Delete the configuration file and any `.repo-setups.json`, `.browser-route`, `.run` or `.lock` entries left beside it. For the default location, delete the `tfsaz` folder under your OS user configuration directory (see [Configure](configure.md#configuration-file)). |
 | 6. Shims and binary | Delete `az`, `git-remote-tfsaz` and `tfsaz` (`.exe` on Windows) from the shim directory, and remove that directory from the PATH of T3 and your shell. |
 

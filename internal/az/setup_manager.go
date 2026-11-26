@@ -167,6 +167,20 @@ func acquireLockFile(path string, busy error) (func() error, error) {
 	return func() error { return releaseSetupLock(lock) }, nil
 }
 
+// A concurrent command may remove the empty directory between the MkdirAll
+// and the lock, so recreate it once.
+func acquireLockInDir(dir, path string, busy error) (func() error, error) {
+	for attempt := 0; ; attempt++ {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return nil, err
+		}
+		unlock, err := acquireLockFile(path, busy)
+		if err == nil || attempt > 0 || !errors.Is(err, os.ErrNotExist) {
+			return unlock, err
+		}
+	}
+}
+
 func syncSetupDir(path string) error {
 	if runtime.GOOS == "windows" {
 		return nil

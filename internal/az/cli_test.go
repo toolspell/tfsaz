@@ -211,6 +211,7 @@ func TestLoginFromStdinVerifiesBeforeStoring(t *testing.T) {
 	p.Organization = "https://dev.azure.com/one"
 	setConfig(t, p)
 	store := &memoryStore{values: map[string]string{}}
+	list := testKeyringList(t)
 	run := func(input string) error {
 		t.Helper()
 		r, w, err := os.Pipe()
@@ -225,17 +226,27 @@ func TestLoginFromStdinVerifiesBeforeStoring(t *testing.T) {
 			t.Fatal(err)
 		}
 		var output bytes.Buffer
-		a := app{stdout: &output, stderr: &output, stdin: r, store: store}
+		a := app{stdout: &output, stderr: &output, stdin: r, store: store, keyringList: list}
 		err = a.run(t.Context(), []string{"devops", "login", "--org", p.Organization})
 		if output.Len() != 0 || (err != nil && strings.Contains(err.Error(), pat)) {
 			t.Fatal("unexpected login output")
 		}
 		return err
 	}
-	if err := run(pat + "\r\n"); err != nil || store.values[p.ID] != pat {
+	// A legacy profile moves to its per-collection service on login.
+	if err := run(pat + "\r\n"); err != nil {
 		t.Fatalf("login failed: %v", err)
 	}
-	if err := run(rand.Text()); err == nil || store.values[p.ID] != pat {
+	cfg, err := loadConfig()
+	if err != nil || cfg.Profiles[0].CredentialVersion != collectionCredentialVersion {
+		t.Fatalf("login kept the legacy credential service: %v", err)
+	}
+	p = cfg.Profiles[0]
+	key := memoryCredentialKey(credentialService(p), p.ID)
+	if len(store.values) != 1 || store.values[key] != pat {
+		t.Fatal("login did not store the PAT under the per-collection service")
+	}
+	if err := run(rand.Text()); err == nil || store.values[key] != pat {
 		t.Fatal("rejected PAT replaced a working credential")
 	}
 	store.lockedProfile = p.ID
