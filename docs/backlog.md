@@ -60,10 +60,6 @@ Deferred work, so any session or worktree can pick it up.
 ## Code
 
 - **Real keyring in managed-SSH setup:** `internal/az/setup_route.go:217` reads the system keyring when managed-SSH `repo setup` runs on an HTTPS origin without `--ssh-url`. Tests avoid it only because they use `ssh://` origins.
-- **Stale doc references in CLI texts** (for the planned code-reference scan):
-  - `internal/az/help.go:204` points at the removed `docs/route-redirect.md`; the content is now in `docs/user/browser-routing.md`.
-  - `internal/az/help.go:207` points at a README section on the loopback redirect service that no longer exists; the content is now in `docs/user/browser-routing.md` and `docs/user/browser-routing-manual.md`.
-  - `internal/az/route_redirect.go:153` says "as the README describes" about the port-443 redirect; that text is now in `docs/user/browser-routing-manual.md#5-run-the-service-on-port-443`.
 
 ## Platforms
 

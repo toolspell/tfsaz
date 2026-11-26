@@ -150,7 +150,7 @@ func listenRedirectLoopback(port int) ([]net.Listener, error) {
 				l.Close()
 			}
 			if errors.Is(err, os.ErrPermission) {
-				return nil, fmt.Errorf("could not bind loopback port %d: %w; this OS reserves low ports, so use --port with a loopback port redirect as the README describes", port, err)
+				return nil, fmt.Errorf("could not bind loopback port %d: %w; this OS reserves low ports, so use --port with a loopback port redirect as described in https://github.com/toolspell/tfsaz/blob/main/docs/user/browser-routing-manual.md#5-run-the-service-on-port-443", port, err)
 			}
 			return nil, fmt.Errorf("could not bind loopback port %d: %w", port, err)
 		}
