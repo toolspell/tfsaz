@@ -17,7 +17,9 @@ Deferred work, so any session or worktree can pick it up.
   - leftovers such as large or stray files.
 
   If something turns up, the history has to be rewritten. That is easiest before anyone else clones the repo.
-- **License and contribution policy:** the README has placeholders for both.
+- **License decision and CONTRIBUTING.md:** the README has only placeholders, and GitHub shows no license.
+- **SECURITY.md:** threat model and reporting path, covering PAT handling, the redirect listener and the hosts and trust-store changes. The repo has none. Pointer: Toolspell `SECURITY.md`.
+- **CI path filter:** skip the 3-OS test matrix (about 5 minutes) on docs-only changes, using affected detection. Pointer: Toolspell `scripts/ci-changes.ts`.
 - **Secrets scan** in the pre-commit hook and CI; PATs are the core risk. Pointer: Toolspell `scripts/check-secrets.ts`.
 - **Pinned-actions check:** the workflow actions are SHA-pinned today, but nothing enforces it. Pointer: Toolspell `scripts/check-pinned.ts`.
 - **Go lint and safety checks:** golangci-lint, govulncheck and a `go mod tidy` diff check, as the Go equivalent of Toolspell's lint and typecheck steps. Lint rules:
@@ -38,10 +40,19 @@ Deferred work, so any session or worktree can pick it up.
 ## At the public / PR switch
 
 - **PR checks:** PR title in conventional-commit form, PR size labels, PR limits and the stale bot. Pointers: Toolspell `.github/workflows/pr-title.yml`, `pr-size.yml`, `pr-limits.yml`, `stale-needs-more-info.yml`.
-- **Review bots:** CodeRabbit config with path instructions, Macroscope approvability, Codex review, and a `claude.yml` workflow (actor-restricted, comment-only). Pointers: Toolspell `.coderabbit.config.ts`, `.macroscope/approvability.md`, `.github/workflows/claude.yml`.
+- **Review bots and review rules:** CodeRabbit config with path instructions, Macroscope approvability, Codex review, and a `claude.yml` workflow (actor-restricted, comment-only). Add a "Code review rules" section to AGENTS.md that maps areas to the docs owning their rules, and Macroscope check-run agents such as test-signal. Pointers: Toolspell `.coderabbit.config.ts`, `.macroscope/approvability.md`, `.macroscope/check-run-agents/`, `.github/workflows/claude.yml`.
 - **Dependabot** for GitHub Actions and Go modules, plus the labels workflow. Pointers: Toolspell `.github/dependabot.yml`, `.github/workflows/labels.yml`.
 - **Issue and PR templates:** bug, feature and config issue templates and a PR template (Problem / Change / Verification). Pointers: Toolspell `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md`.
+- **Repo settings and rulesets** (Toolspell's phase-1 setup):
+  - squash-only merges and auto-delete of merged branches;
+  - a ruleset on `main` with required checks, the strict up-to-date rule and no force push;
+  - secret scanning with push protection, private vulnerability reporting and the org security configuration.
+- **CodeQL default setup for Go plus Copilot Autofix**, both free for public repositories.
 - **Agent context budget** (decided): measured AGENTS.md bytes in a JSON file, a Go test that keeps it exact, an AGENTS.md rule, and a label-gated CI check. Pointers: Toolspell `scripts/agent-context-budget.json`, `scripts/agent-docs.test.ts`, `.github/workflows/agent-context-budget.yml`.
+
+## Later
+
+- **Release pipeline:** signed or checksummed binaries for macOS, Windows and Linux (for example with goreleaser). The README states there is no release yet.
 
 ## Code
 
