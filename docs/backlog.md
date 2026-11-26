@@ -105,6 +105,16 @@ Code gaps against [Reversible and verifiable system changes](../AGENTS.md#revers
   - Credential-store setup on Linux and Windows is described only as a test workaround.
   - Hosts-edit recovery is documented only for Windows.
 
+## Tests
+
+- **Owed end-to-end and live runs:** deliberately not run during the 26.11.2026 repo setup. Run them before a release, and before relying on the changes in a pilot:
+  - `TestStockT3Adapter` (`TFSAZ_T3_ROOT`, a full T3 tree at the pinned revision) last ran before `d7e1968`. Since then, commits changed help and error texts of commands T3 calls (`338f6f9`, `0af3015`), error handling across commands (`53fef44`, `974849d`), the setup PAT lookup (`534e3fe`) and lock, recovery and `route run` cleanup (`2850c23`). T3's matched substrings were kept, but nothing proved it end to end. Run it on all three OS where possible.
+  - The live system tests (`TFSAZ_LIVE_LAUNCHD`, `TFSAZ_LIVE_TASK_SCHEDULER`) have not run since the route changes in `2850c23`; they need a disposable test session.
+  - The live testbed checks in `docs/verification/` (both collections, Git transports, browser routing) predate these changes.
+- **Native test runs not done:** the Windows tests were only compiled and vetted from macOS. The Linux suite ran in a Docker container without a desktop session (no GIO, systemd user session or real Chromium NSS). The macOS and Windows CI matrix and the new Checks job have never run on GitHub; the first push covers that.
+- **Doc steps not run:** the per-OS check and undo commands added to SECURITY.md, `docs/user/browser-routing.md` ("Check what is installed"), `install.md` (uninstall) and `checkout-setup.md` in `30b8c05` and `2850c23` were taken from the code. Run each once on its OS.
+- **Unit coverage gaps:** `internal/az` statement coverage is 69.5% (26.11.2026). Lowest: `preserve_git.go` 0% and `setup_manager.go` 29%, both mostly exercised through a built binary, which in-process coverage does not count, so check them before writing tests; `route_cli.go` 22%, `setup_transport.go` 25%, `shim.go` 40%, `teams.go` 47%, `https_git.go` 55%. Add focused tests where behavior can break, per [Testing](internals/testing.md), not to raise a number.
+
 ## Docs and process
 
 - **Test environment runbook:** document how to set up the environments used for verification (an Azure DevOps Server testbed with two collections, macOS, Windows 11 and Ubuntu machines or VMs, credential stores, T3 install) as a runbook in `docs/operations/`. Starting points:
