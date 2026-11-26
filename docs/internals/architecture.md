@@ -34,7 +34,29 @@ These rules hold for every command. Change them only deliberately.
 - Send a PAT only to the configured collection and guard redirects accordingly: they fail closed.
 - Return PR web links under the same Azure-style repository identity that T3 used to select the checkout.
 
-## Routing compared with a proxy
+## Design decisions
+
+### Azure-style aliases instead of native URLs
+
+Stock T3 enables its Azure provider only for a recognized Azure-style remote. The server's native HTTPS or SSH URL alone does not enable it. tfsaz therefore gives T3 a synthetic `*.visualstudio.com` identity and keeps the native URL for everything that talks to the server.
+
+- T3 groups some viewer reads by host. Several collections need distinct recognized hostnames, or "my PRs" mixes them up.
+- Each project/repository pair gets its own stable hostname. A repository-bound alias accepts only paths of that project and repository.
+- Every code path that sends a credential or opens a connection must map the alias to the real collection first. Without a local hosts entry, public DNS resolves the synthetic names to Azure.
+
+### Git keeps the native transport
+
+A managed checkout keeps the synthetic origin for T3 and sets `remote.origin.vcs=tfsaz`, so Git runs `git-remote-tfsaz`. The helper reads the bound native target from the checkout's common Git configuration, not from the tfsaz config.
+
+- Plain Git must keep working with T3 closed and `TFSAZ_CONFIG` unset. Do not make the helper depend on the tfsaz config or the keyring.
+- Storing the target in the common Git directory makes linked worktrees, including ones created later by Git or T3, share one mapping.
+- Git authenticates with its own HTTPS or SSH credentials. Git does not receive the CLI's PAT.
+
+### Credential service per collection
+
+New profiles (`credentialVersion: 2`) store their PAT under a keyring service derived from a hash of the collection URL, because a profile ID alone may be reused in another config file. Older profiles use the plain `tfsaz` service. Changing a version 2 profile's `collectionUrl` therefore orphans its stored PAT.
+
+### Routing compared with a proxy
 
 Browser routing redirects to the real collection instead of proxying it. The [user guide](../user/browser-routing.md) describes how to set it up.
 
@@ -45,3 +67,9 @@ Browser routing redirects to the real collection instead of proxying it. The [us
 | Desktop link handler | Needs no certificate or service but only sees links the OS hands off, not typed URLs or in-browser clicks. |
 | Chromium extension | Per profile and Chromium only, with no TLS involved. Covers in-browser clicks in that profile. |
 | PAC / SOCKS refusal | Blocks registered names for clients that consult the proxy setting but does not redirect them. |
+
+The redirector rereads the config and repo registry on every request, so a restored setup stops redirecting at once without a listener restart.
+
+### System edits must be recoverable
+
+`route setup`, `route restore`, `repo setup` and `repo restore` change state outside tfsaz (hosts file, trust stores, services, Git config). Each is journaled or keeps a recovery record, and rerunning the same command after an interruption finishes or undoes it. The Windows hosts file is edited in place: an earlier installer replaced the file and changed its NTFS file ID, so the writer now keeps the original file, its security descriptor and file ID.

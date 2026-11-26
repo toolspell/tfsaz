@@ -1,12 +1,28 @@
 # Development
 
+## Setup
+
+- Go at the version in `go.mod` (1.26 or newer).
+- Git and OpenSSH for the transport tests, Node for the TLS probe, and GIO on Linux for desktop dispatch.
+- On Windows use Git for Windows with its bundled shell.
+
 ## Native suite
 
-Run `go vet ./...` and `go test -count=1 ./...` for the native suite. Tests use temporary Git repositories, loopback HTTP/TLS servers and a test credential store. Install Git and OpenSSH for transport tests, Node for the TLS probe, and GIO on Linux for desktop dispatch. On Windows use Git for Windows with its bundled shell.
+Run `go vet ./...` and `go test -count=1 ./...` for the native suite. Tests use temporary Git repositories, loopback HTTP/TLS servers and a test credential store.
+
+## Isolate manual runs
+
+A manual run of the built binary uses the real configuration, keyring and, for some commands, system files. Before trying a command by hand:
+
+- Set `TFSAZ_CONFIG` to an absolute path in a temporary directory.
+- Run `repo setup` and `repo restore` only on throwaway clones, with `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM` set to isolate Git.
+- Run `route setup` and `route restore` only on a disposable test machine or session; they edit the hosts file, trust stores and services.
+
+[AGENTS.md](../../AGENTS.md#ways-to-hurt-yourself) lists every trap.
 
 ## Race detector and CI
 
-The [native test workflow](../../.github/workflows/test.yml) runs this suite on macOS, Windows and Ubuntu. All three jobs enable Go’s race detector. To run it locally, use `go test -race -count=1 ./...`. Windows x64 needs a compatible MinGW-w64 C compiler on PATH. [Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements)
+The [native test workflow](../../.github/workflows/test.yml) runs `go vet` and this suite on macOS, Windows and Ubuntu, on pushes to `main`, on pull requests and on manual dispatch. All three jobs enable Go's race detector. To run it locally, use `go test -race -count=1 ./...`. Windows x64 needs a compatible MinGW-w64 C compiler on PATH. [Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements)
 
 ## Stock T3 adapter test
 
@@ -17,6 +33,8 @@ TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter 
 ```
 
 In PowerShell, set `$env:TFSAZ_T3_ROOT = 'C:\path\to\t3code'`, then run the same `go test` command. Use a logon with a loaded user profile and an accessible Credential Manager. For unattended Linux runs, start an unlocked Secret Service collection on the test session's D-Bus. The fixture uses its own random keyring entry.
+
+Users do not need a T3 source checkout; only this test does.
 
 ## Opt-in live system tests
 
