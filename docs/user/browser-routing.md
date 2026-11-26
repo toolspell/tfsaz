@@ -45,16 +45,6 @@ On Windows, setup and restore edit the hosts file in place. During the edit, `ho
 
 With manual installation, issue a new leaf and update hosts and trust when the set of names changes. Restart the listener with the matching certificate and key.
 
-## Routing compared with a proxy
-
-| Approach | Tradeoff |
-| --- | --- |
-| Redirect (this service) | The browser ends up on the real origin, so its address bar, cookies, sign-in and same-origin checks all belong to the real server. Needs a hosts entry, a running service, port 443 and local trust for one leaf. |
-| Reverse proxy | Would serve the collection under the synthetic origin. tfsaz would have to carry session cookies or credentials, rewrite absolute links and reconcile the server's origin checks. tfsaz deliberately does not do this. |
-| Desktop link handler | Needs no certificate or service but only sees links the OS hands off, not typed URLs or in-browser clicks. |
-| Chromium extension | Per profile and Chromium only, with no TLS involved. Covers in-browser clicks in that profile. |
-| PAC / SOCKS refusal | Blocks registered names for clients that consult the proxy setting but does not redirect them. |
-
 ## Manual setup
 
 Use this alternative when you intend to manage the listener, trust and hosts entries yourself. Start with a registered alias of the form shown below. Choose either the managed installation or the manual listener for port 443. Record each manual change for removal.
@@ -144,40 +134,3 @@ Expect HTTP 302 on both address families and HTTP 405 for POST. The 302 Location
 3. Remove the port redirect if installed, including both address families.
 4. Remove the certificate trust as listed in step 3.
 5. Delete `alias.pem` and `alias-key.pem`.
-
-## T3 desktop browser verification
-
-In the installed T3 Nightly desktop app, a disposable Electron profile mapped one exact generated alias to the redirector’s high loopback port and trusted the corresponding leaf certificate for that origin. Opening the raw alias reached the real Azure DevOps Server PR 118 authentication page with the expected query and fragment. After the redirector stopped, a fresh navigation failed with `ERR_CONNECTION_REFUSED`. This test used a process-local hostname mapping.
-
-The installed T3 desktop apps on Ubuntu ARM64 and Windows x64 also opened the exact live PR 118 URL, including its query and fragment. Both displayed the native server’s authentication-required page. Before the redirector started and after it stopped, fresh navigations failed on the alias with `ERR_CONNECTION_REFUSED`. These tests used a process-local hostname mapping and exact certificate approvals in disposable T3 browser profiles. They ran over SSH with RDP closed.
-
-## macOS web client Browser panel verification
-
-A separate test opened a PR link in the T3 web client's Browser panel backed by the installed Nightly server's sandboxed Chromium. The raw alias redirected to a loopback HTTPS fixture with the expected collection path, encoded query and fragment. The destination received neither an Authorization header nor a Referer. An unsupported API path stayed on the alias, and a new navigation after shutdown failed with `ERR_CONNECTION_REFUSED`.
-
-The test used a scratch Chromium launcher to supply the hostname mapping and certificate-error exceptions scoped to two test public keys. It exercised the server-side navigation path. It did not establish production DNS or certificate trust for that runtime or authenticate to a live collection. Install the production routing on the server that runs Chromium. Opening the same URL in an external browser uses that browser's machine and trust settings instead.
-
-## Machine-wide installation results
-
-- **macOS.** With real IPv4 and IPv6 hosts entries, a temporary `pf` anchor translated loopback port 443 to the high-port service. Both address families returned the correct 302. The exact self-signed leaf was installed in the System keychain with administrator-domain SSL trust limited to the alias. A noninteractive SSH command could import the certificate, but setting its trust required interactive authorization. Merely seeing the certificate in Keychain Access did not establish trust. Apple's `security verify-cert -c alias.pem -p ssl -s "$alias"` verified the policy. Both the installed desktop Electron tab and T3's server-hosted Chromium tab reached the exact live PR authentication page with query and fragment, using normal DNS and browser trust. The desktop tab reported `ERR_CONNECTION_REFUSED` when the service stopped. The bundled `/usr/bin/curl` still reported TLS error 60 on this Mac unless given `--cacert alias.pem`. After removal of the trust policy, the macOS verifier rejected the leaf again. The test removed the certificate copies, hosts entries, temporary anchor and PF enable reference.
-- **Ubuntu 26.04.** With real hosts entries, IPv4 and IPv6 NAT rules, and the exact leaf added to the system certificate bundle, curl received the correct 302 over both address families. Snap Chromium followed the redirect after the same leaf was trusted separately in its NSS database. The destination then required its own certificate trust. Stopping the listener produced connection refusal. Removing trust while it was running restored certificate rejection. The test restored the hosts file, NAT rules and trust entries.
-
-- **Windows 11.** Both hosts entries resolved locally, and the service bound IPv4 and IPv6 loopback port 443 directly in an elevated session. With the exact alias leaf in the Local Machine store, Schannel curl, WinHTTP and .NET returned the expected 302. Headless Edge used its normal resolver and trust store, preserved the fragment and reached the native URL. The destination certificate was untrusted on this VM, so Edge stopped there. Stopping the redirector produced connection refusal. Removing trust and restarting restored certificate rejection. The test removed the leaf by thumbprint and verified the hosts file's original bytes, ACL and file ID.
-
-An earlier isolated web-client test on **Ubuntu ARM64 and Windows x64** reached the exact live PR authentication page in the server-hosted Browser panel, including the query and fragment. Stopping the redirector produced `ERR_CONNECTION_REFUSED` on both. These isolated tests used a Chromium launcher with a hostname override and certificate-error exceptions limited to the two fixture public keys. Windows ran sandboxed. The Ubuntu run disabled the server browser sandbox for that test.
-
-A subsequent Ubuntu test used the installed `t3 serve --mode web`, ordinary hostname resolution and Chromium's normal trust settings. The account running T3 trusted the exact alias and destination certificates as peers in its NSS database. The installed `t3 browser setup` command configured AppArmor. The renderer ran sandboxed with seccomp filtering. The Browser panel reached the real PR 118 authentication page with the expected query and fragment. With the redirector stopped and both hosts entries and NAT rules still in place, the browser reported `ERR_CONNECTION_REFUSED`. The test removed its AppArmor profile, hosts entries, NAT rules, private key and scratch browser profile.
-
-On Windows, the installed `t3 serve` also reached PR 118 in its stock server-hosted browser with machine routing. With only the hosts entries present, the connection was refused. With the listener running and the alias certificate untrusted, the browser reported `ERR_CERT_AUTHORITY_INVALID`. After the exact alias leaf was trusted in Local Machine Root and the native server leaf in Local Machine Trusted People, the running browser reached the authentication page with the expected query and fragment. Stopping the service produced `ERR_CONNECTION_REFUSED`. The test restored the original hosts file and removed both test trust entries.
-
-## Managed installer verification
-
-On Ubuntu 26.04 ARM64, setup installed the systemd units, two hosts entries, trusted-peer certificate and IPv4/IPv6 nftables rules scoped to the installing UID. The verifier received the expected 302 on both addresses. Repeating setup kept one installation. Verification failed after stopping the service and passed after rerunning setup. A separate run confirmed that systemd restarted a killed service. Restore also succeeded after moving the installation directory aside and changing `XDG_DATA_HOME`. It removed the original NSS entry, hosts lines, units, nftables table, port reservation and recovery certificate. The hosts file matched its original bytes. This installer check used a fixture URL. The live T3 browser and sign-in-page results above were obtained separately.
-
-On macOS, a live test loaded the generated LaunchAgents in the GUI session on port 443. Each served the expected HTTPS redirect and exact certificate on its own loopback address. Unloading the agents released the port. The test used temporary plists and pinned the leaf for the probe. A subsequent run of the managed setup installed the generated leaf in the login keychain. Its SHA-256 matched the served leaf, and macOS verified it for the exact alias. The first T3 preview navigation reported a certificate authority error. A fresh incognito tab then reached the native PR authentication page with its query and fragment intact. Restore released port 443, removed the hosts entries and made macOS reject the leaf again.
-
-On Windows 11, setup launched the redirector at Medium integrity even from an elevated SSH session. The scheduled task ran as the logged-in user, with the Administrators group marked deny-only. With the exact test leaf temporarily provisioned in Local Machine Root, verification returned the expected redirects on both loopback addresses. Restore removed the task, listener and hosts entries. It identified the separately provisioned trust and completed on retry after the tester removed that certificate. Over SSH the ordinary per-user certificate import returned `ERROR_NOT_SUPPORTED`. A subsequent 1920 × 1080 RDP test ran setup at Medium integrity. Windows displayed the per-user certificate warning with the expected thumbprint and a UAC prompt for the hosts edit. After approval, both loopback probes passed and Schannel returned the expected PR redirect using normal trust. Restore displayed UAC and certificate-removal prompts. The test verified removal of the user trust entry, hosts entries, listener and task, then closed RDP.
-
-The Windows task runs PowerShell in a headless console at normal priority. If the redirector exits with an error, the launcher waits ten seconds and starts it again. A successful exit ends the launcher. With RDP disconnected, a native test started the generated task, observed a failed action restart, stopped the task and checked that it stayed stopped past the next retry. A separate native test verified paths with spaces, an apostrophe and non-ASCII characters through the actual task action.
-
-Windows hosts-file tests use a disposable file with the system hosts file’s owner, group and access rules. They compare the full security descriptor and NTFS file ID before and after repeated installs, restores and interrupted writes. An earlier installer replaced the VM’s actual hosts file and changed its NTFS file ID. Its contents and security descriptor were restored. The current writer keeps the original file in place.
