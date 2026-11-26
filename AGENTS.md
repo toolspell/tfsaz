@@ -71,8 +71,8 @@ macOS, Linux and Windows are fully supported at feature parity. Platform-specifi
   - `setup_*.go`, `preserve_*.go`, `repo_commands.go`: checkout setup, restore and the Git remote helper.
   - `route_*.go`, `https_*.go`, `link_*.go`, `browser_target.go`: routing. `*_darwin.go`, `*_linux.go`, `*_windows.go` hold the OS integration.
   - `t3_test.go`: the stock T3 adapter test. `testdata/`: fixtures.
-- `.github/workflows/test.yml`: CI on macOS, Windows and Ubuntu.
-- `tools/dev`: the `check`, `ready`, `staged` and `setup` commands. `tools/<tool>/go.mod`: one module per pinned dev tool. `.githooks/pre-commit`: the commit hook. `tools/syncrepos`: syncs the reference checkouts.
+- `.github/workflows/test.yml`: CI. Whole-tree checks on Ubuntu, the test matrix on macOS, Windows and Ubuntu (skipped for docs-only changes), and the roll-up job `Check`, the future required check.
+- `tools/dev`: the `check`, `ready`, `staged`, `setup` and `ci-local` (act) commands, plus `ci-changes` and `ci-checks` for CI. `tools/<tool>/go.mod`: one module per pinned dev tool. `.githooks/pre-commit`: the commit hook. `tools/syncrepos`: syncs the reference checkouts.
 - `.agents/skills/`: agent skills, linked as `.claude/skills`.
 - `.reference-apps/<name>`: gitignored, pinned sparse checkouts of T3 Code, Azure CLI, the Azure DevOps CLI extension and knack, synced with `go run ./tools/syncrepos [--repo <name>]`. Read reference code only there, never from another checkout or installation on this machine, which may be a fork or at another revision. Never edit or import from it.
 
