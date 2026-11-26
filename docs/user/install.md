@@ -4,7 +4,7 @@ Install tfsaz on the machine running the T3 backend, whether you use the install
 
 ## Build and install the shim
 
-Build with Go 1.26 or newer, or use an installed tfsaz executable.
+Build with Go 1.26.11 or newer, or use an installed tfsaz executable. The minimum is a patch release because Go ships standard library security fixes in patch releases.
 
 **macOS and Linux.** From the tfsaz source directory, build tfsaz, create the two shims and enable them in the current shell.
 

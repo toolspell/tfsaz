@@ -42,7 +42,7 @@ Deferred work, so any session or worktree can pick it up.
 
 ## Later
 
-- **Release pipeline:** signed or checksummed binaries for macOS, Windows and Linux (for example with goreleaser). The README states there is no release yet. Build with a current Go patch release: `go.mod` says `go 1.26.0`, and govulncheck finds 28 standard library vulnerabilities reachable from tfsaz in Go 1.26.0 (all fixed in later patches). A `toolchain` line in `go.mod` would also move the test matrix, which runs `go.mod`'s version.
+- **Release pipeline:** signed or checksummed binaries for macOS, Windows and Linux (for example with goreleaser). The README states there is no release yet. `go.mod`'s `go` line guarantees that every build uses at least the Go patch release it names, which govulncheck found clean when it was set. At release time, check for a newer patch, raise the `go` line if one exists, and build with it.
 - **Skills link on Windows:** `.claude/skills` is a committed symlink, which Git checks out as a text file on Windows without `core.symlinks`, so Claude Code sees no project skills there. Let the worktree setup command (`go run ./tools/dev setup`) create a directory junction instead, and verify it on Windows.
 
 ## Code

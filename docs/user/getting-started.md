@@ -1,6 +1,6 @@
 # Getting started
 
-Run these steps on the machine running the T3 backend: the machine with T3 Desktop, or the T3 server if you use the web client. You need Go 1.26 or newer, the tfsaz source directory, an existing clone from your Azure DevOps Server collection, and a PAT for that collection.
+Run these steps on the machine running the T3 backend: the machine with T3 Desktop, or the T3 server if you use the web client. You need Go 1.26.11 or newer ([why a patch release](install.md)), the tfsaz source directory, an existing clone from your Azure DevOps Server collection, and a PAT for that collection.
 
 ## When you need tfsaz
 

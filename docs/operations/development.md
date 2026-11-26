@@ -2,7 +2,7 @@
 
 ## Setup
 
-- Go at the version in `go.mod` (1.26 or newer).
+- Go at the version in `go.mod` (1.26.11 or newer). The minimum is a patch release because Go ships standard library security fixes in patch releases. Dependabot does not bump the `go` line; the [update-references](../../.agents/skills/update-references/SKILL.md) run checks it.
 - Git and OpenSSH for the transport tests, Node for the TLS probe, and GIO on Linux for desktop dispatch.
 - On Windows use Git for Windows with its bundled shell.
 
@@ -113,7 +113,7 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 - **Gates** (Checks): gofmt; `go vet`, golangci-lint new issues and govulncheck for darwin, linux and windows; `go mod tidy -diff` for the root and every tool module; actionlint; gitleaks over the full history; the repo checks. The test matrix gates too.
 - **Reports** that never fail a run: all golangci-lint findings as counts, and deadcode, for each system.
 - tfsaz has no cgo code, so vet, lint and govulncheck with `GOOS` set on Linux see what native runs would see. Only the tests need the three runners.
-- Checks runs on the latest stable Go: govulncheck judges the standard library of the Go it runs on, and a release is built with a current Go, not with `go.mod`'s minimum.
+- Checks and the test matrix run on the Go version in `go.mod`: govulncheck judges the standard library of the Go it runs on, and that version is the minimum every build uses.
 - All three systems need the race detector; Windows x64 needs a compatible MinGW-w64 C compiler on PATH, which GitHub's runner has. [Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements)
 
 ### Lint base

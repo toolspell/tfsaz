@@ -71,7 +71,8 @@ For T3, check each changed call against the tfsaz dispatcher (`internal/az/cli.g
 2. Update the revisions and versions in `docs/internals/t3-compatibility.md` (the pin table and "Why stock T3 cannot reach Azure DevOps Server", with the compare range checked) and in any skill that cites them. For a T3 bump, follow its "Keeping coverage current": the user pages and the README constraint name the revision.
 3. Put every "tfsaz must follow" finding in `docs/backlog.md` under `## Code`: what changed upstream (file and function at the new pin) and where tfsaz starts (`internal/az/<file>.go`). Implement it in the same run only when it is trivial and the maintainer asked.
 4. Fix "docs only" findings in the same commit.
-5. Run `go run ./tools/dev check`. Commit as `build(refs): bump <entry> to <tag>` or `docs: ...` when only docs change.
+5. Check the Go patch level, which Dependabot does not bump: if `https://go.dev/dl/?mode=json` lists a newer patch of the `go` line's minor release in `go.mod`, raise the line in a separate `build:` commit, update the Go version in the docs that state it, and run `go run ./tools/dev ready` (govulncheck must be clean).
+6. Run `go run ./tools/dev check`. Commit as `build(refs): bump <entry> to <tag>` or `docs: ...` when only docs change.
 
 `TestStockT3Adapter` cannot run against the sparse checkout. After a T3 bump, run it against a full T3 tree at the new commit with dependencies installed ("Stock T3 adapter test" in `docs/operations/development.md`); if none is available, say in the report that it did not run. Live verification against a server is a separate, maintainer-triggered step.
 

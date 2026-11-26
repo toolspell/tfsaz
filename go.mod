@@ -1,6 +1,6 @@
 module github.com/toolspell/tfsaz
 
-go 1.26.0
+go 1.26.11
 
 require (
 	github.com/gofrs/flock v0.13.2

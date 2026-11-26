@@ -57,9 +57,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
-          # govulncheck judges the standard library of the Go it runs on. A release is built with a
-          # current Go, not with go.mod's minimum, which carries long-fixed standard library issues.
-          go-version: stable
+          # govulncheck judges the standard library of the Go it runs on: the go.mod minimum that
+          # every build uses at least.
+          go-version-file: go.mod
           # The build cache keeps the compiled tools, which are most of a cold run.
           cache-dependency-path: |
             go.sum
