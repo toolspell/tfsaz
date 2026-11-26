@@ -778,7 +778,7 @@ func managerTestPowerShellArgument(t *testing.T, argument string) (string, error
 	}
 	out := filepath.Join(t.TempDir(), "argument.txt")
 	cmd := exec.Command(shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
-		"[IO.File]::WriteAllText($env:TFSAZ_TEST_OUT, "+argument+")")
+		"function record { [IO.File]::WriteAllText($env:TFSAZ_TEST_OUT, $args[0]) }; record "+argument)
 	cmd.Env = append(os.Environ(), "TFSAZ_TEST_OUT="+out)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("%w: %s", err, output)
