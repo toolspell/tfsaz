@@ -6,6 +6,8 @@ import (
 	"net/url"
 )
 
+const coreReadVersion = "7.1"
+
 type teamRead struct {
 	project string
 	team    string
@@ -21,7 +23,7 @@ func parseTeamRead(command string, opts map[string]string) (teamRead, error) {
 	if command == "devops team list-member" && !validSegment(team) {
 		return teamRead{}, errors.New("list-member requires a valid --team")
 	}
-	query, err := pageQuery("7.1", opts)
+	query, err := pageQuery(coreReadVersion, opts)
 	return teamRead{project: project, team: team, query: query}, err
 }
 
