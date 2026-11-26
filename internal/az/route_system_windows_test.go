@@ -22,7 +22,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// When the test binary itself is started as the task's tfsaz executable, it
+// When the test binary itself is started as the task's TFSaz executable, it
 // records what it received instead of serving.
 const windowsTaskHelperEnv = "TFSAZ_TEST_TASK_ACTION_HELPER"
 
@@ -88,7 +88,7 @@ func TestWindowsTaskActionRuns(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	exe := filepath.Join(root, "bin dir", "tfsaz test.exe")
+	exe := filepath.Join(root, "bin dir", "tfsaz test.exe") // naming-allow: a binary name with a space
 	data, err := os.ReadFile(self)
 	if err != nil {
 		t.Fatal(err)
@@ -372,7 +372,7 @@ func TestWindowsHostsEditRefuses(t *testing.T) {
 	})
 	t.Run("incomplete journal", func(t *testing.T) {
 		path := hostsFixture(t, hostsFixtureContent)
-		if err := os.WriteFile(windowsHostsJournal(path), []byte("tfsaz hosts undo 1\n12 "), 0o600); err != nil {
+		if err := os.WriteFile(windowsHostsJournal(path), []byte(windowsHostsJournalHead+"\n12 "), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if code := runHostsScript(t, path, true, "", ""); code != 0 {

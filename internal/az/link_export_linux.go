@@ -56,7 +56,7 @@ func desktopLinkHandlerEntry(executable, config, browser string) string {
 	quote := func(path string) string { return `"` + escape.Replace(path) + `"` }
 	return fmt.Sprintf(`[Desktop Entry]
 Type=Application
-Name=tfsaz Links
+Name=TFSaz Links
 Exec=%s route handler-open %s %s %%u
 Terminal=false
 Categories=Network;WebBrowser;

@@ -6,7 +6,7 @@
 [extend]
 useDefault = true
 
-# The default rules know no Azure DevOps PAT, and PATs are the credential tfsaz handles.
+# The default rules know no Azure DevOps PAT, and PATs are the credential TFSaz handles.
 [[rules]]
 id = "azure-devops-pat"
 description = "Azure DevOps personal access token (84 characters, AZDO signature)"

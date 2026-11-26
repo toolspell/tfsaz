@@ -65,7 +65,7 @@ func TestSetupSSHArgs(t *testing.T) {
 		{"untrusted$(command)@other.invalid", "git-upload-pack 'some/repo'"},
 		{"-p", "22", synthetic, "git-upload-pack " + path},
 		{synthetic, "git-upload-pack '/v3/tfsaz-other/My Project/Repo'"},
-		{"git@SSH.DEV.AZURE.COM.", "git-upload-pack 'v3/TFSAZ-other/My Project/Repo'"},
+		{"git@SSH.DEV.AZURE.COM.", "git-upload-pack 'v3/TFSAZ-other/My Project/Repo'"}, // naming-allow: hosts match case-insensitively
 		{synthetic, "git-upload-pack '/v3/tfsaz-example/My%20Project/Repo%21%27Name'"},
 		{synthetic, "git-upload-pack '/v3/tfsaz-example/My Project/Repo'"},
 		{synthetic, "git-upload-pack " + path + "; untrusted"},
@@ -131,7 +131,7 @@ func TestSetupSSHGitLSRemote(t *testing.T) {
 	}
 	record := sshTestRecord(t)
 	dir := t.TempDir()
-	bin := testExecutable(filepath.Join(dir, "tfsaz with ' spaces!"))
+	bin := testExecutable(filepath.Join(dir, "tfsaz with ' spaces!")) // naming-allow: a binary name that needs quoting
 	build := exec.Command("go", "build", "-o", bin, "../..")
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build tfsaz: %v\n%s", err, output)

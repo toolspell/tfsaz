@@ -65,10 +65,16 @@ const (
 	browserValue    = `[^&#=:;?\\]+`
 )
 
+const browserExtensionName = "TFSaz Azure DevOps Server Links"
+
+// Exports from before the product name was capitalized carry this name.
+// Verify still accepts them, so an existing export does not report drift.
+const legacyBrowserExtensionName = "tfsaz Azure DevOps Server Links" // naming-allow: the name older exports carry
+
 func makeBrowserRules(cfg config, records []setupRecord) (browserExtensionManifest, []browserRule, error) {
 	manifest := browserExtensionManifest{
 		Version:     3,
-		Name:        "tfsaz Azure DevOps Server Links",
+		Name:        browserExtensionName,
 		Release:     "1.0.0",
 		Permissions: []string{"declarativeNetRequest"},
 	}
@@ -325,6 +331,17 @@ func verifyHTTPSBrowserExtension(dir string, cfg config, records []setupRecord) 
 		got, err := os.ReadFile(filepath.Join(dir, f.name))
 		if err != nil {
 			return err
+		}
+		if f.name == "manifest.json" {
+			legacy := manifest
+			legacy.Name = legacyBrowserExtensionName
+			old, err := json.MarshalIndent(legacy, "", "  ")
+			if err != nil {
+				return err
+			}
+			if string(got) == string(append(old, '\n')) {
+				continue
+			}
 		}
 		if string(got) != string(append(want, '\n')) {
 			return errors.New("browser export differs from the active routes; export to a new directory and reload the extension")

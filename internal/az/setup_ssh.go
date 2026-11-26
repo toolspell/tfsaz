@@ -52,7 +52,7 @@ func setupSSHCommand(r setupRecord) (string, error) {
 		setupSSHQuote(r.SSHConfig) + " --"
 	if runtime.GOOS == "windows" {
 		// Git for Windows invokes core.sshCommand through its POSIX shell.
-		// The arguments include server paths, which must reach tfsaz verbatim.
+		// The arguments include server paths, which must reach TFSaz verbatim.
 		command = "MSYS2_ARG_CONV_EXCL='*' " + command
 	}
 	return command, nil

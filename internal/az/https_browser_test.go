@@ -74,6 +74,31 @@ func TestWriteHTTPSBrowserExtension(t *testing.T) {
 	if err := verifyHTTPSBrowserExtension(dir, cfg, records); err != nil {
 		t.Fatalf("verify current export: %v", err)
 	}
+	// Exports written before the product name was capitalized still verify;
+	// any other manifest change is drift.
+	manifestFile := filepath.Join(dir, "manifest.json")
+	current, err := os.ReadFile(manifestFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		ok   bool
+	}{{legacyBrowserExtensionName, true}, {"Other Links", false}} {
+		renamed := strings.Replace(string(current), `"name": "`+browserExtensionName+`"`, `"name": "`+tc.name+`"`, 1)
+		if renamed == string(current) {
+			t.Fatal("manifest does not carry the extension name")
+		}
+		if err := os.WriteFile(manifestFile, []byte(renamed), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := verifyHTTPSBrowserExtension(dir, cfg, records); (err == nil) != tc.ok {
+			t.Fatalf("verify with extension name %q: %v, want ok=%v", tc.name, err, tc.ok)
+		}
+	}
+	if err := os.WriteFile(manifestFile, current, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := verifyHTTPSBrowserExtension(dir, cfg, nil); err == nil {
 		t.Fatal("verification accepted an export with retired repository routes")
 	}

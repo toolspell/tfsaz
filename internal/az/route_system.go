@@ -35,7 +35,7 @@ import (
 //   - exact leaf trust entries, with an installation-specific NSS nickname on Linux
 //
 // Privileged steps run fixed scripts built in memory from system binaries. No
-// elevated process executes the tfsaz binary or reads a user-writable file.
+// elevated process executes the TFSaz binary or reads a user-writable file.
 // The redirect service always runs as the invoking user.
 
 const routeSystemStateName = "route-system.json"

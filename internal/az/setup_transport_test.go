@@ -93,7 +93,7 @@ if [ "$1 $2 $3 $4" = '-o BatchMode=yes -o StrictHostKeyChecking=yes' ]; then
 elif [ "$TFSAZ_TEST_SSH_REQUIRE_BATCH" = 1 ]; then
     exit 94
 fi
-if [ "$TFSAZ_TEST_SSH_FAIL_MANAGED" = 1 ] && [ "$(git config --local --get remote.origin.vcs)" = tfsaz ]; then
+if [ "$TFSAZ_TEST_SSH_FAIL_MANAGED" = 1 ] && [ "$(git config --local --get remote.origin.vcs)" = "tfsaz" ]; then
     exit 95
 fi
 if [ "$1" = "-o" ]; then shift 2; fi

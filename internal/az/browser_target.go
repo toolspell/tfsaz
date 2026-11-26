@@ -10,7 +10,7 @@ import (
 )
 
 // browserTarget also handles ordinary web links when the OS dispatches them to
-// tfsaz as the default browser. They need no checkout, profile, or credential.
+// TFSaz as the default browser. They need no checkout, profile, or credential.
 func browserTarget(raw string) (string, error) {
 	return browserTargetAt(raw, "")
 }
