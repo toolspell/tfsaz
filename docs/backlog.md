@@ -23,17 +23,14 @@ Deferred work, so any session or worktree can pick it up.
   Testbed names in `docs/verification/` (PR numbers, collection names) were judged acceptable. Never push the local T3 checkpoint refs (`refs/t3/...`), so no `git push --mirror` or `--all`.
 - **Decide the product name:** tfsaz is a working name. A rename also changes persisted names (keyring services, `TFSAZ_` variables, `~/.tfsaz`, `tfsaz-<24 hex>` alias hosts, `remote.origin.vcs=tfsaz`, link handler IDs) and needs a migration. [Naming](internals/naming.md#tfsaz-is-a-working-name) lists them.
 - **License decision and CONTRIBUTING.md:** the README has only placeholders, and GitHub shows no license.
-- **CI path filter:** skip the 3-OS test matrix (about 5 minutes) on docs-only changes, using affected detection. Pointer: Toolspell `scripts/ci-changes.ts`.
-- **Secrets scan in CI:** run gitleaks over the pushed commits in CI, as `go run ./tools/dev ready` does locally (pinned in `tools/gitleaks`, config `.gitleaks.toml`). PATs are the core risk. Pointer: Toolspell `scripts/check-secrets.ts`.
-- **Local checks in CI:** CI runs only `go vet` and `go test -race`. Add golangci-lint new issues, `go mod tidy -diff`, actionlint and govulncheck, using the pinned tool modules (`tools/<name>/go.mod`).
 - **Low-value comment analyzer** (optional): a custom analyzer as the Go equivalent of Toolspell's `no-low-value-comments`. Pointer: Toolspell `oxlint-plugin-toolspell/rules/`.
-- **Local workflow run:** run the real workflow locally with nektos/act, optionally on a remote Docker context (Toolspell `vp run ci:local`, `scripts/ci-local.ts`). A green run is evidence, not proof. act runs only Linux containers, so the macOS and Windows jobs of `.github/workflows/test.yml` need another route, for example the test machines or VMs from the test-environment runbook item.
 - **Agent skills:** a testbed/VM verification skill in `.agents/skills/` (pairs with the test-environment runbook item).
 
 ## At the public / PR switch
 
 - **PR checks:** PR title in conventional-commit form, PR size labels, PR limits and the stale bot. Pointers: Toolspell `.github/workflows/pr-title.yml`, `pr-size.yml`, `pr-limits.yml`, `stale-needs-more-info.yml`.
 - **Review bots and review rules:** CodeRabbit config with path instructions, Macroscope approvability, Codex review, and a `claude.yml` workflow (actor-restricted, comment-only). Add a "Code review rules" section to AGENTS.md that maps areas to the docs owning their rules, and Macroscope check-run agents such as test-signal. Pointers: Toolspell `.coderabbit.config.ts`, `.macroscope/approvability.md`, `.macroscope/check-run-agents/`, `.github/workflows/claude.yml`.
+- **Required check:** make the roll-up job `Check` of `.github/workflows/test.yml` the required check in the ruleset, not the individual jobs ([CI](operations/development.md#required-check)).
 - **Repo settings and rulesets** (Toolspell's phase-1 setup):
   - squash-only merges and auto-delete of merged branches;
   - a ruleset on `main` with required checks, the strict up-to-date rule and no force push;
@@ -45,13 +42,13 @@ Deferred work, so any session or worktree can pick it up.
 
 ## Later
 
-- **Release pipeline:** signed or checksummed binaries for macOS, Windows and Linux (for example with goreleaser). The README states there is no release yet.
+- **Release pipeline:** signed or checksummed binaries for macOS, Windows and Linux (for example with goreleaser). The README states there is no release yet. Build with a current Go patch release: `go.mod` says `go 1.26.0`, and govulncheck finds 28 standard library vulnerabilities reachable from tfsaz in Go 1.26.0 (all fixed in later patches). A `toolchain` line in `go.mod` would also move the test matrix, which runs `go.mod`'s version.
 - **Skills link on Windows:** `.claude/skills` is a committed symlink, which Git checks out as a text file on Windows without `core.symlinks`, so Claude Code sees no project skills there. Let the worktree setup command (`go run ./tools/dev setup`) create a directory junction instead, and verify it on Windows.
 
 ## Code
 
-- **Existing golangci-lint findings** (v2.15.0, `.golangci.yml`; the gates see only new ones): 222 on darwin, 206 on linux, 214 on windows. Decide per linter: fix, or disable with a reason in `.golangci.yml`. List them with `go tool -modfile=tools/golangci-lint/go.mod golangci-lint run --max-issues-per-linter=0 --max-same-issues=0 ./...` (set `GOOS` for another system).
-  - `errcheck`, 146 on darwin, 79 of them in tests (unchecked `fmt.Fprintf`/`io.WriteString` in test handlers). Production code: mostly deferred `Close` and best-effort `os.Remove`/`os.RemoveAll`; most in `route_proxy.go` (10), `route_system.go` (7), `setup_manager.go` and `invoke.go` (5 each).
+- **Existing golangci-lint findings** (v2.15.0, `.golangci.yml`; the gates see only new ones): 225 on darwin, 209 on linux, 217 on windows. Decide per linter: fix, or disable with a reason in `.golangci.yml`. List them with `go tool -modfile=tools/golangci-lint/go.mod golangci-lint run --max-issues-per-linter=0 --max-same-issues=0 ./...` (set `GOOS` for another system).
+  - `errcheck`, 149 on darwin, 3 of them in `tools/syncrepos/main.go` (unchecked `fmt.Fprintf`), 79 in tests (unchecked `fmt.Fprintf`/`io.WriteString` in test handlers). Production code: mostly deferred `Close` and best-effort `os.Remove`/`os.RemoveAll`; most in `route_proxy.go` (10), `route_system.go` (7), `setup_manager.go` and `invoke.go` (5 each).
   - `staticcheck`, 69: 67 `ST1005` (capitalized or punctuated error strings; check whether some mirror Azure CLI texts on purpose), one `QF1001`, one `QF1003`.
   - `unused`, 7 on darwin: the same symbols as the dead-code entry below.
 - **Dead code** (deadcode v0.53.0 and `unused`; both depend on `GOOS`): unreachable on every system unless noted. Delete, or move to the file of the system that uses it.
@@ -74,13 +71,14 @@ Deferred work, so any session or worktree can pick it up.
 
 ## Platforms
 
-- **Check commands on Windows and Linux:** `tools/dev` (`check`, `ready`, `staged`, `setup`) and `.githooks/pre-commit` were verified only on macOS. Verify on Windows (the hook in Git for Windows' shell, CRLF checkouts, `-race` with MinGW-w64, `go tool` paths) and on Linux.
+- **Check commands on Windows and Linux:** `tools/dev` (`check`, `ready`, `staged`, `setup`) and `.githooks/pre-commit` were verified only on macOS; on Linux only `ci-changes` and `ci-checks` run, in CI and act. Verify on Windows (the hook in Git for Windows' shell, CRLF checkouts, `-race` with MinGW-w64, `go tool` paths) and on Linux.
 - **WSL 2 and WSL 3:** check for a platform gap. The code has no WSL-specific handling. Check:
   - T3 backend inside WSL with the browser or desktop app on Windows: which side needs `route setup`, the hosts file, the trust stores and the desktop link handler.
   - Secret Service availability for go-keyring inside WSL.
   - Git and SSH transport across the WSL/Windows boundary.
   - T3's own adapter already mentions "Windows az running in WSL" (`AzureDevOpsCli.ts`, scope detection and `@-` stdin text): check which side's `az` T3 runs in that setup.
 - **Windows check of the routing key directory:** on macOS and Linux, the redirector refuses a key file readable by group or others, and setup checks the directory's mode and owner. On Windows, setup sets a protected ACL but nothing checks it later (`internal/az/route_redirect.go:83`, `routeSystemOwnedByUser` in `route_system_windows.go`).
+- **macOS and Windows CI jobs locally:** `go run ./tools/dev ci-local` runs only the Linux jobs, because act runs only Linux containers. The test matrix on macOS and Windows needs another route, for example the test machines or VMs from the test-environment runbook item.
 - **Platform parity gaps** the docs reveal:
   - Linux is documented and tested only on Ubuntu (systemd, nftables, sudo, GIO).
   - Browser trust coverage per OS: check Chrome/Chromium (and Edge) on macOS, Windows and Linux as well as Firefox. Managed setup trusts automatically only in some combinations; Firefox needs manual trust everywhere; the manual trust table covers only Chromium on Ubuntu.
