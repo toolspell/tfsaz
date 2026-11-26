@@ -730,3 +730,31 @@ func TestRepoSetupChecksSSHWithGitConfigUnlocked(t *testing.T) {
 	}
 	managerTestRun(t, a, "restore")
 }
+
+func TestSetupCommandPathQuotesForTheShell(t *testing.T) {
+	for _, tc := range []struct {
+		goos, path, want string
+	}{
+		{"linux", "/tmp/checkout", "/tmp/checkout"},
+		{"linux", "/tmp/checkout with spaces", "'/tmp/checkout with spaces'"},
+		{"darwin", `/tmp/checkout\name`, `'/tmp/checkout\name'`},
+		{"linux", "/tmp/it's $HOME", `'/tmp/it'\''s $HOME'`},
+		{"windows", `C:\work\checkout`, `C:\work\checkout`},
+		{"windows", `C:\work\check out`, `"C:\work\check out"`},
+		{"windows", `C:\work\$repo`, `'C:\work\$repo'`},
+		{"windows", "C:\\work\\it's `x`", "'C:\\work\\it''s `x`'"},
+	} {
+		got := setupCommandPathFor(tc.goos, tc.path)
+		if got != tc.want {
+			t.Errorf("setupCommandPathFor(%s, %q) = %s, want %s", tc.goos, tc.path, got, tc.want)
+			continue
+		}
+		if tc.goos == "windows" || runtime.GOOS == "windows" {
+			continue
+		}
+		out, err := exec.Command("sh", "-c", "printf '%s' "+got).Output()
+		if err != nil || string(out) != tc.path {
+			t.Errorf("sh parsed %s as %q, %v, want %q", got, out, err, tc.path)
+		}
+	}
+}
