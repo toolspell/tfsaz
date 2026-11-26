@@ -154,7 +154,7 @@ func windowsTaskXML(p routeSystemPlan, sid string) string {
 	args := windowsTaskArguments(p)
 	return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>tfsaz browser routing redirect (` + p.id + `)</Description></RegistrationInfo>
+  <RegistrationInfo><Description>TFSaz browser routing redirect (` + p.id + `)</Description></RegistrationInfo>
   <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>` + xmlEscape(sid) + `</UserId></LogonTrigger></Triggers>
   <Principals><Principal id="Author"><UserId>` + xmlEscape(sid) + `</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
   <Settings>
@@ -237,7 +237,7 @@ func stopWindowsTask(ctx context.Context, p routeSystemPlan) error {
 			return nil
 		}
 		if attempt == 20 {
-			return errors.New("a TFSaz route redirect process for this setup is still running; end it in Task Manager and retry")
+			return errors.New("a tfsaz route redirect process for this setup is still running; end it in Task Manager and retry")
 		}
 		select {
 		case <-ctx.Done():
@@ -257,7 +257,12 @@ func routeSystemProbeName(p routeSystemPlan) string {
 	return ""
 }
 
+// windowsHostsJournalHead starts the Windows hosts journal. Restore reads
+// journals that older versions wrote, so it never changes.
+const windowsHostsJournalHead = "tfsaz hosts undo 1" // naming-allow: persisted format line
+
 func windowsSupervisorMarker(id string) string {
+	// naming-allow: restore finds running supervisors by this exact marker
 	return "# tfsaz routing supervisor " + id + "\n"
 }
 
@@ -368,7 +373,7 @@ func installWindowsTrust(ctx context.Context, p routeSystemPlan) error {
 }
 
 // removeWindowsTrust removes the leaf from the user's own Root store only.
-// A Local Machine or policy copy was installed outside tfsaz and needs an
+// A Local Machine or policy copy was installed outside TFSaz and needs an
 // administrator, so restore reports it instead of claiming a dialog.
 func removeWindowsTrust(ctx context.Context, sha256Hex string) error {
 	entries, err := windowsRootThumbprints(ctx, sha256Hex)
@@ -446,7 +451,7 @@ $m = ` + psQuote(routeHostsMarker(id)) + `
 $install = ` + flag + `
 $add = @(` + strings.Join(add, ", ") + `)
 $enc = [Text.Encoding]::GetEncoding(28591)
-$head = "tfsaz hosts undo 1` + "`n" + `"
+$head = ` + psQuote(windowsHostsJournalHead) + ` + "` + "`n" + `"
 $tail = "` + "`n" + `end` + "`n" + `"
 function Same([string]$a, [string]$b) { [string]::Equals($a, $b) }
 function Read-Text([IO.FileStream]$s) {

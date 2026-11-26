@@ -174,15 +174,13 @@ func staged() bool {
 		return false
 	}
 	var goFiles []string
-	repoChecks := false
 	for _, f := range files {
 		if strings.HasSuffix(f, ".go") {
 			goFiles = append(goFiles, f)
 		}
-		if strings.HasSuffix(f, ".go") || strings.HasSuffix(f, ".md") || strings.HasPrefix(f, ".github/") || strings.HasPrefix(f, ".agents/") {
-			repoChecks = true
-		}
 	}
+	// The naming check reads every text file, so any staged file can fail it.
+	repoChecks := len(files) > 0
 	steps := []step{{name: "gitleaks --staged", run: tool("gitleaks", append([]string{"git", "--pre-commit", "--staged"}, append(gitleaksArgs(true), ".")...)...)}}
 	if len(goFiles) > 0 {
 		steps = append(steps, step{name: "gofmt (staged)", run: gofmtCheck(goFiles, readStaged)})

@@ -11,10 +11,10 @@ import (
 	"time"
 )
 
-const preserveHelperVersion = "tfsaz remote helper 1"
+const preserveHelperVersion = "tfsaz remote helper 1" // naming-allow: the version line older binaries compare
 
 // The common Git config is the only source of routing information the helper
-// needs. The journal lets the CLI and browser resolve the organization alias.
+// needs. The journal lets TFSaz and the browser resolve the Azure-style alias.
 type preserveBinding struct {
 	ProfileID     string `json:"profileId"`
 	CollectionURL string `json:"collectionUrl"`

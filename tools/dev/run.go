@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// targets are the systems tfsaz supports. Vet and lint type-check each one
+// targets are the systems TFSaz supports. Vet and lint type-check each one
 // from any host, so a change to a _windows.go file is checked on macOS too.
 var targets = []string{"darwin", "linux", "windows"}
 
@@ -25,8 +25,8 @@ func toolModules() []string { return append(slices.Clone(tools), "act") }
 
 // repoChecksRun selects the root-package tests that check the whole
 // repository: doc links and anchors, em dashes in markdown, pinned actions,
-// the agent context budget and agent file length.
-const repoChecksRun = "TestDocLinks|TestNoEmDashInMarkdown|TestPinnedActions|TestAgentContextBudget|TestAgentFileLines"
+// the agent context budget, agent file length and naming.
+const repoChecksRun = "TestDocLinks|TestNoEmDashInMarkdown|TestPinnedActions|TestAgentContextBudget|TestAgentFileLines|TestNaming"
 
 // A step is one check. A gate fails the command; a report only prints.
 type step struct {

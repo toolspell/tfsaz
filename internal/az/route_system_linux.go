@@ -211,7 +211,7 @@ func linuxUserUnitContent(p routeSystemPlan) (string, error) {
 	}
 	env := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "%", "%%").Replace("TFSAZ_CONFIG=" + p.configFile)
 	return fmt.Sprintf(`[Unit]
-Description=tfsaz browser routing redirect (%s)
+Description=TFSaz browser routing redirect (%s)
 
 [Service]
 Environment="%s"
@@ -287,7 +287,7 @@ func linuxNATRules(id string, port int) string {
 
 func linuxPrivilegedInstall(p routeSystemPlan, nft string) string {
 	unit := `[Unit]
-Description=tfsaz browser routing loopback port 443 redirect (` + p.id + `)
+Description=TFSaz browser routing loopback port 443 redirect (` + p.id + `)
 After=nftables.service firewalld.service
 
 [Service]

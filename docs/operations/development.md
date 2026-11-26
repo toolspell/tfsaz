@@ -13,7 +13,7 @@
 | `go run ./tools/dev check` | On the files changed since the merge base with `main`, uncommitted and untracked ones included: gofmt on changed Go files; `go vet` and golangci-lint on the whole tree for darwin, linux and windows; `go mod tidy -diff` for the touched modules; actionlint when a workflow changed; gitleaks on the branch's commits and uncommitted changes; `go test` on the root package and the changed packages. | Before every commit. A few seconds; about 35 s more when `internal/az` changed. |
 | `go run ./tools/dev ready` | The whole tree: gofmt, `go vet`, golangci-lint and govulncheck for all three systems, `go mod tidy -diff` for every module, actionlint, gitleaks over the full history and uncommitted changes, `go test -race -count=1 ./...`. A report that never fails it: deadcode for all three systems. | Before a push. About 40 s. |
 | `go run ./tools/dev ci-local` | The [CI workflow](#ci) with act in Docker: the Linux jobs only. | Before a push that changes CI, or to reproduce a CI failure. A few minutes. |
-| Pre-commit hook | Staged content only: gofmt, gitleaks `--staged`, and the repo checks when a `.go`, `.md` or `.github/` file is staged. | On `git commit`. About 1 s. |
+| Pre-commit hook | Staged content only: gofmt, gitleaks `--staged`, and the repo checks when any file is staged. | On `git commit`. About 1 s. |
 | `go test -count=1 ./internal/az -run 'TestName'` | Focused tests. `-run` takes a regular expression, so `'TestA\|TestB'` runs both. | While iterating. |
 
 - `check -base <ref>` compares against another ref. On `main` itself `check` sees only uncommitted changes; `-base HEAD~1` checks the last commit.
@@ -33,6 +33,7 @@ Go tests in the root package that read the whole tree. Every `go test` of `.` ru
 | `TestPinnedActions` (`repo_checks_test.go`) | Every `uses:` in `.github/workflows/` and `.github/actions/` names a full 40-hex commit SHA followed by a `# vX` version comment. Local `./` actions are exempt; `docker://` images need a `sha256` digest. |
 | `TestNoEmDashInMarkdown` (`repo_checks_test.go`) | No em dash (U+2014) in any markdown file Git tracks or would track; reports `file:line`. |
 | `TestAgentContextBudget` (`repo_checks_test.go`) | `.agents/context-budget.json` equals the measured bytes of AGENTS.md, CLAUDE.md and the skills' frontmatter, which load in every agent session. CRLF counts as LF. |
+| `TestNaming` (`naming_test.go`) | The names in [Naming](../internals/naming.md#the-naming-check) in every text file Git tracks or would track, except `docs/verification/`. A deliberate exception carries `naming-allow: <reason>`. |
 | `TestAgentFileLines` (`repo_checks_test.go`) | AGENTS.md, CLAUDE.md and every markdown file under `.agents/` stay at 300 lines or fewer. |
 
 ### Lint

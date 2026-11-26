@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const desktopHandlerExample = `route handler-export "$env:LOCALAPPDATA\tfsaz Links" "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"`
+const desktopHandlerExample = `route handler-export "$env:LOCALAPPDATA\TFSaz Links" "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"`
 
 func exportDesktopLinkHandler(ctx context.Context, dest, browserExecutable string) error {
 	executable, config, err := linkHandlerPaths(browserExecutable)
@@ -99,7 +99,7 @@ $command = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('%s'))
 }
 
 const windowsHandlerRegistryScript = `
-Add-Type -Namespace Tfsaz -Name Shell -MemberDefinition @'
+Add-Type -Namespace TfsazLinks -Name Shell -MemberDefinition @'
 [System.Runtime.InteropServices.DllImport("shell32.dll")]
 public static extern void SHChangeNotify(int eventId, uint flags, System.IntPtr item1, System.IntPtr item2);
 '@
@@ -108,14 +108,14 @@ $root = [Microsoft.Win32.Registry]::CurrentUser
 $class = "Software\Classes\$id"
 $app = "Software\Toolspell\$id"
 $capabilities = "$app\Capabilities"
-$label = 'tfsaz Links'
+$label = 'TFSaz Links'
 $entries = @(
     @{ Path = $class; Name = ''; Value = $label }
     @{ Path = $class; Name = 'URL Protocol'; Value = '' }
     @{ Path = "$class\Application"; Name = 'ApplicationName'; Value = $label }
     @{ Path = "$class\shell\open\command"; Name = ''; Value = $command }
     @{ Path = $capabilities; Name = 'ApplicationName'; Value = $label }
-    @{ Path = $capabilities; Name = 'ApplicationDescription'; Value = 'Open registered Azure DevOps links through tfsaz' }
+    @{ Path = $capabilities; Name = 'ApplicationDescription'; Value = 'Open registered Azure DevOps links through TFSaz' }
     @{ Path = "$capabilities\URLAssociations"; Name = 'http'; Value = $id }
     @{ Path = "$capabilities\URLAssociations"; Name = 'https'; Value = $id }
     @{ Path = 'Software\RegisteredApplications'; Name = $label; Value = $capabilities }
@@ -173,7 +173,7 @@ function Install-Registration {
         Remove-RegistrationValues $added
         throw
     }
-    Write-Host 'Registered tfsaz Links. In Settings > Apps > Default apps, choose it for HTTP and HTTPS.'
+    Write-Host 'Registered TFSaz Links. In Settings > Apps > Default apps, choose it for HTTP and HTTPS.'
 }
 
 # Serialize install and uninstall of this application for the same account.
@@ -185,15 +185,15 @@ try {
     } catch [Threading.AbandonedMutexException] {
         $locked = $true
     }
-    if (-not $locked) { throw 'Another tfsaz Links registration is in progress.' }
+    if (-not $locked) { throw 'Another TFSaz Links registration is in progress.' }
     try {
         if ($action -eq 'Install') {
             Install-Registration
         } else {
             Remove-RegistrationValues $entries
-            Write-Host 'Removed this package registration for tfsaz Links.'
+            Write-Host 'Removed this package registration for TFSaz Links.'
         }
-        [Tfsaz.Shell]::SHChangeNotify(0x08000000, 0, [IntPtr]::Zero, [IntPtr]::Zero)
+        [TfsazLinks.Shell]::SHChangeNotify(0x08000000, 0, [IntPtr]::Zero, [IntPtr]::Zero)
     } finally { $mutex.ReleaseMutex() }
 } finally { $mutex.Dispose() }
 `

@@ -15,7 +15,7 @@ func TestLinkHandlerRejectsRecursiveOrMissingBrowser(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := validateLinkBrowser(executable, executable); err == nil {
-		t.Fatal("accepted tfsaz as its own browser")
+		t.Fatal("accepted TFSaz as its own browser")
 	}
 	dir := t.TempDir()
 	for _, browser := range []string{"relative", filepath.Join(dir, "missing.exe")} {

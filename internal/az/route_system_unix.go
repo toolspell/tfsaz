@@ -41,7 +41,7 @@ func routeSystemRootTool(candidates ...string) (string, error) {
 
 // runRouteSystemPrivileged runs one fixed script through sudo. The script is
 // built in memory from validated values and calls system programs only; it
-// never runs tfsaz or reads a file the user can write.
+// never runs TFSaz or reads a file the user can write.
 func runRouteSystemPrivileged(ctx context.Context, script string) error {
 	sudo, err := routeSystemRootTool("/usr/bin/sudo", "/bin/sudo")
 	if err != nil {

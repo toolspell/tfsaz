@@ -45,7 +45,7 @@ func RunPreserveGitHelper(ctx context.Context, args []string) error {
 	}
 	// Git's remote-http and remote-https commands run the same HTTP
 	// transport. The URL selects TLS, and remote-http also works in route run
-	// environments where remote-https is the older tfsaz overlay.
+	// environments where remote-https is the older TFSaz overlay.
 	cmd := exec.CommandContext(ctx, "git", "remote-http", args[0], binding.Target)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd.Run()

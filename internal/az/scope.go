@@ -140,7 +140,7 @@ func (cfg config) remoteScope(raw string) (*Profile, Scope) {
 		return p, s
 	}
 	// A real server remote identifies a collection only at its configured
-	// authority and full path. The resulting web link uses its organization alias.
+	// authority and full path. The resulting web link uses its Azure-style alias.
 	if u.Scheme != "https" || len(parts) < 3 || parts[len(parts)-2] != "_git" {
 		return nil, Scope{}
 	}

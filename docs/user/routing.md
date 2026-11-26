@@ -6,7 +6,7 @@ A managed checkout gives T3 a synthetic URL on a generated alias host. Choose ho
 | --- | --- |
 | Browser, including T3’s Browser panel | Run `tfsaz route setup` and `tfsaz route verify` on the machine where the browser runs. See [Browser routing](browser-routing.md). |
 | Desktop handoffs where you cannot change the hosts file | The per-user [desktop link handler](desktop-link-handler.md) can open links using the selected system browser. |
-| Human or script | `tfsaz route explain URL` shows the action, collection profile and destination. For a one-off link, `tfsaz route resolve URL` prints the real URL for a shell client. Check its exit status before using the output. Supply the client's normal authentication for that destination. |
+| Human or script | `tfsaz route explain URL` shows the action, collection profile and destination. For a one-off link, `tfsaz route resolve URL` prints the URL at the real collection for a shell client. Check its exit status before using the output. Supply the client's normal authentication for that destination. |
 | Optional in-browser routing for Chromium | Load the exported extension into the intended Chromium profile. See [Chromium extension](#chromium-extension). |
 | Git or stock T3 server | Use `tfsaz route run -- git clone URL`, `tfsaz route run -- t3 serve`, or launch an entire shell with `tfsaz route run -- zsh`. Processes in that tree inherit a private Git HTTPS helper. The original Git helper contacts the real collection and uses Git's TLS and credential settings. Git retains the synthetic origin for T3 detection. A process that discards the inherited Git environment can bypass the helper. Closing the launched process ends the override and deletes its temporary helper directory in `<config-file>.run` beside your configuration file. If the process is killed, delete the leftover `git-*` directories there. A separately started service needs its own launch configuration. |
 | Unattended job | Run the job under `tfsaz route run --` with Git credentials configured for the real collection under the job's OS account. The launcher disables Git terminal and Git Credential Manager interaction when stdin is not a terminal. Choose a non-interactive credential helper for the job. Git does not automatically receive the PAT TFSaz keeps in the OS keyring. |
@@ -18,6 +18,7 @@ Run `tfsaz route browser-export NEW_DIRECTORY`. In the intended Chromium profile
 - Supported repository, PR, commit, work-item and build links navigate to the real origin, where browser sign-in applies.
 - The extension blocks other requests to the registered alias spellings it recognizes.
 - Use `tfsaz route browser-verify DIRECTORY` to compare the files with the current configuration.
+- The extension is named **TFSaz Azure DevOps Server Links**. Exports from earlier versions are named `tfsaz Azure DevOps Server Links` and still verify; a fresh export updates the name.
 - After a profile change or repo restore, remove the old extension and load a fresh export.
 - Removing the extension disables browser routing for that profile. Then delete the export directory; TFSaz installs nothing into the browser itself.
 

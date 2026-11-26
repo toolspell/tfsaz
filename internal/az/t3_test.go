@@ -233,7 +233,7 @@ func (f *t3BoardsFixture) workItem(t *testing.T, r *http.Request, collection str
 		return nil
 	}
 	// Server URLs can include both the virtual directory and the project. T3's
-	// issue decoder needs the equivalent URL under the Azure-style organization.
+	// issue decoder needs the equivalent URL under the Azure-style alias.
 	item["url"] = (&url.URL{
 		Scheme: "https", Host: r.Host,
 		Path: fmt.Sprintf("%s/%s/_apis/wit/workItems/%d", collection, t3BoardsProject, id),

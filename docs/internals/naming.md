@@ -1,3 +1,5 @@
+<!-- naming-allow-file: this guideline lists the forms it rules out -->
+
 # Naming
 
 TFSaz runs as `az` and answers the calls T3 makes to Microsoft's Azure CLI. Three different things therefore answer to similar names: TFSaz itself, its `az` shim and Microsoft's Azure CLI. One form per name keeps docs, help texts and agents from mixing them up. The [glossary in AGENTS.md](../../AGENTS.md#glossary) defines the terms; this page says how to write them.
@@ -53,6 +55,19 @@ TFS (Team Foundation Server) is the server's former name. Use it only in literal
 
 ## Where the rules apply
 
-- Docs, AGENTS.md, CLI help and error texts. Known exceptions are tracked in [#7](https://github.com/toolspell/tfsaz/issues/7) and [#8](https://github.com/toolspell/tfsaz/issues/8).
+- Docs, AGENTS.md, CLI help and error texts, code comments, and the labels TFSaz writes into the OS: link handler names, the browser extension name, service and task descriptions.
 - Dated records in `docs/verification/` keep their wording unless a fix changes no fact.
 - Quote other projects' names as they write them, such as T3's "Open on Azure DevOps" button.
+- Strings that a newer TFSaz must read back from an older one keep their spelling even when it breaks a rule here, such as the `tfsaz hosts undo 1` journal header. Changing one needs a migration.
+
+## The naming check
+
+`TestNaming` (`naming_test.go`) checks every text file Git tracks or would track, except `docs/verification/`. It runs in `go run ./tools/dev check` and `ready`, in the commit hook and in CI. It reports:
+
+- Misspellings of the name: any case other than TFSaz, `tfsaz`, `TFSAZ_` in environment variables and `Tfsaz` inside a PascalCase identifier, and the name split by a space, hyphen or underscore.
+- A lowercase `tfsaz` in Markdown prose outside code format.
+- A lowercase `tfsaz` in code, config and code blocks unless it is part of a path, host, URL or identifier, a whole quoted literal, the `tfsaz:` diagnostic prefix, or followed by a command, an option or a version. Everything else reads as the product name.
+- TFSaz followed by a command, such as "run TFSaz init".
+- The forms in the "Not" columns above that a pattern finds reliably: TFS, on-prem, VSTS, Azure DevOps cloud, organization alias, synthetic host, Azure-style URL, real URL, stock `az`, the TFSaz launcher, the az wrapper and "the CLI".
+
+A deliberate exception carries its reason: `naming-allow: <reason>` on the line or the line above, or `naming-allow-file: <reason>` in a file's first five lines, as this page does.

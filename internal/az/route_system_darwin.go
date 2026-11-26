@@ -15,7 +15,7 @@ import (
 
 // macOS: two on-demand LaunchAgents in the user's GUI domain. launchd binds
 // one listening socket each on 127.0.0.1:443 and [::1]:443 and passes it in
-// inetdCompatibility Wait mode to tfsaz, which runs as the user. Nothing
+// inetdCompatibility Wait mode to TFSaz, which runs as the user. Nothing
 // forwards or rewrites ports, no root job exists, and the sockets close when
 // the user logs out. The only administrator step edits /etc/hosts. The leaf
 // gets SSL trust in the user's login keychain with one exact hostname rule per

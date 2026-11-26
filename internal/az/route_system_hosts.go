@@ -54,7 +54,7 @@ func routeHostsHasMarker(content, id string) bool {
 }
 
 // routeHostsConflict reports an unmarked or foreign-marked entry that already
-// names one of the aliases. Resolvers use the first match, so tfsaz refuses
+// names one of the aliases. Resolvers use the first match, so TFSaz refuses
 // rather than rely on order or edit someone else's line.
 func routeHostsConflict(content, id string, aliases []string) error {
 	want := make(map[string]bool, len(aliases))

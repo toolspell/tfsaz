@@ -51,7 +51,7 @@ func (a app) runShim(args []string) error {
 		return err
 	}
 	// A package manager can replace a versioned executable on upgrade. Link
-	// to its stable tfsaz launcher when it resolves to this same file.
+	// to the stable "tfsaz" on PATH when it resolves to this same file.
 	if stable, err := exec.LookPath("tfsaz"); err == nil && filepath.IsAbs(stable) {
 		current, err1 := os.Stat(executable)
 		installed, err2 := os.Stat(stable)

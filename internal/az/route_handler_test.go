@@ -19,7 +19,7 @@ func TestExportMacLinkHandler(t *testing.T) {
 	}
 	root := t.TempDir()
 	t.Setenv("TFSAZ_CONFIG", filepath.Join(root, "config with spaces.json"))
-	dest := filepath.Join(root, "Tfsaz Link Handler.app")
+	dest := filepath.Join(root, "TFSaz Links.app")
 	const browser = "com.example.RealBrowser"
 	if err := exportMacLinkHandler(t.Context(), dest, strings.ToUpper(macLinkHandlerBundleID)); err == nil {
 		t.Fatal("handler accepted its own bundle identifier")

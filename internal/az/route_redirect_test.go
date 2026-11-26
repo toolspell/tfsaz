@@ -47,7 +47,7 @@ func writeRedirectTestCert(t *testing.T, dir string, spec redirectTestCert) (cer
 	}
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(time.Now().UnixNano()),
-		Subject:               pkix.Name{CommonName: "tfsaz test"},
+		Subject:               pkix.Name{CommonName: "TFSaz test"},
 		DNSNames:              spec.names,
 		IPAddresses:           spec.ips,
 		NotBefore:             spec.notBefore,
