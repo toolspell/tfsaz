@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -20,9 +21,9 @@ func (s *setupRegistry) forceRestore(ctx context.Context, c setupCheckout, r set
 		if exists, err := setupFileExists(config); err != nil || !exists {
 			return errors.Join(err, fmt.Errorf("expected a regular Git config at %s", config))
 		}
-		keys := []setupGitEdit{{setupOriginKey, original.url}, {setupVCSKey, ""}, {setupBindingKey, ""}}
-		if !original.preserve {
-			keys = append(keys, setupGitEdit{setupSSHKey, ""})
+		keys := []setupGitEdit{{setupOriginKey, original.url}, {setupSSHKey, ""}}
+		if original.preserve {
+			keys = []setupGitEdit{keys[0], {setupVCSKey, ""}, {setupBindingKey, ""}}
 		}
 		var report strings.Builder
 		var edits []setupGitEdit
@@ -148,7 +149,7 @@ func matchingSetupRecords(records []setupRecord, path string) []setupRecord {
 // restore could still undo.
 func checkSetupGone(ctx context.Context, r setupRecord) error {
 	if c, err := resolveSetupCheckout(ctx, r); err == nil {
-		return fmt.Errorf("checkout %s still exists; run repo restore %s instead", c.repo, c.repo)
+		return fmt.Errorf("checkout %s still exists; run repo restore %s instead", c.repo, setupCommandPath(c.repo))
 	}
 	if _, err := os.Lstat(r.GitDir); !errors.Is(err, os.ErrNotExist) {
 		if err != nil {
@@ -213,5 +214,19 @@ func missingSetupCheckoutError(ctx context.Context, registry, path string, cause
 	if err := checkSetupGone(ctx, matches[0]); err != nil {
 		return fmt.Errorf("%w; %w", cause, err)
 	}
-	return fmt.Errorf("checkout %s no longer exists, so there is nothing to restore; run repo forget %s to remove its setup record", matches[0].Repo, matches[0].Repo)
+	return fmt.Errorf("checkout %s no longer exists, so there is nothing to restore; run repo forget %s to remove its setup record", matches[0].Repo, setupCommandPath(matches[0].Repo))
+}
+
+// setupCommandPath quotes a path for a command the user copies from an error,
+// in the quoting of the platform's usual shell.
+func setupCommandPath(path string) string {
+	if !strings.ContainsFunc(path, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/\\:._-+", r))
+	}) {
+		return path
+	}
+	if runtime.GOOS == "windows" {
+		return `"` + path + `"`
+	}
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }

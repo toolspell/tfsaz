@@ -1204,7 +1204,7 @@ func (a app) runRepo(ctx context.Context, args []string) (err error) {
 		registry := setupRegistry{path: path, records: records, store: a.store, out: a.stdout}
 		if err := registry.mutate(ctx, checkout, op); err != nil {
 			if _, drift := errors.AsType[setupDriftError](err); drift && op.action == "restore" {
-				return fmt.Errorf("%w; to overwrite the current values with the recorded original ones, run repo restore --force %s", err, checkout.repo)
+				return fmt.Errorf("%w; to overwrite the current values with the recorded original ones, run repo restore --force %s", err, setupCommandPath(checkout.repo))
 			}
 			return err
 		}

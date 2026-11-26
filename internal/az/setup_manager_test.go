@@ -599,6 +599,7 @@ func TestRepoSetupHTTPSOverrideAndManualOriginDrift(t *testing.T) {
 	managerTestState(t, c, setupGitState{url: managerTestOrigin, ssh: r.SSHCommand})
 
 	managerTestGit(t, c.repo, "config", "--add", setupOriginKey, r.RemoteURL)
+	managerTestGit(t, c.repo, "config", setupVCSKey, "manual")
 	if err := a.runRepo(t.Context(), []string{"restore"}); err == nil || !strings.Contains(err.Error(), "repo restore --force") {
 		t.Fatalf("restore of two origin URLs returned %v", err)
 	}
@@ -609,7 +610,7 @@ func TestRepoSetupHTTPSOverrideAndManualOriginDrift(t *testing.T) {
 	if got := a.stdout.String(); got != want {
 		t.Fatalf("force restore output = %q, want %q", got, want)
 	}
-	managerTestState(t, c, setupGitState{url: httpsOrigin})
+	managerTestState(t, c, setupGitState{url: httpsOrigin, vcs: "manual"})
 	if _, err := os.Lstat(r.SSHConfig); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("force restore left the SSH config: %v", err)
 	}
@@ -652,7 +653,7 @@ func TestRepoForgetDeletedOrMovedCheckout(t *testing.T) {
 		t.Fatalf("restore of the moved checkout returned %v", err)
 	}
 	if err := a.runRepo(t.Context(), []string{"restore", c.repo}); err == nil ||
-		!strings.Contains(err.Error(), "no longer exists") || !strings.Contains(err.Error(), "repo forget "+c.repo) {
+		!strings.Contains(err.Error(), "no longer exists") || !strings.Contains(err.Error(), "repo forget "+setupCommandPath(c.repo)) {
 		t.Fatalf("restore of the missing checkout returned %v", err)
 	}
 	movedConfig := filepath.Join(moved, ".git", "config")
