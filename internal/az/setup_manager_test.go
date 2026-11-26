@@ -740,7 +740,8 @@ func TestSetupCommandPathQuotesForTheShell(t *testing.T) {
 		{"darwin", `/tmp/checkout\name`, `'/tmp/checkout\name'`},
 		{"linux", "/tmp/it's $HOME", `'/tmp/it'\''s $HOME'`},
 		{"windows", `C:\work\checkout`, `C:\work\checkout`},
-		{"windows", `C:\work\check out`, `"C:\work\check out"`},
+		{"windows", `C:\work\check out`, `'C:\work\check out'`},
+		{"windows", "C:\\work\\$draft\u2019x \u201cy\u201d", "'C:\\work\\$draft\u2019\u2019x \u201cy\u201d'"},
 		{"windows", `C:\work\$repo`, `'C:\work\$repo'`},
 		{"windows", "C:\\work\\it's `x`", "'C:\\work\\it''s `x`'"},
 	} {
@@ -749,12 +750,39 @@ func TestSetupCommandPathQuotesForTheShell(t *testing.T) {
 			t.Errorf("setupCommandPathFor(%s, %q) = %s, want %s", tc.goos, tc.path, got, tc.want)
 			continue
 		}
-		if tc.goos == "windows" || runtime.GOOS == "windows" {
+		if (tc.goos == "windows") != (runtime.GOOS == "windows") {
 			continue
 		}
-		out, err := exec.Command("sh", "-c", "printf '%s' "+got).Output()
-		if err != nil || string(out) != tc.path {
-			t.Errorf("sh parsed %s as %q, %v, want %q", got, out, err, tc.path)
+		var parsed string
+		var err error
+		if runtime.GOOS == "windows" {
+			parsed, err = managerTestPowerShellArgument(t, got)
+		} else {
+			var out []byte
+			out, err = exec.Command("sh", "-c", "printf '%s' "+got).Output()
+			parsed = string(out)
+		}
+		if err != nil || parsed != tc.path {
+			t.Errorf("the shell parsed %s as %q, %v, want %q", got, parsed, err, tc.path)
 		}
 	}
+}
+
+func managerTestPowerShellArgument(t *testing.T, argument string) (string, error) {
+	t.Helper()
+	shell, err := exec.LookPath("pwsh")
+	if err != nil {
+		if shell, err = exec.LookPath("powershell"); err != nil {
+			t.Skip("PowerShell unavailable")
+		}
+	}
+	out := filepath.Join(t.TempDir(), "argument.txt")
+	cmd := exec.Command(shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+		"[IO.File]::WriteAllText($env:TFSAZ_TEST_OUT, "+argument+")")
+	cmd.Env = append(os.Environ(), "TFSAZ_TEST_OUT="+out)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("%w: %s", err, output)
+	}
+	data, err := os.ReadFile(out)
+	return string(data), err
 }

@@ -217,8 +217,8 @@ func missingSetupCheckoutError(ctx context.Context, registry, path string, cause
 	return fmt.Errorf("checkout %s no longer exists, so there is nothing to restore; run repo forget %s to remove its setup record", matches[0].Repo, setupCommandPath(matches[0].Repo))
 }
 
-// setupCommandPath quotes a path for a command the user copies from an error,
-// in the quoting of the platform's usual shell.
+// setupCommandPath quotes a path for a command the user copies from an error:
+// POSIX sh on macOS and Linux, PowerShell on Windows.
 func setupCommandPath(path string) string {
 	return setupCommandPathFor(runtime.GOOS, path)
 }
@@ -233,13 +233,19 @@ func setupCommandPathFor(goos, path string) string {
 	}) {
 		return path
 	}
-	// Windows paths cannot contain double quotes. Double quotes work in cmd and
-	// PowerShell, but PowerShell expands $ and backtick inside them.
-	if goos == "windows" && !strings.ContainsAny(path, "$`") {
-		return `"` + path + `"`
-	}
+	// PowerShell expands $ and backtick only inside double quotes. It also reads
+	// the typographic single quotes as quotes; doubling escapes each of them.
 	if goos == "windows" {
-		return "'" + strings.ReplaceAll(path, "'", "''") + "'"
+		var b strings.Builder
+		b.WriteByte('\'')
+		for _, r := range path {
+			if strings.ContainsRune("'\u2018\u2019\u201a\u201b", r) {
+				b.WriteRune(r)
+			}
+			b.WriteRune(r)
+		}
+		b.WriteByte('\'')
+		return b.String()
 	}
 	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }
