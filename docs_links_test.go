@@ -19,6 +19,9 @@ var (
 	ownURLPattern     = regexp.MustCompile(`https://github\.com/toolspell/tfsaz[^\s"'` + "`" + `)<>\]]*`)
 	schemePattern     = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*:`)
 	headingPattern    = regexp.MustCompile(`^ {0,3}#{1,6}\s+(.*?)(?:\s+#+)?\s*$`)
+	// Deferred work lives in issues. GitHub keeps closed issues, so a link to
+	// one stays valid; the checker cannot see them offline.
+	issuePagePattern = regexp.MustCompile(`^/issues(?:/[1-9][0-9]*)?(?:\?[^#]*)?$`)
 )
 
 func TestDocLinks(t *testing.T) {
@@ -115,7 +118,7 @@ func (c *linkChecker) checkOwnURL(where, u string) {
 		c.checkTarget(where, u, "README.md", anchor)
 	case strings.HasPrefix(rest, "/blob/main/"), strings.HasPrefix(rest, "/tree/main/"):
 		c.checkTarget(where, u, path.Clean(rest[len("/blob/main/"):]), anchor)
-	case githubPages[rest]:
+	case githubPages[rest], issuePagePattern.MatchString(rest):
 	default:
 		c.report(where, u, "unsupported GitHub URL form")
 	}
@@ -212,7 +215,12 @@ func TestCheckOwnURL(t *testing.T) {
 		repo + "/tree/main/docs":                 true,
 		repo + "/issues/new/choose":              true,
 		repo + "/security/advisories/new":        true,
-		repo + "/issues/12345":                   false,
+		repo + "/issues":                         true,
+		repo + "/issues/12345":                   true,
+		repo + "/issues?q=label%3Areversibility": true,
+		repo + "/issues/0":                       false,
+		repo + "/issues/abc":                     false,
+		repo + "/pulls":                          false,
 		repo + "/blob/feature/SECURITY.md":       false,
 	} {
 		c := linkChecker{anchors: map[string]map[string]bool{}}

@@ -87,36 +87,61 @@
   {
     "name": "size:XS",
     "color": "0e8a16",
-    "description": "0-9 changed lines without go.sum, and without tests in mixed PRs."
+    "description": "0-9 changed lines without go.sum, and without tests in mixed PRs. On issues: the estimate."
   },
   {
     "name": "size:S",
     "color": "5ebd3e",
-    "description": "10-29 changed lines without go.sum, and without tests in mixed PRs."
+    "description": "10-29 changed lines without go.sum, and without tests in mixed PRs. On issues: the estimate."
   },
   {
     "name": "size:M",
     "color": "fbca04",
-    "description": "30-99 changed lines without go.sum, and without tests in mixed PRs."
+    "description": "30-99 changed lines without go.sum, and without tests in mixed PRs. On issues: the estimate."
   },
   {
     "name": "size:L",
     "color": "fe7d37",
-    "description": "100-499 changed lines without go.sum, and without tests in mixed PRs."
+    "description": "100-499 changed lines without go.sum, and without tests in mixed PRs. On issues: the estimate."
   },
   {
     "name": "size:XL",
     "color": "d93f0b",
-    "description": "500-999 changed lines without go.sum, and without tests in mixed PRs."
+    "description": "500-999 changed lines without go.sum, and without tests in mixed PRs. On issues: the estimate."
   },
   {
     "name": "size:XXL",
     "color": "b60205",
-    "description": "1,000+ changed lines without go.sum, and without tests in mixed PRs."
+    "description": "1,000+ changed lines without go.sum, and without tests in mixed PRs. On issues: the estimate."
   },
   {
     "name": "agent-context-increase",
     "color": "5319e7",
     "description": "A maintainer accepts that this PR grows the context every agent session loads."
+  },
+  {
+    "name": "needs-decision",
+    "color": "e99695",
+    "description": "Open questions a maintainer must answer before the work starts."
+  },
+  {
+    "name": "needs-live",
+    "color": "c2e0c6",
+    "description": "Needs a live machine, the testbed or another OS to verify."
+  },
+  {
+    "name": "reversibility",
+    "color": "f9d0c4",
+    "description": "A system change TFSaz cannot fully undo or check yet."
+  },
+  {
+    "name": "testing",
+    "color": "1d76db",
+    "description": "Test coverage, test runs or test infrastructure."
+  },
+  {
+    "name": "tooling",
+    "color": "ededed",
+    "description": "Developer tooling, checks and CI."
   }
 ]

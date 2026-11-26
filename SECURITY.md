@@ -26,7 +26,7 @@ TFSaz runs as the OS user that runs the T3 backend, as the `az` shim and as `git
 
 ## What TFSaz changes on the machine
 
-Besides its configuration file, `<config>.repo-setups.json` and `<config>.browser-route`, TFSaz changes only the state below. Each change is deliberate and needs the user's command; [Reversible and verifiable system changes](AGENTS.md#reversible-and-verifiable-system-changes) is the rule, and the [backlog](docs/backlog.md#reversibility-and-verify-gaps) lists where undo or check is still missing.
+Besides its configuration file, `<config>.repo-setups.json` and `<config>.browser-route`, TFSaz changes only the state below. Each change is deliberate and needs the user's command; [Reversible and verifiable system changes](AGENTS.md#reversible-and-verifiable-system-changes) is the rule, and the [issues labeled `reversibility`](https://github.com/toolspell/tfsaz/issues?q=is%3Aissue%20is%3Aopen%20label%3Areversibility) track where undo or check is still missing.
 
 | Change | Why | Undo | Check |
 | --- | --- | --- | --- |
@@ -75,7 +75,7 @@ Setup creates a self-signed 90-day leaf (ECDSA P-256, `CA:FALSE`, exact alias na
 
 ### The on-disk key exception
 
-The leaf's private key `alias-key.pem` lives in `<config>.browser-route`, beside the certificate and the installation identity. It is the one secret outside the keyring. The directory is owner-only (mode 700 with 600 files on macOS and Linux, a protected ACL for the user and SYSTEM on Windows). Moving it into the keyring is in the [backlog](docs/backlog.md#code).
+The leaf's private key `alias-key.pem` lives in `<config>.browser-route`, beside the certificate and the installation identity. It is the one secret outside the keyring. The directory is owner-only (mode 700 with 600 files on macOS and Linux, a protected ACL for the user and SYSTEM on Windows). Moving it into the keyring is tracked in [#9](https://github.com/toolspell/tfsaz/issues/9).
 
 Whoever holds the key can impersonate the alias hosts to this user's browsers, which trust the leaf. It cannot impersonate the real collection or obtain a PAT.
 

@@ -54,8 +54,7 @@ refactors and a second fix go in their own PRs.
 
 macOS, Windows and Linux need feature parity for a release. A PR may implement a feature on fewer
 platforms only with explicit "not supported on this platform" handling on the others and a
-[backlog](docs/backlog.md#platforms) entry for each missing platform
-([AGENTS.md](AGENTS.md#platform-parity)).
+`platform:<os>` issue for each missing platform ([AGENTS.md](AGENTS.md#platform-parity)).
 
 <a id="verification"></a>
 

@@ -201,6 +201,18 @@ Every workflow that runs on PRs must also work for [stacked pull requests](https
 
 Push only `main` and PR branches by name. Never `git push --mirror` or `--all`: T3 Code keeps local checkpoint refs under `refs/t3/` that must not reach GitHub.
 
+## Issues
+
+Deferred work lives in [GitHub issues](https://github.com/toolspell/tfsaz/issues), never in a file in the repository. One issue is one piece of work someone can pick up; split an entry when its parts can land independently.
+
+- **Body:** what is wrong or missing, where to start (files and functions, not only line numbers), and how to verify it. End with a note to cross-check the issue against the current code before starting, because paths and line numbers age.
+- **Labels:** a type (`enhancement`, `bug`, `documentation`, `testing` or `tooling`) plus every label that applies: `platform:<os>`, `routing`, `t3-compatibility`, `reversibility` for a gap against [Reversible and verifiable system changes](../../AGENTS.md#reversible-and-verifiable-system-changes), and `needs-live` when only a live machine, the testbed or another OS can verify it.
+- **Size:** one `size:XS` to `size:XXL` label as an estimate of the PR's changed lines, on the scale `pr-size.yml` applies to PRs. Issues labeled `later` (deferred until something else happens) or `idea` (value and feasibility unchecked) get no size.
+- **Open questions:** when the work needs a maintainer's answer first, label it `needs-decision` and list the questions under "Open questions". `needs-more-info` is for outside reporters.
+- **Dependencies:** when one issue cannot sensibly start before another lands, add GitHub's "blocked by" relation and say why under "Depends on" in the blocked issue. Mention a looser relation in the text only.
+- **Assignee:** whoever drives the work, a maintainer or the person an agent works for, is assigned when the work starts.
+- **Closing:** the PR closes its issues with a closing keyword (`Closes #<n>`). GitHub applies it only when the PR merges into `main`, so a stacked layer's keyword takes effect when its stack lands. Use `Refs #<n>` instead when work remains, and note in the issue what remains.
+
 ## Reference checkouts
 
 Agents and maintainers read upstream reference code (T3 Code, Azure CLI, the Azure DevOps CLI extension, knack) only from the gitignored `.reference-apps/` folder. [T3 compatibility](../internals/t3-compatibility.md#references) explains what each one is for.
@@ -215,7 +227,7 @@ go run ./tools/syncrepos -latest         # pins next to the latest release tags,
 - For each entry it clones or fetches only the pinned commit, applies the sparse paths, checks out that commit, resets local edits and stray files, and verifies the HEAD, the sparse patterns, a clean tree and that every listed path exists. A second run that finds everything in place downloads nothing.
 - Tests and CI never need it; `go test ./...` skips the folder.
 
-To bump a pin, follow the skill `.agents/skills/update-references`: it finds the latest releases with `-latest`, diffs the old and new pin in the paths TFSaz depends on, classifies the impact, re-pins and puts required TFSaz changes in the [backlog](../backlog.md#code). The sync fails if a listed path no longer exists at the new commit. The `t3code` pin moves together with the T3 revision in [T3 compatibility](../internals/t3-compatibility.md#keeping-coverage-current); what each entry is for is in the skills `.agents/skills/reference-t3code` and `.agents/skills/reference-azure-cli`.
+To bump a pin, follow the skill `.agents/skills/update-references`: it finds the latest releases with `-latest`, diffs the old and new pin in the paths TFSaz depends on, classifies the impact, re-pins and opens an issue for each required TFSaz change. The sync fails if a listed path no longer exists at the new commit. The `t3code` pin moves together with the T3 revision in [T3 compatibility](../internals/t3-compatibility.md#keeping-coverage-current); what each entry is for is in the skills `.agents/skills/reference-t3code` and `.agents/skills/reference-azure-cli`.
 
 ### Agent skills
 
