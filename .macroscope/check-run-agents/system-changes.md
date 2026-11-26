@@ -27,7 +27,7 @@ Look for changed code that adds or widens a change to state outside TFSaz's conf
 - reports it in a check (`route verify`, `repo verify`, `doctor`, or another TFSaz command);
 - lists it in the `SECURITY.md` table, with the undo and the check.
 
-Missing pieces are findings. The `SECURITY.md` table lists the existing undo and check gaps through `docs/backlog.md`; an entry there covers a gap. Never ask to remove or weaken a security-affecting feature such as hosts entries, a trusted leaf, a loopback listener on port 443, firewall rules or link handlers; ask for the documentation instead.
+Missing pieces are findings. The `SECURITY.md` table lists the existing undo and check gaps through the GitHub issues labeled `reversibility`; an open issue covers a gap. Never ask to remove or weaken a security-affecting feature such as hosts entries, a trusted leaf, a loopback listener on port 443, firewall rules or link handlers; ask for the documentation instead.
 
 Post each finding as a precise inline comment on the smallest relevant range and state the expected fix. Untouched older code is not a finding.
 

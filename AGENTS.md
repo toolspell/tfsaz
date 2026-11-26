@@ -22,7 +22,7 @@ TFSaz solves the problem from outside, against the real installed T3 Code app or
 
 ### Reversible and verifiable system changes
 
-- Everything TFSaz or its setup changes outside its own configuration (hosts file, trust stores, services, firewall rules, Git config and remotes, link handlers, keyring entries, shims, browser and proxy settings) must be cleanly undoable with a TFSaz command or a documented step, leaving no residue, and checkable by TFSaz itself, so users can see the current state. A feature that lacks either is a gap: report it and add it to the backlog.
+- Everything TFSaz or its setup changes outside its own configuration (hosts file, trust stores, services, firewall rules, Git config and remotes, link handlers, keyring entries, shims, browser and proxy settings) must be cleanly undoable with a TFSaz command or a documented step, leaving no residue, and checkable by TFSaz itself, so users can see the current state. A feature that lacks either is a gap: report it and open an issue labeled `reversibility`.
 - Clean up after yourself: revert test environments (temp configs, test checkouts, routing on test machines, test keyring entries) to a clean state as soon as you are sure the state is no longer needed.
 
 ### Security-affecting features are intended
@@ -32,7 +32,7 @@ Some features deliberately change a machine's security state: local trust for a 
 ### Credentials
 
 - Every credential (PATs, tokens) lives only in the OS secret store through go-keyring: macOS Keychain, Windows Credential Manager, Linux Secret Service. Never in files, configuration, command arguments, logs or fixtures. Add no new on-disk secrets.
-- One exception exists today: the browser-redirect TLS leaf private key `alias-key.pem` in `<config>.browser-route` (owner-only, mode 600). It is tracked in the [backlog](docs/backlog.md).
+- One exception exists today: the browser-redirect TLS leaf private key `alias-key.pem` in `<config>.browser-route` (owner-only, mode 600). It is tracked in [#9](https://github.com/toolspell/tfsaz/issues/9).
 - Send a PAT only to its configured collection. Map an Azure-style alias to the real collection before sending credentials.
 - Redirects on authenticated requests fail closed.
 - A failed credential in one collection must never select another collection's identity.
@@ -44,7 +44,7 @@ Details and the remaining routing rules: [Architecture](docs/internals/architect
 macOS, Linux and Windows are fully supported at feature parity. Platform-specific implementations are fine (launchd, systemd, Task Scheduler). Consider all three platforms in every change, even when a first shot or an experiment is only tried on one.
 
 - Parity is required for a release, not for every PR.
-- A PR may land a feature on fewer platforms, but every other platform must get explicit "not supported on this platform" handling: a clear error and a nonzero exit, never a silent no-op or a crash. The same PR adds a [backlog](docs/backlog.md#platforms) entry for each missing platform.
+- A PR may land a feature on fewer platforms, but every other platform must get explicit "not supported on this platform" handling: a clear error and a nonzero exit, never a silent no-op or a crash. The same PR opens a `platform:<os>` issue for each missing platform.
 - A feature or doc step that misses a platform without that handling and entry is a gap to report, not a design choice.
 
 ## Glossary
@@ -135,7 +135,7 @@ Default to no comment. Existing comments record what the code can't show: a serv
 | Everyone | [README.md](README.md): what TFSaz is, how it works, features, status, constraints, docs index. [SECURITY.md](SECURITY.md): what TFSaz protects, scope, reporting |
 | Operators and script authors | `docs/user/`: getting started, install, configure, checkout setup, what works in T3, diagnose, routing, browser routing (managed and manual), desktop link handler, Azure CLI compatibility |
 | Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why TFSaz is needed, adapter files, keeping coverage current), [REST API](docs/internals/rest-api.md) (catalog routes, API version policy), [testing](docs/internals/testing.md) (test rules), [naming](docs/internals/naming.md) (how to write TFSaz, the `az` shim, Microsoft's Azure CLI and the glossary terms) |
-| Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI. `docs/verification/`: dated live records. [`docs/backlog.md`](docs/backlog.md): deferred work |
+| Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI, issues. `docs/verification/`: dated live records |
 
 ## Documentation rules
 
@@ -150,4 +150,4 @@ Default to no comment. Existing comments record what the code can't show: a serv
 
 ## Plans and work artifacts
 
-Do not commit plans, research notes or scratch files; keep them outside the worktree. Deferred work goes to [docs/backlog.md](docs/backlog.md), short and without task status. Remove an entry in the commit that lands it.
+Do not commit plans, research notes or scratch files; keep them outside the worktree. Deferred work goes to a GitHub issue. Before you file, start or close one, read [Issues](docs/operations/development.md#issues).

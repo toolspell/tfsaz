@@ -28,13 +28,13 @@ Every test runs against temporary state, never the developer's configuration, ke
 
 - Wait on the event that marks the milestone: a channel the code under test signals (the status channel in `route_check_test.go`, the request channel in `https_git_test.go`), a goroutine's done channel (`route_cli_test.go`), process exit, or `ctx.Done()`.
 - Bound the wait with a context deadline or a `select` on `time.After`. The bound is a ceiling for a hung test, not the wait itself.
-- No `time.Sleep` and no poll loops. Polls that could still wait on an event are listed in the [backlog](../backlog.md#code). A wait on OS timing that has no event carries a comment saying why.
+- No `time.Sleep` and no poll loops. Polls that could still wait on an event have an issue, such as [#21](https://github.com/toolspell/tfsaz/issues/21). A wait on OS timing that has no event carries a comment saying why.
 
 ## Platforms
 
 - OS-specific tests use the file suffixes `_darwin_test.go`, `_linux_test.go` and `_windows_test.go`, named after the file they test. A test for several systems uses a build tag, such as `//go:build darwin || linux` in `route_system_unix_test.go`.
 - CI runs the suite with the race detector on macOS, Windows and Ubuntu. A platform test you cannot run locally still runs there.
-- Parity: when you add a test for one system's integration, check the other two. A missing counterpart is a gap to report or add to the [backlog](../backlog.md#platforms).
+- Parity: when you add a test for one system's integration, check the other two. A missing counterpart is a gap to report or open a `platform:<os>` issue for.
 - A test that needs an external tool skips with a reason when it is missing, such as `t.Skip("git unavailable")`.
 
 ## Fixtures and live tests

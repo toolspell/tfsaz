@@ -10,7 +10,7 @@ A hard-coded `_apis/...` path skips that contract. It breaks silently when a ser
 
 - A new REST call resolves its route through the catalog, or reuses a path that is already catalog-resolved.
 - A hard-coded route needs a written reason in a comment at the call site. "It is shorter" is not one.
-- The existing hard-coded routes are listed in the [backlog](../backlog.md#code), with their reasons where one exists.
+- The existing hard-coded routes are listed in [#17](https://github.com/toolspell/tfsaz/issues/17), with their reasons where one exists.
 
 How TFSaz does it, in `internal/az/catalog.go` and `apiCall.invoke` in `api_call.go`:
 
@@ -23,7 +23,7 @@ How TFSaz does it, in `internal/az/catalog.go` and `apiCall.invoke` in `api_call
 Where TFSaz builds routes itself today:
 
 - T3's exact `devops invoke` shapes for Git and work items (`parseStockInvoke` in `invoke.go`, `parseWitInvoke` in `workitems.go`). The reason is written in `cli.go`: TFSaz rewrites their responses (file contents, blob archives, workflow states, work-item links, comment cursors). Any other invoke falls through to the catalog.
-- The dedicated commands (`repos`, `repos pr`, `boards work-item`, `devops team`, the connection-data and identity lookups). They predate this rule and have no written reason; the [backlog](../backlog.md#code) lists them. Moving them is not free: T3 allows 30 seconds per read, and an uncached catalog adds a large response to each call.
+- The dedicated commands (`repos`, `repos pr`, `boards work-item`, `devops team`, the connection-data and identity lookups). They predate this rule and have no written reason; [#17](https://github.com/toolspell/tfsaz/issues/17) lists them. Moving them is not free: T3 allows 30 seconds per read, and an uncached catalog adds a large response to each call.
 - `az rest` takes the caller's URL by design and resolves nothing.
 
 ## Target API version 7.1
@@ -32,11 +32,11 @@ Where TFSaz builds routes itself today:
 - [Microsoft's version table](https://learn.microsoft.com/en-us/rest/api/azure/devops/#api-and-tfs-version-mapping) lists 7.1 for Azure DevOps Server 2022.1 and later. TFSaz is live-proven on 2022.2 only ([live results](../verification/live-t3-2026-11.md)), so 2022.2 is the supported floor and earlier releases are unverified.
 - Do not raise a request above 7.1 without a live check on the floor release, and do not lower one below it. A different version can change a response shape that T3 decodes.
 - Where a version is part of the behavior TFSaz mirrors, the extension's value wins under the [compatibility contract](../../AGENTS.md#compatibility-contract): `devops invoke` defaults to `5.0` without `--api-version`, as the extension does; T3 always passes `7.1` or `7.1-preview`.
-- The connection-data (`5.0-preview.1`) and identity (`5.0`) lookups in `client.go` copy the extension's SDK clients, but they are TFSaz's own requests, not a passthrough, so the 7.1 target applies. Moving them is a [backlog](../backlog.md#code) item.
+- The connection-data (`5.0-preview.1`) and identity (`5.0`) lookups in `client.go` copy the extension's SDK clients, but they are TFSaz's own requests, not a passthrough, so the 7.1 target applies. Moving them is tracked in [#18](https://github.com/toolspell/tfsaz/issues/18).
 
 ## What the server reports about versions
 
-Nothing uses this today. It is here for when TFSaz needs to detect what a server supports, such as the version check in the [backlog](../backlog.md#code).
+Nothing uses this today. It is here for when TFSaz needs to detect what a server supports, such as the version check in [#20](https://github.com/toolspell/tfsaz/issues/20).
 
 | Source | What it tells |
 | --- | --- |
