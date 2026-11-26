@@ -166,13 +166,14 @@ Agents and maintainers read upstream reference code (T3 Code, Azure CLI, the Azu
 ```sh
 go run ./tools/syncrepos                 # all entries
 go run ./tools/syncrepos --repo t3code   # one entry
+go run ./tools/syncrepos -latest         # pins next to the latest release tags, changes nothing
 ```
 
 - Run it from anywhere inside the repository; each worktree gets its own folder. It needs Git and network access, and about 11 MB in total.
 - For each entry it clones or fetches only the pinned commit, applies the sparse paths, checks out that commit, resets local edits and stray files, and verifies the HEAD, the sparse patterns, a clean tree and that every listed path exists. A second run that finds everything in place downloads nothing.
 - Tests and CI never need it; `go test ./...` skips the folder.
 
-To bump a pin, edit the entry in `tools/syncrepos/main.go` (tag, full commit, sparse paths) and run the sync. It fails if a listed path no longer exists at the new commit. The `t3code` pin moves together with the T3 revision in [T3 compatibility](../internals/t3-compatibility.md#keeping-coverage-current); the steps per entry are in the skills `.agents/skills/reference-t3code` and `.agents/skills/reference-azure-cli`.
+To bump a pin, follow the skill `.agents/skills/update-references`: it finds the latest releases with `-latest`, diffs the old and new pin in the paths tfsaz depends on, classifies the impact, re-pins and puts required tfsaz changes in the [backlog](../backlog.md#code). The sync fails if a listed path no longer exists at the new commit. The `t3code` pin moves together with the T3 revision in [T3 compatibility](../internals/t3-compatibility.md#keeping-coverage-current); what each entry is for is in the skills `.agents/skills/reference-t3code` and `.agents/skills/reference-azure-cli`.
 
 ### Agent skills
 

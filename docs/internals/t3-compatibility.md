@@ -31,7 +31,7 @@ T3's source-control user guide is `docs/user/source-control.md` in that checkout
 
 ## Why stock T3 cannot reach Azure DevOps Server
 
-Checked against T3 Code `v0.1.13-nightly.20261125.5258` (commit `bf961f8121c6336915ecf7b3f97ce6e68ab38fd7`). The upstream compare from `c478fde9fe` to that commit (75 commits) touches no file in `source-control-azure-devops` or `source-control-core`, so this holds for both revisions. Live verification ran on `v0.1.12-nightly.20261125.5230` (commit `ca81b7b`); see the [live results](../verification/live-t3-2026-11.md).
+Checked against T3 Code `v0.1.13-nightly.20261125.5258` (commit `bf961f8121c6336915ecf7b3f97ce6e68ab38fd7`). The upstream compare from `c478fde9fe` to that commit (75 commits) touches no file in `source-control-azure-devops` or `source-control-core`, so this holds for both revisions. Live verification ran on `v0.1.12-nightly.20261125.5230` (commit `ca81b7b`), the same commit as the stable release `v0.1.12`; see the [live results](../verification/live-t3-2026-11.md). On 26.11.2026 `v0.1.12` was the latest stable and the pin the latest nightly, and a diff from `ca81b7b` to the pin showed no change in `source-control-azure-devops`, `source-control-core` or `docs/user/source-control.md`.
 
 How the stock adapter works:
 
@@ -67,5 +67,5 @@ How tfsaz bridges each gap:
 
 The user page [What works in T3](../user/t3-features.md) states what the stock adapter can do with tfsaz, and the [command table](../user/az-compatibility.md#commands-t3-calls) lists the implemented calls. Both are tied to the T3 revision above.
 
-- When moving to a newer T3 revision, repeat the audit: compare the stock source-control, PR and issue providers and their tests with the tfsaz dispatcher, then update both pages, the T3 constraint in the [README](../../README.md#before-you-use-it), the revision and the `t3code` pin in `tools/syncrepos/main.go`.
+- When moving to a newer T3 revision (skill `update-references`), repeat the audit: compare the stock source-control, PR and issue providers and their tests with the tfsaz dispatcher, then update both pages, the T3 constraint in the [README](../../README.md#before-you-use-it), the revision and the `t3code` pin in `tools/syncrepos/main.go`.
 - Record new live checks in [`docs/verification/`](../verification/), not on the user pages.

@@ -37,6 +37,8 @@ Each has a `*.test.ts` next to it; the tests show the exact arguments and expect
 
 ## When T3 releases
 
+Follow the skill `update-references`: it finds the latest stable and nightly, diffs the adapter paths, re-pins and records findings. In short:
+
 1. Find the new tag and commit with `git ls-remote --tags https://github.com/pingdotgg/t3code.git`.
 2. Compare the old and new commit for `packages/source-control-azure-devops` and `packages/source-control-core`.
 3. Re-pin the `t3code` entry in `tools/syncrepos/main.go`, run the sync, and follow "Keeping coverage current" in `docs/internals/t3-compatibility.md`, updating the revision there in the same commit.

@@ -38,7 +38,7 @@ Each command module's `commands.py` and `arguments.py` define the public command
 
 ## New releases
 
-Re-pin deliberately, for example when the behavior tfsaz mirrors changed upstream:
+Re-pin deliberately, for example when the behavior tfsaz mirrors changed upstream. The skill `update-references` runs the whole bump for all entries, including the impact check. In short:
 
 1. Find the latest release tag and its commit with `git ls-remote --tags <url>` (azure-cli tags are `azure-cli-X.Y.Z`; the extension uses date tags). Pin knack to the version azure-cli's `src/azure-cli-core/pyproject.toml` requires.
 2. Update the entry, run the sync; it fails if a sparse path no longer exists.

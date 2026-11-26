@@ -2,6 +2,7 @@
 // gitignored .reference-apps/ folder. Run it from anywhere in the repository:
 //
 //	go run ./tools/syncrepos [--repo NAME]
+//	go run ./tools/syncrepos -latest [--repo NAME]
 package main
 
 import (
@@ -13,8 +14,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"text/tabwriter"
 )
 
 const refDir = ".reference-apps"
@@ -28,7 +32,16 @@ type referenceRepo struct {
 	// path that exists at the commit; sync fails otherwise, so a re-pin notices
 	// upstream moves.
 	paths []string
+	// Release channels -latest reports, each a full-match pattern on tag names.
+	channels []channel
 }
+
+type channel struct {
+	name    string
+	pattern *regexp.Regexp
+}
+
+func tagPattern(expr string) *regexp.Regexp { return regexp.MustCompile(`^(?:` + expr + `)$`) }
 
 // Re-pin deliberately: docs cite these revisions.
 var repos = []referenceRepo{
@@ -41,6 +54,10 @@ var repos = []referenceRepo{
 			"/packages/source-control-azure-devops/",
 			"/packages/source-control-core/",
 			"/docs/user/source-control.md",
+		},
+		channels: []channel{
+			{"stable", tagPattern(`v\d+\.\d+\.\d+`)},
+			{"nightly", tagPattern(`v\d+\.\d+\.\d+-nightly\.\d+\.\d+`)},
 		},
 	},
 	{
@@ -61,6 +78,7 @@ var repos = []referenceRepo{
 			"/src/azure-cli-core/azure/cli/core/util.py",
 			"!tests/",
 		},
+		channels: []channel{{"release", tagPattern(`azure-cli-\d+\.\d+\.\d+`)}},
 	},
 	{
 		name:   "azure-devops-cli-extension",
@@ -79,6 +97,7 @@ var repos = []referenceRepo{
 			"/azure-devops/azext_devops/devops_sdk/v5_0/location/",
 			"!tests/",
 		},
+		channels: []channel{{"release", tagPattern(`\d{8}\.\d+`)}},
 	},
 	{
 		// The CLI framework under azure-cli, at the version azure-cli pins:
@@ -91,6 +110,8 @@ var repos = []referenceRepo{
 			"/knack/",
 			"!/knack/testsdk/",
 		},
+		// The latest tag is informational: pin what azure-cli-core requires.
+		channels: []channel{{"release", tagPattern(`v\d+\.\d+\.\d+`)}},
 	},
 }
 
@@ -102,9 +123,12 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) error {
-	selected, err := selectRepos(repos, args, stderr)
+	selected, latest, err := selectRepos(repos, args, stderr)
 	if err != nil {
 		return err
+	}
+	if latest {
+		return reportLatest(selected, lsRemoteTags, stdout)
 	}
 	root, err := repoRoot()
 	if err != nil {
@@ -118,26 +142,115 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-// selectRepos returns every entry, or the one --repo names.
-func selectRepos(all []referenceRepo, args []string, stderr io.Writer) ([]referenceRepo, error) {
+// selectRepos returns every entry, or the one --repo names, and whether
+// -latest asks for a release report instead of a sync.
+func selectRepos(all []referenceRepo, args []string, stderr io.Writer) ([]referenceRepo, bool, error) {
 	fs := flag.NewFlagSet("syncrepos", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	name := fs.String("repo", "", "sync only this entry: "+strings.Join(names(all), ", "))
+	latest := fs.Bool("latest", false, "print each pin next to the latest upstream release tags; changes nothing")
 	if err := fs.Parse(args); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if fs.NArg() > 0 {
-		return nil, fmt.Errorf("unexpected argument %q", fs.Arg(0))
+		return nil, false, fmt.Errorf("unexpected argument %q", fs.Arg(0))
 	}
 	if *name == "" {
-		return all, nil
+		return all, *latest, nil
 	}
 	for _, repo := range all {
 		if repo.name == *name {
-			return []referenceRepo{repo}, nil
+			return []referenceRepo{repo}, *latest, nil
 		}
 	}
-	return nil, fmt.Errorf("unknown repo %q; known: %s", *name, strings.Join(names(all), ", "))
+	return nil, false, fmt.Errorf("unknown repo %q; known: %s", *name, strings.Join(names(all), ", "))
+}
+
+// tagLister returns tag name to commit for a remote.
+type tagLister func(url string) (map[string]string, error)
+
+func lsRemoteTags(url string) (map[string]string, error) {
+	out, err := exec.Command("git", "ls-remote", "--tags", url).Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-remote %s: %w", url, err)
+	}
+	return parseTags(string(out)), nil
+}
+
+// parseTags reads git ls-remote --tags output. An annotated tag's peeled
+// "^{}" line wins, so the result is always a commit.
+func parseTags(out string) map[string]string {
+	tags := map[string]string{}
+	for line := range strings.SplitSeq(out, "\n") {
+		sha, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		if !ok {
+			continue
+		}
+		name, ok := strings.CutPrefix(ref, "refs/tags/")
+		if !ok {
+			continue
+		}
+		if base, peeled := strings.CutSuffix(name, "^{}"); peeled {
+			tags[base] = sha
+		} else if _, seen := tags[name]; !seen {
+			tags[name] = sha
+		}
+	}
+	return tags
+}
+
+var digitRuns = regexp.MustCompile(`\d+`)
+
+// newerTag compares tags by their numeric runs, so 2.100.0 > 2.93.0 and
+// nightly dates and build numbers order correctly.
+func newerTag(a, b string) bool {
+	x, y := digitRuns.FindAllString(a, -1), digitRuns.FindAllString(b, -1)
+	for i := range min(len(x), len(y)) {
+		m, _ := strconv.ParseUint(x[i], 10, 64)
+		n, _ := strconv.ParseUint(y[i], 10, 64)
+		if m != n {
+			return m > n
+		}
+	}
+	return len(x) > len(y)
+}
+
+func reportLatest(selected []referenceRepo, list tagLister, stdout io.Writer) error {
+	w := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	if _, err := fmt.Fprintln(w, "REPO\tCHANNEL\tPINNED\tLATEST\tCOMMIT\tSTATUS"); err != nil {
+		return err
+	}
+	for _, repo := range selected {
+		tags, err := list(repo.url)
+		if err != nil {
+			return fmt.Errorf("%s: %w", repo.name, err)
+		}
+		for _, ch := range repo.channels {
+			latest := ""
+			for tag := range tags {
+				if ch.pattern.MatchString(tag) && (latest == "" || newerTag(tag, latest)) {
+					latest = tag
+				}
+			}
+			pinned, status := "-", "not pinned"
+			if ch.pattern.MatchString(repo.tag) {
+				pinned, status = repo.tag, "current"
+				if latest != repo.tag {
+					status = "newer release"
+				}
+			}
+			commit := "-"
+			if latest == "" {
+				latest, status = "-", "no matching tag"
+			} else {
+				commit = short(tags[latest])
+			}
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", repo.name, ch.name, pinned, latest, commit, status); err != nil {
+				return err
+			}
+		}
+	}
+	return w.Flush()
 }
 
 func names(all []referenceRepo) []string {
