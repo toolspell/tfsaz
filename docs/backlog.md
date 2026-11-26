@@ -9,14 +9,17 @@ Deferred work, so any session or worktree can pick it up.
 ## Before going public
 
 - **Browser-redirect TLS key on disk:** move the leaf private key `alias-key.pem` in `<config>.browser-route`, written by `internal/az/route_managed.go`, into the OS secret store, or decide otherwise.
-- **Pre-public git history audit** for personal details, secrets and other things that deserve cleanup. Cover every commit (not just the current tree), commit messages and `docs/verification/`. Look for:
-  - personal names and machine paths;
-  - real hostnames, IP addresses and collection URLs;
-  - testbed identifiers;
-  - PATs or other secrets;
-  - leftovers such as large or stray files.
+- **History rewrite before going public:** the audit on 26.11.2026 (gitleaks v8.30.1 over all refs, plus greps over the full history and commit messages) found no secrets, hosts, IPs, collection URLs or accounts. Two things should still go:
+  - the developer's machine path to the T3 checkout in AGENTS.md (added in `89e90eb`, removed in `a8e2385`);
+  - research pointers to a private repository in the same commits.
 
-  If something turns up, the history has to be rewritten. That is easiest before anyone else clones the repo.
+  Do it last, right before the switch, so later commits can't bring in new problems:
+  1. Re-run the audit on the commits made since.
+  2. On a fresh clone, run `git filter-repo --replace-text <rules> --refs main`. Keep the rules file outside the repo, because it contains the path.
+  3. Check that `git log -p main` no longer contains any of the removed strings.
+  4. Force-push `main`.
+
+  Testbed names in `docs/verification/` (PR numbers, collection names) were judged acceptable. Never push the local T3 checkpoint refs (`refs/t3/...`), so no `git push --mirror` or `--all`.
 - **Decide the product name:** tfsaz is a working name. A rename also changes persisted names (keyring services, `TFSAZ_` variables, `~/.tfsaz`, `tfsaz-<24 hex>` alias hosts, `remote.origin.vcs=tfsaz`, link handler IDs) and needs a migration. [Naming](internals/naming.md#tfsaz-is-a-working-name) lists them.
 - **License decision and CONTRIBUTING.md:** the README has only placeholders, and GitHub shows no license.
 - **CI path filter:** skip the 3-OS test matrix (about 5 minutes) on docs-only changes, using affected detection. Pointer: Toolspell `scripts/ci-changes.ts`.
