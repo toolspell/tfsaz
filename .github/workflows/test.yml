@@ -19,9 +19,9 @@ permissions:
   contents: read
 
 env:
-  # What a run compares against: a pull request's merge commit has the base as its first parent; a
-  # push compares against the previous head of main. Empty on a manual run, which runs and reports
-  # everything but gates no lint issue.
+  # What the Changes job compares against to decide whether the test matrix runs: a pull request's
+  # merge commit has the base as its first parent; a push compares against the previous head of
+  # main. Empty on a manual run, which runs the tests.
   BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
 
 jobs:
@@ -65,7 +65,7 @@ jobs:
             go.sum
             tools/*/go.sum
       # vet, golangci-lint, govulncheck and deadcode run once per GOOS (darwin, linux, windows).
-      - run: go run ./tools/dev ci-checks -base "$BASE"
+      - run: go run ./tools/dev ci-checks
 
   test:
     needs: changes

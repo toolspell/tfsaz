@@ -29,7 +29,7 @@ const usage = `usage: go run ./tools/dev <command>
 
 CI workflow steps:
   ci-changes -base <rev>  print tests=true|false: whether the native test matrix must run
-  ci-checks               whole-tree gates and reports (-base is accepted and ignored)
+  ci-checks               whole-tree gates and reports
 `
 
 func main() {
@@ -68,8 +68,6 @@ func main() {
 		_ = flags.Parse(os.Args[2:])
 		ok = ciChanges(*base)
 	case "ci-checks":
-		// The workflow still passes -base; every check covers the whole tree.
-		_ = flags.String("base", "", "ignored")
 		_ = flags.Parse(os.Args[2:])
 		ok = ciChecks()
 	case "ci-local":
