@@ -34,7 +34,7 @@ const MERGE_RISK = `Rate merge risk higher when a change touches the constraints
 - Stock T3 Code could tell TFSaz apart from Microsoft's Azure CLI: changed arguments, JSON shapes, stderr or exit codes of a command T3 calls, or Azure-style aliases and synthetic URLs that T3's host recognition no longer accepts (docs/internals/t3-compatibility.md).
 - A REST route hard-coded as an _apis path instead of resolved through the resource-location catalog, or an API version that Azure DevOps Server 2022.2 does not serve (docs/internals/rest-api.md).
 - A system change that rerunning the command after an interruption cannot finish or undo (docs/internals/architecture.md, "System edits must be recoverable").
-- A feature on fewer than macOS, Windows and Linux without "not supported on this platform" handling and a `platform:<os>` issue per missing platform.`;
+- A feature on fewer than macOS, Windows and Linux without "not supported on this platform" handling and a platform:<os> issue per missing platform.`;
 
 export default defineConfig((ctx) => ({
   reviews: {
