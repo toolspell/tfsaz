@@ -39,12 +39,11 @@ Deferred work, so any session or worktree can pick it up.
 
 - **PR checks:** PR title in conventional-commit form, PR size labels, PR limits and the stale bot. Pointers: Toolspell `.github/workflows/pr-title.yml`, `pr-size.yml`, `pr-limits.yml`, `stale-needs-more-info.yml`.
 - **Review bots and review rules:** CodeRabbit config with path instructions, Macroscope approvability, Codex review, and a `claude.yml` workflow (actor-restricted, comment-only). Add a "Code review rules" section to AGENTS.md that maps areas to the docs owning their rules, and Macroscope check-run agents such as test-signal. Pointers: Toolspell `.coderabbit.config.ts`, `.macroscope/approvability.md`, `.macroscope/check-run-agents/`, `.github/workflows/claude.yml`.
-- **Dependabot** for GitHub Actions and Go modules, plus the labels workflow. Pointers: Toolspell `.github/dependabot.yml`, `.github/workflows/labels.yml`.
-- **Issue and PR templates:** bug, feature and config issue templates and a PR template (Problem / Change / Verification). Pointers: Toolspell `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md`.
 - **Repo settings and rulesets** (Toolspell's phase-1 setup):
   - squash-only merges and auto-delete of merged branches;
   - a ruleset on `main` with required checks, the strict up-to-date rule and no force push;
   - secret scanning with push protection, private vulnerability reporting and the org security configuration.
+- **Security contact link:** `.github/ISSUE_TEMPLATE/config.yml` links `SECURITY.md` as the place to report vulnerabilities. Enable private vulnerability reporting at the switch, or the link leads to a policy with no private channel.
 - **CodeQL default setup for Go plus Copilot Autofix**, both free for public repositories.
 - **Vouch and contribution triage** for outside contributors. Pointers: Toolspell `.github/workflows/vouch.yml`, `.github/VOUCHED.td`, `.agents/skills/contribution-triage/`.
 - **Agent context budget** (decided): measured AGENTS.md bytes in a JSON file, a Go test that keeps it exact, an AGENTS.md rule, and a label-gated CI check. Pointers: Toolspell `scripts/agent-context-budget.json`, `scripts/agent-docs.test.ts`, `.github/workflows/agent-context-budget.yml`.

@@ -1,0 +1,77 @@
+[
+  {
+    "name": "bug",
+    "color": "d73a4a",
+    "description": "Something is broken or behaves incorrectly."
+  },
+  {
+    "name": "enhancement",
+    "color": "a2eeef",
+    "description": "Requested improvement or new capability."
+  },
+  {
+    "name": "documentation",
+    "color": "0075ca",
+    "description": "Improvements or additions to the docs."
+  },
+  {
+    "name": "question",
+    "color": "d876e3",
+    "description": "Needs an answer rather than a change."
+  },
+  {
+    "name": "duplicate",
+    "color": "cfd3d7",
+    "description": "Already reported in another issue or PR."
+  },
+  {
+    "name": "invalid",
+    "color": "e4e669",
+    "description": "Not a problem with tfsaz, or not actionable."
+  },
+  {
+    "name": "wontfix",
+    "color": "ffffff",
+    "description": "Out of scope or deliberately not changed."
+  },
+  {
+    "name": "needs-triage",
+    "color": "fbca04",
+    "description": "Needs maintainer review and initial categorization."
+  },
+  {
+    "name": "needs-more-info",
+    "color": "d4c5f9",
+    "description": "Waiting on the reporter."
+  },
+  {
+    "name": "dependencies",
+    "color": "0366d6",
+    "description": "Dependency update opened by Dependabot."
+  },
+  {
+    "name": "platform:macos",
+    "color": "c5def5",
+    "description": "Specific to macOS."
+  },
+  {
+    "name": "platform:windows",
+    "color": "c5def5",
+    "description": "Specific to Windows."
+  },
+  {
+    "name": "platform:linux",
+    "color": "c5def5",
+    "description": "Specific to Linux, including WSL."
+  },
+  {
+    "name": "t3-compatibility",
+    "color": "5319e7",
+    "description": "How T3 Code invokes az, or a T3 version that calls it differently."
+  },
+  {
+    "name": "routing",
+    "color": "bfd4f2",
+    "description": "Synthetic URL routing: redirector, link handler, extension, Git launcher."
+  }
+]

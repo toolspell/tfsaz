@@ -37,6 +37,19 @@ A manual run of the built binary uses the real configuration, keyring and, for s
 
 The [native test workflow](../../.github/workflows/test.yml) runs `go vet` and this suite on macOS, Windows and Ubuntu, on pushes to `main`, on pull requests and on manual dispatch. All three jobs enable Go's race detector. To run it locally, use `go test -race -count=1 ./...`. Windows x64 needs a compatible MinGW-w64 C compiler on PATH. [Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements)
 
+## GitHub automation
+
+These files in `.github/` take effect once they are pushed to GitHub; locally they do nothing.
+
+| File | What it does |
+| --- | --- |
+| `dependabot.yml` | Weekly grouped updates for Go modules (`build(deps): ...`) and workflow actions (`ci(deps): ...`), at most 3 open PRs each, no release younger than 7 days, labeled `dependencies`. |
+| `labels.json`, `workflows/labels.yml` | The label set. The workflow creates and updates these labels on a push to `main` that changes them, or on manual dispatch. It never deletes a label. |
+| `ISSUE_TEMPLATE/` | Bug report and feature request forms. Blank issues are off; security reports go to `SECURITY.md`. |
+| `pull_request_template.md` | Problem, Change, Verification and a macOS, Windows and Linux checklist. |
+
+Pin every workflow action to a full commit SHA with a `# vX.Y.Z` comment (`TestPinnedActions` enforces it); Dependabot keeps both current. Check a new pin with `git ls-remote https://github.com/OWNER/REPO refs/tags/vX.Y.Z*` (use the `^{}` line for annotated tags).
+
 ## Stock T3 adapter test
 
 The opt-in integration test builds the actual executable and runs T3's existing Azure adapter against it. It requires Git, Node with TypeScript support (tested with Node 26), a T3 source tree with its lockfile dependencies installed, and a usable OS keyring. It creates a random keyring entry for its loopback server and removes the entry at the end.

@@ -1,0 +1,153 @@
+# Adapted from T3 Code's bug report form (MIT), by way of Toolspell.
+name: Bug report
+description: Report broken behavior, regressions, crashes or reliability problems.
+title: "[Bug]: "
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues first and keep the report to one problem.
+        Report security vulnerabilities privately instead, as
+        [SECURITY.md](https://github.com/toolspell/tfsaz/blob/main/SECURITY.md) describes.
+
+        > [!WARNING]
+        > **Never paste a PAT**, token or password, not even an expired one.
+        > Replace real hostnames, collection URLs, IP addresses, project and repository names,
+        > and your user name in paths with placeholders such as `server.example`,
+        > `https://server.example/tfs/DefaultCollection`, `Project` and `Repo`.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I removed every PAT, hostname, collection URL and internal name from this report.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Pull requests in T3
+        - Work items in T3
+        - Checkout setup, restore or Git transport
+        - Routing of synthetic URLs (browser, link handler, extension, Git launcher)
+        - Collections, profiles and PATs
+        - az devops invoke or az rest
+        - Install, shim or PATH
+        - tfsaz doctor
+        - Docs
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: A minimal, deterministic repro. Include the T3 action or the exact `az` or `tfsaz` command.
+      placeholder: |
+        1. `tfsaz repo setup` in a clone of `https://server.example/tfs/DefaultCollection/Project/_git/Repo`
+        2. Open the checkout in T3 Code
+        3. Create a pull request
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the error text, redacted.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system of the T3 backend
+      description: tfsaz runs where the T3 backend runs, which is the T3 server for a remote web client.
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Linux in WSL
+    validations:
+      required: true
+
+  - type: input
+    id: os-details
+    attributes:
+      label: OS version and architecture
+      description: For Linux, the distribution. For WSL, the WSL version and where the browser or T3 desktop app runs.
+      placeholder: Ubuntu 26.04 ARM64, or Windows 11 x64 with WSL 2 and T3 desktop on Windows
+    validations:
+      required: true
+
+  - type: input
+    id: tfsaz-version
+    attributes:
+      label: tfsaz version
+      description: Output of `tfsaz --version` or `az --version`, plus the commit if you built from source.
+      placeholder: tfsaz 0.1.0 (main @ abc1234)
+    validations:
+      required: true
+
+  - type: input
+    id: t3-version
+    attributes:
+      label: T3 Code version and client
+      description: T3 version, and whether you use the desktop app or a web client against a T3 server.
+      placeholder: v0.1.12-nightly.20261125.5230, desktop app
+    validations:
+      required: true
+
+  - type: input
+    id: server-version
+    attributes:
+      label: Azure DevOps Server version
+      placeholder: Azure DevOps Server 2022.2
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `tfsaz doctor --json`
+      description: |
+        Run it in the same environment as the failing program, inside the affected checkout.
+        It never prints a PAT, but redact before pasting:
+        - `directory` and `config`: local paths that can contain your user name.
+        - `selectedProfile` and the `authentication <profile>` check names: profile IDs, if they reveal internal names.
+        - every `message`: the `az` path, and error texts that can contain hostnames, collection URLs, ports, project and repository names.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: trace
+    attributes:
+      label: Trace or logs
+      description: |
+        Optional. Rerun the failing command with `TFSAZ_TRACE=1` and paste the `tfsaz trace` lines.
+        They omit arguments, URLs, identities, headers and bodies, but carry the profile ID.
+        Redact any other output you add as above.
+      render: shell
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: A temporary workaround, if you found one.

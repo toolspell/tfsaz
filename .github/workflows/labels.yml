@@ -1,0 +1,54 @@
+# Creates and updates the labels in .github/labels.json. It never deletes a label,
+# so GitHub's defaults and hand-made labels survive.
+# Adapted from T3 Code's issue-labels.yml (MIT), by way of Toolspell.
+name: Labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/labels.json
+      - .github/workflows/labels.yml
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  sync:
+    name: Sync labels
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: labels
+      cancel-in-progress: false
+    steps:
+      - name: Checkout label definitions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github
+          persist-credentials: false
+
+      - name: Sync labels
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require("node:fs");
+            const labels = JSON.parse(fs.readFileSync(".github/labels.json", "utf8"));
+            for (const label of labels) {
+              let existing;
+              try {
+                ({ data: existing } = await github.rest.issues.getLabel({ ...context.repo, name: label.name }));
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+              if (!existing) {
+                await github.rest.issues.createLabel({ ...context.repo, ...label });
+                core.info(`created ${label.name}`);
+              } else if (existing.color !== label.color || (existing.description ?? "") !== label.description) {
+                await github.rest.issues.updateLabel({ ...context.repo, ...label });
+                core.info(`updated ${label.name}`);
+              }
+            }

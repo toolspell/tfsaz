@@ -1,0 +1,46 @@
+name: Feature request
+description: Propose an improvement or new capability. Wait for a maintainer to agree before you open a PR.
+title: "[Feature]: "
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues first and keep the request to one idea.
+        tfsaz targets on-premises Azure DevOps Server for an unmodified T3 Code. Azure cloud
+        sign-in and Azure CLI extension installation are out of scope.
+        Replace real hostnames, collection URLs and internal names with placeholders.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do and what gets in the way today.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How tfsaz could solve it. Describe the behavior, not the implementation. If T3 Code calls an `az` command tfsaz does not answer, name the command and the T3 version.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds or other approaches you considered.
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Platforms
+      description: tfsaz keeps feature parity across macOS, Windows and Linux. Tick the platforms you need this on.
+      options:
+        - label: macOS
+        - label: Windows
+        - label: Linux

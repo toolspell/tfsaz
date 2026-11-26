@@ -1,0 +1,36 @@
+# Weekly grouped updates for the Go module and the SHA-pinned workflow actions.
+# Commit types follow the repo's conventional commits: go.mod and go.sum are build
+# inputs ("build(deps): bump ..."), workflow pins are CI ("ci(deps): bump ...").
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      go-modules:
+        patterns: ["*"]
+    # A compromised release is usually pulled within days; take none younger than a week.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: build
+      include: scope
+    # Replaces Dependabot's default labels, which .github/labels.json does not define.
+    labels: ["dependencies"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: ci
+      include: scope
+    labels: ["dependencies"]
