@@ -1,8 +1,8 @@
 # Desktop link handler
 
-Run `tfsaz route handler-export DESTINATION BROWSER` on the desktop where links open. The handler starts on demand, translates registered Azure web links, and passes ordinary HTTP and HTTPS links through to your chosen browser. Unsupported paths on registered aliases are refused. Browser sign-in takes place at the real collection. This works with the installed T3 app and requires no browser extension, background service or administrator access.
+Run `tfsaz route handler-export DESTINATION BROWSER` on the desktop where links open. The handler starts on demand, translates registered Azure web links, and passes ordinary HTTP and HTTPS links through to your chosen browser. Unsupported paths on registered aliases are refused. Browser sign-in takes place at the real collection. Use this option for links an app hands to the OS default browser. It requires no extension, background service or administrator access. For a raw alias opened inside T3’s Browser panel or typed into a browser, see [managed browser routing](route-redirect.md#managed-browser-routing).
 
-Export using a permanent tfsaz installation. The handler captures the paths to tfsaz and its config file and reads that config and the repo registry on each click. Restore your usual default browser before removing the handler. If you move tfsaz or its config, or choose a different target browser, export a new handler.
+Export using a permanent tfsaz installation. Choose a new export destination. The handler captures the paths to tfsaz and its config file and reads that config and the repo registry on each click. Restore your usual default browser before removing the handler. If you move tfsaz or its config, or choose a different target browser, export a new handler.
 
 ## Windows 11
 
