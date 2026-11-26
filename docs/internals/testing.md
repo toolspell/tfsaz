@@ -43,3 +43,4 @@ Every test runs against temporary state, never the developer's configuration, ke
 - Keep offline fixture results separate from live results. Dated records go to [`docs/verification/`](../verification/), one file per kind.
 - Live tests stay opt-in. A test that changes real OS state or needs a real client skips unless its variable is set (`TFSAZ_LIVE_LAUNCHD`, `TFSAZ_LIVE_TASK_SCHEDULER`, `TFSAZ_T3_ROOT`), and its variable is documented in [Development](../operations/development.md#opt-in-live-system-tests).
 - When a live test needs a PAT, request it through T3's secret input. Use a disposable credential for revocation tests.
+- After a live or manual run, return the machine or session to a clean state as soon as the state is no longer needed ([AGENTS.md rule](../../AGENTS.md#reversible-and-verifiable-system-changes)). [Return to a clean state](../operations/development.md#return-to-a-clean-state) lists the undo and check per kind of change.

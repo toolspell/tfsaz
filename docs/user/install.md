@@ -37,4 +37,19 @@ Both examples set PATH for the current shell only. Put the same directory first 
 
 After upgrading tfsaz, remove the two old **copies** from your dedicated shim directory and rerun `shim install`. If you use managed browser routing and the upgrade moved or removed the installed binary, rerun `tfsaz route setup` as described in [Browser routing](browser-routing.md#managed-browser-routing).
 
+## Uninstall
+
+Undo the parts you set up, in this order, then remove tfsaz itself. Run each command with the configuration it was set up with.
+
+| Step | What to do |
+| --- | --- |
+| 1. Browser routing | `tfsaz route restore`, then delete `~/.tfsaz`. See [Refresh or remove](browser-routing.md#refresh-or-remove). |
+| 2. Link handler and extension | Choose your usual default browser and remove the handler as described in [Desktop link handler](desktop-link-handler.md). Remove the Chromium extension from the browser profile and delete its export directory. |
+| 3. Checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`. |
+| 4. PATs | `tfsaz profile logout --profile ID` for each profile in `tfsaz profile list`. |
+| 5. Configuration | Delete the configuration file and the `.repo-setups.json`, `.browser-route` and `.lock` files beside it. Also delete the `tfsaz` folder under your OS user configuration directory (see [Configure](configure.md#configuration-file)); `route run` keeps temporary files there. |
+| 6. Shims and binary | Delete `az`, `git-remote-tfsaz` and `tfsaz` (`.exe` on Windows) from the shim directory, and remove that directory from the PATH of T3 and your shell. |
+
+There is no `shim uninstall` command. Check the result with `command -v az` on macOS and Linux or `Get-Command az` in PowerShell: it should find Microsoft's Azure CLI or nothing.
+
 Next: [configure your collections and PATs](configure.md).

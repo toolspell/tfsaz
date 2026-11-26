@@ -2,7 +2,7 @@
 
 Run `tfsaz route handler-export DESTINATION BROWSER` on the desktop where links open. The handler starts on demand, translates links on registered Azure-style aliases, and passes ordinary HTTP and HTTPS links through to your chosen browser. Unsupported paths on registered aliases are refused. Browser sign-in takes place at the real collection. Use this option for links an app hands to the OS default browser. It requires no extension, background service or administrator access. For a raw alias opened inside T3’s Browser panel or typed into a browser, see [managed browser routing](browser-routing.md#managed-browser-routing).
 
-Export using a permanent tfsaz installation. Choose a new export destination. The handler captures the paths to tfsaz and its config file and reads that config and the repo registry on each click. Restore your usual default browser before removing the handler. If you move tfsaz or its config, or choose a different target browser, export a new handler.
+Export using a permanent tfsaz installation. Choose a new export destination. The handler captures the paths to tfsaz and its config file and reads that config and the repo registry on each click. Restore your usual default browser before removing the handler. tfsaz only writes the export; the registration and the default-browser choice are steps you take, and you undo them the same way. There is no tfsaz command that checks the handler; your OS's default-apps settings show whether it is selected. If you move tfsaz or its config, or choose a different target browser, export a new handler.
 
 ## macOS
 
@@ -24,7 +24,7 @@ tfsaz route handler-export $handler $browser
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$handler\Install.ps1"
 ```
 
-In **Settings → Apps → Default apps**, select **tfsaz Links** for **HTTP** and **HTTPS**. Windows requires the user to choose the defaults. To remove the handler, first select your usual browser for both protocols, then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$handler\Uninstall.ps1"` and delete the exported directory. Uninstall the old registration before installing a replacement package. [Windows default apps](https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/default-apps-platform)
+In **Settings → Apps → Default apps**, select **tfsaz Links** for **HTTP** and **HTTPS**. Windows requires the user to choose the defaults. To remove the handler, first select your usual browser for both protocols, then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$handler\Uninstall.ps1"` and delete the exported directory. `Uninstall.ps1` removes every registry value `Install.ps1` wrote, under `HKCU\Software\Classes`, `HKCU\Software\Toolspell` and `HKCU\Software\RegisteredApplications`, and warns about any value that changed since. It leaves the empty `HKCU\Software\Toolspell` key. Uninstall the old registration before installing a replacement package. [Windows default apps](https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/default-apps-platform)
 
 ## Ubuntu desktop
 
@@ -46,4 +46,4 @@ gio mime x-scheme-handler/http com.toolspell.tfsaz.links.desktop
 gio mime x-scheme-handler/https com.toolspell.tfsaz.links.desktop
 ```
 
-To remove it, restore each recorded desktop ID with `gio mime x-scheme-handler/SCHEME PREVIOUS_ID`, or choose your browser in GNOME's **Default Apps**. Then remove the exported desktop file. [freedesktop default application associations](https://specifications.freedesktop.org/mime-apps/latest/default)
+To remove it, restore each recorded desktop ID with `gio mime x-scheme-handler/SCHEME PREVIOUS_ID`, or choose your browser in GNOME's **Default Apps**. Then remove the exported desktop file and run `update-desktop-database "$apps"` again. [freedesktop default application associations](https://specifications.freedesktop.org/mime-apps/latest/default)

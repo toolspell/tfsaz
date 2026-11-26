@@ -69,6 +69,25 @@ Deferred work, so any session or worktree can pick it up.
 
 - **Windows live test skip message:** `internal/az/route_system_windows_test.go:446` (`TestWindowsScheduledServiceRestartsFailedAction`) skips with "requires an interactive Windows test session" and does not name `TFSAZ_LIVE_TASK_SCHEDULER`, unlike the launchd live test (`set TFSAZ_LIVE_LAUNCHD=1 ...`).
 
+## Reversibility and verify gaps
+
+Code gaps against [Reversible and verifiable system changes](../AGENTS.md#reversible-and-verifiable-system-changes), from the audit on 26.11.2026. The user docs and [SECURITY.md](../SECURITY.md#what-tfsaz-changes-on-the-machine) describe the manual workaround for each.
+
+- **No routing status:** `route verify` (`internal/az/route_check.go`) checks resolution and the redirect only. Nothing reports whether the OS entries are installed (LaunchAgents, systemd user and boot units, nftables table, scheduled task, trust entries, hosts lines, port reservation) or what is left after a partial setup or a restore. `doctor.go` has no routing check. Add a read-only status, ideally from `route verify` or `doctor`.
+- **Routing residue:** `route restore` keeps `~/.tfsaz/route-recovery` and `<id>.pem.lock`, and a restore with nothing installed creates both (`route_managed.go:158`, gofrs/flock never deletes its file). Remove them when the last installation is gone.
+- **Restore bound to the config path:** the installation ID hashes the configuration path (`route_system.go:178`). Restore under another `TFSAZ_CONFIG` prints "No installation recorded" and leaves every OS change. Let restore list and pick installations from `~/.tfsaz/route-recovery`.
+- **Linux restore misses moved state:** the user unit is removed only at the current `$XDG_CONFIG_HOME` path (`route_system_linux.go:240`). NSS entries are removed only in the databases of the `<id>.nss.json` receipt; `linuxNSSDBs(true)` is never called, although its comment says restore also checks the default location (`route_system_linux.go:61`, `:309`).
+- **Windows Local Machine copy blocks restore:** a copy of the leaf in the Local Machine store makes restore fail until an administrator removes it (`route_system_windows.go:373`).
+- **Unsupported OS leaves the key behind:** on a system other than macOS, Linux or Windows, `route setup` writes `<config>.browser-route` (with the private key) and the recovery certificate before it fails, and `route restore` refuses to remove them (`route_managed.go`, `route_system_other.go`). Check the platform first.
+- **No `shim uninstall` and no shim check:** `shim` accepts only `install` (`shim.go:46`). `doctor` checks only the `az` on its own PATH, not `git-remote-tfsaz` and not stale Windows copies (`doctor.go:54`).
+- **No `profile remove`, keyring orphans not reachable:** removing a profile means editing the config. Changing a profile's ID, `collectionUrl` or `credentialVersion`, or deleting the config before `profile logout`, strands the PAT; no command lists or removes it. `profile list` does not show whether a PAT is stored (`profiles.go:306`, `:314`). Legacy profiles share the service `tfsaz`, so a logout in one config deletes the PAT of another config with the same profile ID.
+- **Stale checkout records:** `repo restore` needs the clone (`setup_manager.go:1125`), so a record of a deleted or moved clone stays in `repo list` and fails `repo verify` for good. Drift makes restore refuse with no override (`setup_manager.go:811`).
+- **Lock files left behind:** `<gitDir>/tfsaz-repo-setup.lock`, `<config>.lock` and `<config>.repo-setups.json.lock` survive restore and logout (`setup_manager.go:1131`, `:1136`, `profiles.go:273`).
+- **`route run` overlays:** `<user config dir>/tfsaz/run/git-*` survives a kill and nothing cleans stale ones; the `tfsaz/run` directory is never removed. The path ignores `TFSAZ_CONFIG`, so manual runs with a temp config still write to the real user config directory (`route_cli.go:168`).
+- **Link handlers:** no command checks an exported handler or its registration. macOS and Linux have no uninstall helper, while Windows has `Uninstall.ps1`, which leaves an empty `HKCU\Software\Toolspell` (`link_export_windows.go:123`). Whether LaunchServices on macOS keeps a record of a deleted app is unverified.
+- **Managed-SSH config mode on Windows:** `repo verify` checks the `.ssh.conf` mode on macOS and Linux only (`setup_manager.go:678`).
+- **`tools/dev setup` has no revert:** it sets `core.hooksPath` in the clone's shared config (`tools/dev/commands.go:210`) with no undo flag. Add `setup -undo` or document the `git config --unset core.hooksPath` step as the official one (it is in [Development](operations/development.md#pre-commit-hook)).
+
 ## Platforms
 
 - **Check commands on Windows and Linux:** `tools/dev` (`check`, `ready`, `staged`, `setup`) and `.githooks/pre-commit` were verified only on macOS; on Linux only `ci-changes` and `ci-checks` run, in CI and act. Verify on Windows (the hook in Git for Windows' shell, CRLF checkouts, `-race` with MinGW-w64, `go tool` paths) and on Linux.

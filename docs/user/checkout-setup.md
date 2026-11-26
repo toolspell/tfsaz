@@ -19,6 +19,20 @@ After `doctor` verifies the checkout and PAT, open the checkout in T3 and view a
 - Ordinary Git commands in an already-managed checkout need the helper on PATH and can run with T3 closed and `TFSAZ_CONFIG` unset.
 - Clients using a separate Git implementation must support configured remote helpers.
 
+## What setup changes and restore undoes
+
+Setup writes only to the clone's shared Git configuration (used by all its worktrees) and to tfsaz's checkout registry, `<config-file>.repo-setups.json`.
+
+| Mode | Git settings setup writes | Other files |
+| --- | --- | --- |
+| Both | `remote.origin.url` becomes the synthetic URL | A registry record |
+| Preserved transport (default) | `remote.origin.vcs=tfsaz`, `remote.origin.tfsazBinding` (the native target) | None |
+| Managed SSH | `core.sshCommand`, which runs tfsaz | `tfsaz-<hash>.ssh.conf` in the Git directory |
+
+`tfsaz repo restore PATH` puts back the original URL, unsets the other settings, deletes the `.ssh.conf` file and removes the registry record. It leaves an empty `tfsaz-repo-setup.lock` in the Git directory, which you can delete. `repo show PATH` and `git config --get-regexp '^remote\.origin\.'` show the current state.
+
+Restore needs the clone itself. If you deleted or moved a clone without restoring it, `repo list` keeps its record and `repo verify` keeps failing for it; tfsaz has no command to drop that record yet. If restore reports that the managed Git settings have drifted, compare `repo show PATH` with the table above and fix the settings by hand.
+
 ## Manage checkouts
 
 - **Inspect or verify.** `tfsaz repo show PATH` displays the saved origin, native Git target, transport and profile offline. `repo verify PATH` also checks current configuration and live read access. Use `tfsaz repo list` for the registry and `repo verify` to check all managed checkouts. Setup refuses conflicting fetch/push destinations. Git credentials for the native collection are separate from the PAT used for CLI API calls.

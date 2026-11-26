@@ -65,9 +65,21 @@ tfsaz devops login --organization https://engineering-example.visualstudio.com
 
 Enter the PAT at the hidden prompt, or pipe one line from a secret provider on stdin. Login verifies the PAT against the collection before saving it in the OS keyring under the stable profile ID. The backend is Keychain on macOS, Credential Manager on Windows, and Secret Service on Linux.
 
-New profiles use `credentialVersion: 2`, which scopes the keyring service to the collection URL. Older profiles without this field use the original `tfsaz` service. Preserve the existing credential version when editing a profile so it can still find its saved PAT. For the same reason, run `devops login` again after changing the `collectionUrl` of a version 2 profile.
+New profiles use `credentialVersion: 2`, which scopes the keyring service to the collection URL (`tfsaz/v2/` plus a hash of it). Older profiles without this field use the original `tfsaz` service. Preserve the existing credential version when editing a profile so it can still find its saved PAT. For the same reason, run `devops login` again after changing the `collectionUrl` of a version 2 profile.
 
 `tfsaz profile logout --profile ID` removes the selected local credential and keeps the profile configured. Server-side token revocation is separate.
+
+### Remove a profile
+
+tfsaz has no command that removes a profile from the configuration. To remove one:
+
+1. Run `tfsaz repo restore PATH` for each checkout of that collection in `tfsaz repo list`.
+2. Run `tfsaz profile logout --profile ID`.
+3. Delete the profile from the configuration file.
+
+Run `profile logout` before you change a profile's ID, `collectionUrl` or `credentialVersion`, or delete the configuration file. Otherwise the old PAT stays in the keyring, where tfsaz no longer finds it. Remove such an entry with your OS's password manager: Keychain Access on macOS, Credential Manager on Windows, or Passwords and Keys (Seahorse) on Linux. tfsaz entries use a service starting with `tfsaz` and the profile ID as account.
+
+`profile list` does not show whether a PAT is stored. `tfsaz doctor` checks each profile's PAT against its collection.
 
 ## PAT scopes
 

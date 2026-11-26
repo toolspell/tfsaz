@@ -43,7 +43,7 @@ The existing code has findings that the structure phase leaves unfixed; the [bac
 
 `.githooks/pre-commit` is versioned and runs `go run ./tools/dev staged`. It checks the staged content, not the working tree, so a partially staged file is checked as it will be committed. On Windows, Git for Windows runs it in its bundled shell.
 
-Enable it once per clone with `git config core.hooksPath .githooks`; the setup command does this. The setting lives in the clone's shared Git config, so every worktree of the clone uses the hook its own checkout contains.
+Enable it once per clone with `git config core.hooksPath .githooks`; the setup command does this. The setting lives in the clone's shared Git config, so every worktree of the clone uses the hook its own checkout contains. Check it with `git config --show-origin core.hooksPath`; turn the hook off again with `git config --unset core.hooksPath`.
 
 ## Worktree setup
 
@@ -80,6 +80,22 @@ A manual run of the built binary uses the real configuration, keyring and, for s
 - Run `route setup` and `route restore` only on a disposable test machine or session; they edit the hosts file, trust stores and services.
 
 [AGENTS.md](../../AGENTS.md#ways-to-hurt-yourself) lists every trap.
+
+## Return to a clean state
+
+After a manual or live run, undo what it changed as soon as you no longer need the state ([AGENTS.md rule](../../AGENTS.md#reversible-and-verifiable-system-changes)). Run each command with the same `TFSAZ_CONFIG` as the run itself, in this order, and check the result before you delete anything:
+
+| What the run left | Undo | Check |
+| --- | --- | --- |
+| Browser routing (`route setup`) | `tfsaz route restore` with the same `TFSAZ_CONFIG` path as setup; rerun it if it stops partway. Then delete `~/.tfsaz` if no other configuration on the machine uses routing. | `tfsaz route verify` reports managed browser routing as absent; the hosts file has no `# tfsaz-route` line. |
+| Managed test checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`, then delete the throwaway clones. | `tfsaz repo list` is empty; `git -C PATH config --get-regexp '^remote\.origin\.'` shows the native URL. |
+| Desktop link handler, Chromium extension | Select the usual default browser, run the Windows `Uninstall.ps1`, delete the exported app, directory or desktop file, and remove the extension from the browser profile. | The steps in [Desktop link handler](../user/desktop-link-handler.md) and [Chromium extension](../user/routing.md#chromium-extension). |
+| PATs of test profiles | `tfsaz profile logout --profile ID` for each test profile, before you delete the configuration that names it. | Your OS keyring shows no `tfsaz` entry for that profile ID. |
+| Shims | Delete `az` and `git-remote-tfsaz` from the test shim directory, and remove it from PATH. | `command -v az` (PowerShell: `Get-Command az`) no longer finds them. |
+| Temporary configuration | Delete the temp `TFSAZ_CONFIG` file with its `.repo-setups.json`, `.browser-route` and `.lock` siblings, and unset the variable. `route run` ignores `TFSAZ_CONFIG` and writes to `tfsaz/run` in the real OS user configuration directory; delete leftover `git-*` directories there after a killed run. | The temp directory is gone; `tfsaz/run` is empty. |
+
+- Live gates (`TFSAZ_LIVE_LAUNCHD`, `TFSAZ_LIVE_TASK_SCHEDULER`, `TFSAZ_T3_ROOT`) remove what they create when they finish. After an aborted run, check with `launchctl print gui/$(id -u)` (macOS) or `Get-ScheduledTask` (Windows) for leftover tfsaz entries.
+- Deleting a configuration first orphans its PATs and checkout registrations, so `profile logout` and `repo restore` can no longer find them.
 
 ## CI
 

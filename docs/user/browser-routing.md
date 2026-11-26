@@ -30,6 +30,21 @@ tfsaz route verify
 | Windows 11 | A per-user logon task on port 443, the exact leaf in the current user's trust store and hosts entries. | A desktop session for certificate confirmation and elevation for the hosts edit. |
 | Ubuntu | A systemd user service, trusted-peer entries in existing Chromium NSS databases, hosts entries and a dedicated nftables table with a boot-time unit. | A systemd user session, sudo access, nftables and `certutil` from `libnss3-tools`. Start Chromium once so its NSS database exists. |
 
+### Check what is installed
+
+`tfsaz route verify` checks that routing works now: resolution to both loopback addresses and the redirect through the managed certificate. It does not check browser or OS trust, and it does not list the OS entries. To see them, look for these names. `ID` is the 16-hex installation ID that every entry of one configuration shares; the certificate's common name is the first alias.
+
+| OS | Entry | Check |
+| --- | --- | --- |
+| macOS | LaunchAgents `tfsaz.route-redirect.ID.ipv4` and `.ipv6` in `~/Library/LaunchAgents` | `launchctl list \| grep tfsaz.route-redirect` |
+| macOS | The leaf and its SSL trust in the login keychain | `security find-certificate -a -c tfsaz- ~/Library/Keychains/login.keychain-db` |
+| Windows | Scheduled task `\tfsaz\route-redirect-ID` | `Get-ScheduledTask -TaskPath '\tfsaz\'` |
+| Windows | The leaf in the current user's Root store | `Get-ChildItem Cert:\CurrentUser\Root \| Where-Object Subject -like '*tfsaz-*'` |
+| Linux | User unit `tfsaz-route-redirect-ID.service` | `systemctl --user list-unit-files 'tfsaz-route-redirect-*'` |
+| Linux | Boot unit `tfsaz-route-redirect-ID-nat.service`, `/etc/tfsaz-route-ID.nft`, nftables table `inet tfsaz_route_ID`, port reservation `/etc/tfsaz-browser-port-443.owner` | `systemctl list-unit-files 'tfsaz-route-redirect-*'`, `sudo nft list tables`, `ls /etc/tfsaz-*` |
+| Linux | NSS entry `tfsaz-route-redirect-ID` in each Chromium database that existed at setup | `certutil -d "sql:$nssdb" -L` ([where `nssdb` is](browser-routing-manual.md#nss-database-on-ubuntu)) |
+| All | Two hosts lines per alias, ending in `# tfsaz-route ID` | `grep tfsaz-route /etc/hosts`; on Windows `Select-String tfsaz-route "$env:SystemRoot\System32\drivers\etc\hosts"` |
+
 ### Certificate and recovery
 
 Setup creates one 90-day certificate for the current set of exact registered aliases. It stores the certificate, private key and installation identity beside the selected configuration in `<config-file>.browser-route`. It reuses that identity on retry.
@@ -53,8 +68,12 @@ Then open the printed URL in the browser you actually use and compare the addres
 
 ### Refresh or remove
 
-- Stop opening alias links before running `tfsaz route restore`, which removes the managed installation.
-- Restore uses the saved identity and works after a checkout or collection profile has been removed. Rerun restore if the OS cleanup is interrupted.
+- Stop opening alias links before running `tfsaz route restore`, which removes the managed installation: the service, the trust entries, the hosts lines and, on Linux, the boot unit, nftables table and port reservation.
+- Restore uses the saved identity and works after a checkout or collection profile has been removed, and after the configuration file is deleted. Run it with the same configuration path (`TFSAZ_CONFIG` or the default) as setup: the installation ID comes from that path, and under another path restore reports "No installation recorded" and changes nothing. Rerun restore if the OS cleanup is interrupted.
+- Restore keeps files you added to `<config-file>.browser-route` and stops with a message; move them out and rerun it.
+- On Windows, restore removes the leaf only from the current user's Root store. If a copy is also in the Local Machine store, restore stops and asks you to remove it from an elevated prompt.
+- Restore leaves the directory `~/.tfsaz/route-recovery` with a small `.lock` file per configuration. Once `route restore` has succeeded for every configuration that used routing, delete `~/.tfsaz`.
+- On Linux, run restore with the same `XDG_CONFIG_HOME` as setup, or the user unit stays behind.
 - After adding or retiring aliases, or before the 90-day certificate expires, run restore followed by setup to refresh the certificate and hosts entries. Clones and worktrees sharing an existing alias can reuse the current certificate.
 - Public DNS can resolve the alias hosts between those commands.
 
