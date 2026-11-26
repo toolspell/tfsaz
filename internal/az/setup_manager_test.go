@@ -662,7 +662,7 @@ func TestRepoForgetDeletedOrMovedCheckout(t *testing.T) {
 	}
 	out.Reset()
 	managerTestRun(t, a, "forget", filepath.Base(c.repo))
-	if want := fmt.Sprintf("forgot %s\nOriginal origin: %s\nRecorded origin: %s\n", r.Repo, r.OriginalURL, r.RemoteURL); out.String() != want {
+	if want := fmt.Sprintf("forgot %s\nOriginal origin: %s\nRecorded origin: %s\nGenerated SSH configuration: %s\n", r.Repo, r.OriginalURL, r.RemoteURL, filepath.Base(r.SSHConfig)); out.String() != want {
 		t.Fatalf("forget output = %q, want %q", out, want)
 	}
 	if got := managerTestRecords(t); len(got) != 0 {

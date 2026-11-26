@@ -190,6 +190,11 @@ func (a app) forgetSetup(ctx context.Context, registry, path string) (err error)
 		if _, err := fmt.Fprintf(a.stdout, "forgot %s\nOriginal origin: %s\nRecorded origin: %s\n", r.Repo, r.OriginalURL, r.RemoteURL); err != nil {
 			return err
 		}
+		if r.SSHConfig != "" {
+			if _, err := fmt.Fprintf(a.stdout, "Generated SSH configuration: %s\n", filepath.Base(r.SSHConfig)); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
