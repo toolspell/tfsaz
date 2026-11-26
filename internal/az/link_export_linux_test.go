@@ -87,6 +87,8 @@ func TestDesktopLinkHandlerGIOArguments(t *testing.T) {
 		t.Fatalf("gio launch: %v\n%s", err, output)
 	}
 	want := strings.Join([]string{"route", "handler-open", config, browser, url, ""}, "\n")
+	// gio launch returns after starting the receiver detached, so there is no
+	// process exit to wait on; poll the trace file instead.
 	for ctx.Err() == nil {
 		got, err := os.ReadFile(trace)
 		if err == nil && strings.Count(string(got), "\n") == 5 {

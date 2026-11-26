@@ -462,6 +462,8 @@ func TestWindowsScheduledServiceRestartsFailedAction(t *testing.T) {
 		t.Fatal(err)
 	}
 	runs := filepath.Join(dir, "runs.txt")
+	// Task Scheduler runs the supervisor out of process and reports no event
+	// per retry, so poll the runs file.
 	for deadline := time.Now().Add(100 * time.Second); time.Now().Before(deadline); {
 		out, _ := os.ReadFile(runs)
 		if len(strings.Fields(string(out))) >= 2 {
@@ -472,6 +474,8 @@ func TestWindowsScheduledServiceRestartsFailedAction(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Outlast the supervisor's 10 s retry delay: a restart that did not
+			// happen has no event to wait on.
 			time.Sleep(12 * time.Second)
 			now, err := os.ReadFile(runs)
 			if err != nil || string(now) != string(stopped) {

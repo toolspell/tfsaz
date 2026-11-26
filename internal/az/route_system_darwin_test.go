@@ -275,16 +275,16 @@ func TestInheritedRedirectServes(t *testing.T) {
 			DisableKeepAlives: true,
 		},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		Timeout:       5 * time.Second,
 	}
-	var resp *http.Response
-	var err error
-	for range 40 { // the child validates its configuration before serving
-		if resp, err = client.Get("https://" + alias + ":" + strconv.Itoa(port) + "/Project/_git/Repo"); err == nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
+	// The socket listens before the child starts, so the kernel queues this
+	// connection until the child has validated its configuration and accepts.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+alias+":"+strconv.Itoa(port)+"/Project/_git/Repo", nil)
+	if err != nil {
+		t.Fatal(err)
 	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

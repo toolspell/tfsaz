@@ -28,7 +28,7 @@ Every test runs against temporary state, never the developer's configuration, ke
 
 - Wait on the event that marks the milestone: a channel the code under test signals (the status channel in `route_check_test.go`, the request channel in `https_git_test.go`), a goroutine's done channel (`route_cli_test.go`), process exit, or `ctx.Done()`.
 - Bound the wait with a context deadline or a `select` on `time.After`. The bound is a ceiling for a hung test, not the wait itself.
-- No `time.Sleep` and no poll loops. A few tests still poll; the [backlog](../backlog.md#code) lists them. A wait on OS timing that has no event carries a comment saying why.
+- No `time.Sleep` and no poll loops. Polls that could still wait on an event are listed in the [backlog](../backlog.md#code). A wait on OS timing that has no event carries a comment saying why.
 
 ## Platforms
 
