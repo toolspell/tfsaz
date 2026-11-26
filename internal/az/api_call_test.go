@@ -2,6 +2,7 @@ package az
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -80,8 +81,96 @@ func TestCatalogAndRESTCommands(t *testing.T) {
 			t.Fatalf("unexpected failure %v, %q", err, out.String())
 		}
 	}
-	if catalogs.Load() != 3 || patches.Load() != 1 {
+	// The listing fetches, the write resolves from the cache, and the absent
+	// resource reloads the cached catalog once.
+	if catalogs.Load() != 2 || patches.Load() != 1 {
 		t.Errorf("got %d catalog and %d patch requests", catalogs.Load(), patches.Load())
+	}
+}
+
+func TestCatalogCacheInvalidation(t *testing.T) {
+	const org = "https://fixture.visualstudio.com"
+	location := func(resource, template string) string {
+		return fmt.Sprintf(`{"area":"future","resourceName":%q,"routeTemplate":%q,"minVersion":"1.0","maxVersion":"7.1","releasedVersion":"7.1","resourceVersion":1}`, resource, template)
+	}
+	before := `{"value":[` + location("things", "_apis/future/{resource}/{id}") + `]}`
+	after := `{"value":[` + location("things", "_apis/moved/{resource}/{id}") + "," + location("newthings", "_apis/moved/{resource}") + `]}`
+	var upgraded atomic.Bool
+	var catalogs, resources atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		checkClientTestAuth(t, r)
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/C/_apis" {
+			catalogs.Add(1)
+			if upgraded.Load() {
+				serveTestBody(w, after)
+			} else {
+				serveTestBody(w, before)
+			}
+			return
+		}
+		resources.Add(1)
+		prefix := "/C/_apis/future/"
+		if upgraded.Load() {
+			prefix = "/C/_apis/moved/"
+		}
+		switch r.URL.Path {
+		case prefix + "things/7":
+			serveTestBody(w, `{"name":"seven"}`)
+		case prefix + "newthings":
+			serveTestBody(w, `{"name":"new"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	p := clientTestProfile(t, srv, "/C")
+	p.Organization = org
+	var out bytes.Buffer
+	a := app{cwd: t.TempDir(), stdout: &out, store: &memoryStore{values: map[string]string{p.ID: clientTestPassword}}}
+	if err := os.WriteFile(filepath.Join(a.cwd, "body.json"), []byte(`{"name":"eight"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name          string
+		seed, upgrade bool
+		args          []string
+		// want is the output; empty expects a failure with exit code 1.
+		want                string
+		catalogs, resources int32
+		cacheKept           bool
+	}{
+		{"cached catalog lacks the resource", true, true, []string{"--resource", "newthings", "--query", "name"}, "new", 1, 1, true},
+		{"read through a moved route", true, true, []string{"--resource", "things", "--route-parameters", "id=7", "--query", "name"}, "seven", 1, 2, true},
+		{"read of a missing item", true, false, []string{"--resource", "things", "--route-parameters", "id=8"}, "", 1, 1, true},
+		{"read through a fetched catalog", false, true, []string{"--resource", "things", "--route-parameters", "id=8"}, "", 1, 1, true},
+		{"write through a moved route", true, true, []string{"--resource", "things", "--route-parameters", "id=7", "--http-method", "PATCH", "--in-file", "body.json"}, "", 0, 1, false},
+		{"listing with a fresh cache", true, true, []string{"--query", "[?resourceName=='newthings'].routeTemplate"}, "_apis/moved/{resource}", 1, 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setConfig(t, p)
+			upgraded.Store(false)
+			if tc.seed {
+				if err := a.run(t.Context(), []string{"devops", "invoke", "--org", org}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			upgraded.Store(tc.upgrade)
+			catalogs.Store(0)
+			resources.Store(0)
+			out.Reset()
+			err := a.run(t.Context(), append([]string{"devops", "invoke", "--org", org, "--area", "future", "-o", "tsv"}, tc.args...))
+			if tc.want == "" && ExitCode(err) != 1 || tc.want != "" && (err != nil || out.String() != tc.want+"\n") {
+				t.Fatalf("got %q, error %v (exit code %d)", out.String(), err, ExitCode(err))
+			}
+			if catalogs.Load() != tc.catalogs || resources.Load() != tc.resources {
+				t.Errorf("got %d catalog and %d resource requests, want %d and %d", catalogs.Load(), resources.Load(), tc.catalogs, tc.resources)
+			}
+			entries, err := filepath.Glob(filepath.Join(catalogCacheDir(os.Getenv("TFSAZ_CONFIG")), "catalog-*.json"))
+			if err != nil || (len(entries) == 1) != tc.cacheKept {
+				t.Errorf("cache entries = %v, %v; want kept = %v", entries, err, tc.cacheKept)
+			}
+		})
 	}
 }
 
@@ -178,7 +267,7 @@ func TestStockResourcesOnCatalogRoute(t *testing.T) {
 			t.Fatalf("got %q, error %v", out.String(), err)
 		}
 	}
-	if catalogs.Load() != 3 {
-		t.Fatalf("expected catalog-driven reads, got %d", catalogs.Load())
+	if catalogs.Load() != 1 {
+		t.Fatalf("expected one cached catalog for three reads, got %d fetches", catalogs.Load())
 	}
 }

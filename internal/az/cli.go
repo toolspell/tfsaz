@@ -259,6 +259,9 @@ func (a app) run(ctx context.Context, args []string) error {
 		return err
 	}
 	client.checkBoundary = func(path []string) error { return cfg.checkRestBoundary(p, path) }
+	if file, err := configPath(); err == nil {
+		client.catalogCache = catalogCacheDir(file)
+	}
 	if command == "account show" {
 		id, err := client.Identity(ctx)
 		if err != nil {

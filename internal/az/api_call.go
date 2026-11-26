@@ -22,14 +22,13 @@ func stockOutput(opts map[string]string) bool {
 }
 
 type apiCall struct {
-	request                 genericRequest
-	area, resource, version string
-	route                   map[string]string
-	query                   url.Values
+	request genericRequest
+	catalogResource
+	query url.Values
 }
 
 func parseAPICall(command string, opts map[string]string, cwd string) (*apiCall, error) {
-	call := &apiCall{area: opts["area"], resource: opts["resource"], version: opts["api-version"]}
+	call := &apiCall{catalogResource: catalogResource{area: opts["area"], resource: opts["resource"], version: opts["api-version"]}}
 	invoke := command == "devops invoke"
 	method, outFile, queryParams := opts["method"], opts["output-file"], opts["uri-parameters"]
 	if invoke {
@@ -151,13 +150,14 @@ func parseAPICall(command string, opts map[string]string, cwd string) (*apiCall,
 
 func (call *apiCall) invoke(ctx context.Context, c *Client, scope Scope, stdout io.Writer) error {
 	c.http.Timeout = genericRESTTimeout
-	locations, err := fetchCatalog(ctx, c)
-	if err != nil {
-		return err
-	}
 	if call.resource == "" {
-		rows := make([]json.RawMessage, 0, len(locations))
-		for _, location := range locations {
+		// A listing shows what the server advertises now, and refreshes the cache.
+		catalog, err := c.reloadCatalog(ctx)
+		if err != nil {
+			return err
+		}
+		rows := make([]json.RawMessage, 0, len(catalog.locations))
+		for _, location := range catalog.locations {
 			if call.area == "" || strings.EqualFold(call.area, location.Area) {
 				rows = append(rows, location.raw)
 			}
@@ -171,10 +171,6 @@ func (call *apiCall) invoke(ctx context.Context, c *Client, scope Scope, stdout 
 		}
 		return call.request.renderJSON(stdout, raw)
 	}
-	path, version, err := resolveResource(locations, call.area, call.resource, call.version, call.route)
-	if err != nil {
-		return usageError{err}
-	}
 	// The extension negotiates the media version in Accept; some endpoints
 	// additionally expect a preview override in the query string.
 	if call.request.accept == "" {
@@ -184,8 +180,6 @@ func (call *apiCall) invoke(ctx context.Context, c *Client, scope Scope, stdout 
 	if err != nil {
 		return usageError{errors.New("invalid response media type")}
 	}
-	params["api-version"] = version
-	call.request.accept = mime.FormatMediaType(media, params)
 	if strings.EqualFold(call.area, "git") && strings.EqualFold(call.resource, "items") {
 		// Stock T3 passes an encoded absolute Git path, even for newer API versions.
 		if raw := call.query.Get("path"); strings.HasPrefix(strings.ToLower(raw), "%2f") {
@@ -207,7 +201,17 @@ func (call *apiCall) invoke(ctx context.Context, c *Client, scope Scope, stdout 
 			return nil
 		}
 	}
-	return call.request.run(ctx, c, path, call.query, stdout, true)
+	err = c.withCatalogRoute(ctx, call.request.method, call.catalogResource, func(path []string, version string) error {
+		request := call.request
+		params["api-version"] = version
+		request.accept = mime.FormatMediaType(media, params)
+		return request.run(ctx, c, path, call.query, stdout, true)
+	})
+	var routeErr catalogRouteError
+	if errors.As(err, &routeErr) {
+		return usageError{err}
+	}
+	return err
 }
 
 func (a app) runRest(ctx context.Context, cfg config, call *apiCall, rawURL string) error {
