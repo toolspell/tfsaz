@@ -1,6 +1,6 @@
 # Testing
 
-Rules for writing tests, and for asking for them in review. This page is their one home; AGENTS.md only summarizes them under Verify and links here. How to run the suites: [Development](../operations/development.md).
+Rules for writing tests, and for asking for them in review. This page is their one home; AGENTS.md links here under Verify. How to run the suites: [Development](../operations/development.md).
 
 ## What to test
 

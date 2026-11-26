@@ -77,9 +77,9 @@ macOS, Linux and Windows are fully supported at feature parity. Platform-specifi
   - `setup_*.go`, `preserve_*.go`, `repo_commands.go`: checkout setup, restore and the Git remote helper.
   - `route_*.go`, `https_*.go`, `link_*.go`, `browser_target.go`: routing. `*_darwin.go`, `*_linux.go`, `*_windows.go` hold the OS integration.
   - `t3_test.go`: the stock T3 adapter test. `testdata/`: fixtures.
-- `.github/workflows/test.yml`: CI. Whole-tree checks on Ubuntu, the test matrix on macOS, Windows and Ubuntu (skipped for docs-only changes), and the roll-up job `Check`, the future required check.
+- `.github/workflows/test.yml`: [CI](docs/operations/development.md#ci).
 - `tools/dev`: the `check`, `ready`, `staged`, `setup` and `ci-local` (act) commands, plus `ci-changes` and `ci-checks` for CI. `tools/<tool>/go.mod`: one module per pinned dev tool. `.githooks/pre-commit`: the commit hook. `tools/syncrepos`: syncs the reference checkouts.
-- `.agents/skills/`: agent skills, linked as `.claude/skills`. `update-references` bumps the reference pins and checks the impact.
+- `.agents/skills/`: agent skills, linked as `.claude/skills`.
 - `.reference-apps/<name>`: gitignored, pinned sparse checkouts of T3 Code, Azure CLI, the Azure DevOps CLI extension and knack, synced with `go run ./tools/syncrepos [--repo <name>]`. Read reference code only there, never from another checkout or installation on this machine, which may be a fork or at another revision. Never edit or import from it.
 
 ## Verify
@@ -90,21 +90,15 @@ go run ./tools/dev ready   # before a push: everything, with -race, about 40 s
 TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter -v ./internal/az
 ```
 
-- While iterating, run focused tests (`go test -count=1 ./internal/az -run 'TestName'`). The pre-commit hook is a quick check of the staged content; it does not replace `check`. What each command runs: [Development](docs/operations/development.md#checks).
+- While iterating, run focused tests (`go test -count=1 ./internal/az -run 'TestName'`). The pre-commit hook is a quick check of the staged content; it does not replace `check`. What each command runs, and where a new lint rule or repo check goes: [Development](docs/operations/development.md#checks).
 - When a change touches a command T3 calls, run `TestStockT3Adapter` (the last line; needs a full T3 source tree with dependencies installed, which the sparse `.reference-apps/t3code` is not). Without one, say in the handoff that it did not run.
-- Before you write or review a test, read [Testing](docs/internals/testing.md), the one home of the test rules. Short version:
-  - A bug fix starts with a test that fails before the fix. Extend an existing table or case before you add a test.
-  - Isolate every test: temp `TFSAZ_CONFIG`, `memoryStore`, stubbed `runRouteSystemCommand`, temp `HOME`/`USERPROFILE`, isolated Git config, loopback servers ([Ways to hurt yourself](#ways-to-hurt-yourself)).
-  - Wait on a channel, process exit or `ctx.Done()`, never on `time.Sleep`.
-  - OS-specific tests use file suffixes or build tags; check the other two platforms.
-  - Fixtures carry no identities, internal URLs or secrets. Offline and live results stay separate; live gates stay opt-in.
-- Pick a mechanical guard by what it reads: a pattern inside one Go file belongs to golangci-lint (`.golangci.yml`); a check across files, on Markdown or on whether files exist is a Go test, like `TestDocLinks` in `docs_links_test.go`. A deliberate exception carries a written reason.
+- Before you fix a bug, or write or review a test, read [Testing](docs/internals/testing.md), the one home of the test rules.
 
 ## Pull requests
 
 - Open a PR only when asked. One request is one PR.
 - Title: a conventional commit in plain language, such as `fix(setup): restore no longer leaves a lock file`. PRs are squash merged, so it becomes the commit on `main`.
-- Body: fill in the [PR template](.github/pull_request_template.md). The problem in a sentence or two, then how you fixed it. End with the model and harness that did the work.
+- Body: fill in the [PR template](.github/pull_request_template.md).
 - Babysit a PR with `watch_pull_request`; never poll checks or reviews.
 - Workflows that run on PRs must work for stacked PRs: [GitHub workflows](docs/operations/development.md#github-workflows).
 - Outside contributions follow [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -128,25 +122,12 @@ Review bots repeat these rules in their own files ([Development](docs/operations
 
 Default to no comment. Existing comments record what the code can't show: a server quirk ("Server 2022.2 accepts adding an empty tag string but keeps existing tags"), a T3 expectation (time budgets, path encoding) or a security reason. Keep new ones to that, in a line or two. Don't narrate steps or record history.
 
-## Docs map
-
-| Audience | Where |
-| --- | --- |
-| Everyone | [README.md](README.md): what TFSaz is, how it works, features, status, constraints, docs index. [SECURITY.md](SECURITY.md): what TFSaz protects, scope, reporting |
-| Operators and script authors | `docs/user/`: getting started, install, configure, checkout setup, what works in T3, diagnose, routing, browser routing (managed and manual), desktop link handler, Azure CLI compatibility |
-| Maintainers and agents | `docs/internals/`: [architecture](docs/internals/architecture.md), [T3 compatibility](docs/internals/t3-compatibility.md) (why TFSaz is needed, adapter files, keeping coverage current), [REST API](docs/internals/rest-api.md) (catalog routes, API version policy), [testing](docs/internals/testing.md) (test rules), [naming](docs/internals/naming.md) (how to write TFSaz, the `az` shim, Microsoft's Azure CLI and the glossary terms) |
-| Maintainers | [`docs/operations/development.md`](docs/operations/development.md): dev setup, tests, CI, issues. `docs/verification/`: dated live records |
-
 ## Documentation rules
 
 - Most code changes need no doc change. Check whether a change makes existing guidance wrong.
-- `docs/user/`: how an operator does a task, in the product's voice. What a feature does, how to start, what is unexpected. No implementation details, no contributor tooling, no dated test logs (link to the record). Treat macOS, Windows and Linux equally.
-- `docs/internals/`: design decisions and their reasons, constraints across components, traps hard to see in the code. Before adding a paragraph, ask what a maintainer would get wrong without it. No feature lists, field lists or control-flow narration.
-- `docs/operations/`: maintainer runbooks. `docs/verification/`: dated live results, kept in full.
 - When a documented fact changes, rewrite or remove the old text. Do not append a second account.
 - Code and docs in English. No em dashes in markdown.
-- AGENTS.md, CLAUDE.md and skill frontmatter load in every session. Their bytes are recorded in `.agents/context-budget.json` (`TestAgentContextBudget`); update it in the same commit, and get the maintainer's OK for growth.
-- Write names as [Naming](docs/internals/naming.md) says, in docs, help and error texts.
+- Before you write or review docs (AGENTS.md and skills included), help or error texts, read [Documentation](docs/internals/documentation.md) for what goes where and [Naming](docs/internals/naming.md) for how to write names.
 
 ## Plans and work artifacts
 

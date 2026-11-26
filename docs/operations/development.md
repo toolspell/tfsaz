@@ -27,6 +27,8 @@ Tests use temporary Git repositories, loopback HTTP/TLS servers and a test crede
 
 Go tests in the root package that read the whole tree. Every `go test` of `.` runs them, so `check` and CI do too, and the hook runs them as `go test -count=1 -run '<repoChecksRun>' .` (the list is in `tools/dev/run.go`). They always check everything: renaming a heading breaks links in other files.
 
+Pick a new mechanical guard by what it reads: a pattern inside one Go file belongs to golangci-lint ([Lint](#lint)); a check across files, on Markdown or on whether files exist is a repo check. A deliberate exception carries a written reason.
+
 | Test | What it checks |
 | --- | --- |
 | `TestDocLinks` (`docs_links_test.go`) | Relative links and heading anchors in README.md, AGENTS.md and `docs/`, plus every `https://github.com/toolspell/tfsaz` URL in Go code and docs, such as the links in CLI help and error texts. |
@@ -180,9 +182,15 @@ These files in `.github/` take effect once they are pushed to GitHub; locally th
 | `workflows/agent-context-budget.yml` | Check `Agent context budget`: fails when a value in `.agents/context-budget.json` is higher than on the PR's base branch. |
 | `workflows/claude.yml` | Runs Claude Code when the account in the repository variable `CLAUDE_ALLOWED_ACTOR` mentions `@claude` in an issue, a PR or a review; unset, nobody can start it. It reads code and CI results and writes comments, never pushes. Needs the secret `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`). |
 
-To grow the agent context on purpose, update `.agents/context-budget.json` to the values `TestAgentContextBudget` prints, and ask a maintainer to add the `agent-context-increase` label. The check reruns on the label event.
-
 Pin every workflow action to a full commit SHA with a `# vX.Y.Z` comment (`TestPinnedActions` enforces it); Dependabot keeps both current. Check a new pin with `git ls-remote https://github.com/OWNER/REPO refs/tags/vX.Y.Z*` (use the `^{}` line for annotated tags).
+
+### Agent context budget
+
+AGENTS.md, CLAUDE.md and the skills' frontmatter load in every agent session; every other doc loads only when an agent follows a link to it. `.agents/context-budget.json` records their bytes, `TestAgentContextBudget` keeps it equal to the measured size, and the check `Agent context budget` fails a PR that raises a value above its base branch's.
+
+Keep that text to what an agent needs before it would know to look, or whose absence does damage first: the hard rules, the traps, the glossary, the check commands, the PR basics. Move detail that matters only in one kind of task to the doc that owns it, and leave a one-line pointer in AGENTS.md that says when to read it, like the one to [Issues](#issues): "Before you file, start or close one, read Issues." A skill's frontmatter says when to use the skill; its body holds the rest. Codex reads Code review rules, and the [review bots](#review-bots) name AGENTS.md sections: keep those, or change the bot files in the same commit.
+
+To grow the agent context on purpose anyway, update `.agents/context-budget.json` to the values `TestAgentContextBudget` prints, and ask a maintainer to add the `agent-context-increase` label. The check reruns on the label event. Growth of 200 bytes or more in one value, about two lines of prose, makes the test and the check point here; smaller growth, such as a reworded rule, fails without the advice.
 
 ### Review bots
 
