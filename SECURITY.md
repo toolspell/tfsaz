@@ -37,9 +37,9 @@ Besides its configuration file, `<config>.repo-setups.json` and `<config>.browse
 | A keyring entry per profile, service `tfsaz/v2/<hash>` or `tfsaz`, account the profile ID (`init`, `profile add`, `devops login`) | The PAT | `profile logout` | `doctor` (online) |
 | The clone's `remote.origin.url`, `remote.origin.vcs`, `remote.origin.tfsazBinding` or `core.sshCommand`, and a `.ssh.conf` in its Git directory (`repo setup`) | T3 recognizes only Azure-style remotes; Git keeps the native transport | `repo restore` | `repo show`, `repo verify`, `repo list` |
 | Hosts lines, a trusted leaf, a loopback service and, on Linux, an nftables redirect (`route setup`) | A browser reaches the real collection from a synthetic URL | `route restore` | `route verify`, plus the names in [Check what is installed](docs/user/browser-routing.md#check-what-is-installed) |
-| `~/.tfsaz/route-recovery` (`route setup`) | Restore still finds the OS entries after the configuration is deleted | Delete it after the last `route restore` | Directory listing |
-| Temporary Git helper directories under `<user config dir>/tfsaz/run` (`route run`) | Inherited Git HTTPS helper for the child process | Removed when the child exits; delete leftovers after a kill | Directory listing |
-| Lock files `<config>.lock`, `<config>.repo-setups.json.lock` and `tfsaz-repo-setup.lock` in a clone's Git directory | Serialize concurrent edits | Delete after the last command | Directory listing |
+| `~/.tfsaz/route-recovery` (`route setup`) | Restore still finds the OS entries after the configuration is deleted | The last `route restore` removes it and `~/.tfsaz` | Directory listing |
+| Temporary Git helper directories in `<config>.run` (`route run`) | Inherited Git HTTPS helper for the child process | Removed when the child exits, `<config>.run` with the last one; delete leftovers after a kill | Directory listing |
+| Lock files `<config>.lock`, `<config>.repo-setups.json.lock`, `tfsaz-repo-setup.lock` in a clone's Git directory and `<id>.pem.lock` in `~/.tfsaz/route-recovery` | Serialize concurrent edits | Removed when the command ends; delete leftovers after a kill | Directory listing |
 | Exported files only (`route handler-export`, `route browser-export`) | The user registers the handler, picks the default browser and loads the extension | The documented removal steps | `route browser-verify` for the extension files |
 
 Hosts entries and PAC settings from `route hosts` and `route pac` are copied in by the user; tfsaz only prints them. `route proxy`, `route sink` and `route redirect` run in the foreground and change nothing persistent.
@@ -73,7 +73,7 @@ Setup creates a self-signed 90-day leaf (ECDSA P-256, `CA:FALSE`, exact alias na
 
 - On Windows and Linux the trust entry is not limited to a hostname. The protection there is that the certificate is a leaf with exact names and its key stays in the owner-only directory.
 - On macOS and Linux setup refuses to run as root; it asks for administrator rights only where the table says. On every OS it stops when another program already holds loopback port 443.
-- A copy of the public leaf in `~/.tfsaz/route-recovery` lets restore find the OS entries after the configuration is deleted. Restore removes that copy but keeps the directory and a lock file.
+- A copy of the public leaf in `~/.tfsaz/route-recovery` lets restore find the OS entries after the configuration is deleted. Restore removes that copy, and the last restore removes the directory.
 - `route verify` checks resolution and the redirect, not trust stores or service registration. The exact names to check by hand are in [Check what is installed](docs/user/browser-routing.md#check-what-is-installed).
 
 ### The on-disk key exception

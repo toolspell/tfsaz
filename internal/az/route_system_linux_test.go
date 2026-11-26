@@ -103,3 +103,46 @@ func TestLinuxNSSRefusesForeignCopyOfLeaf(t *testing.T) {
 		t.Fatalf("install over a foreign entry: %v (calls %v)", err, *calls)
 	}
 }
+
+func TestLinuxRestoreChecksCurrentNSSDatabases(t *testing.T) {
+	home, xdg, bin := t.TempDir(), t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", xdg)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err := os.WriteFile(filepath.Join(bin, "certutil"), []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(xdg, "pki", "nssdb")
+	if err := os.MkdirAll(db, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(db, "cert9.db"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := filepath.EvalSymlinks(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der := []byte("fixture leaf bytes")
+	p := routeSystemPlan{id: routeTestID, leafSHA256: fingerprintHex(der)}
+	nick := linuxNSSNick(p.id)
+	deleted := false
+	fakeRouteSystemCommands(t, func(c routeSystemCall) ([]byte, error) {
+		switch {
+		case slices.Equal(c.args, []string{"-d", "sql:" + db, "-L"}):
+			return []byte("Certificate Nickname  Trust Attributes\n" + nick + "  P,,\n"), nil
+		case slices.Equal(c.args, []string{"-d", "sql:" + db, "-L", "-n", nick, "-a"}):
+			return routeSystemPEM(der), nil
+		case slices.Equal(c.args, []string{"-d", "sql:" + db, "-D", "-n", nick}):
+			deleted = true
+			return nil, nil
+		}
+		t.Fatalf("unexpected command %s %v", c.name, c.args)
+		return nil, nil
+	})
+	// No receipt: the recovery directory was deleted while routing was installed.
+	if err := routeSystemRestoreOS(t.Context(), p); err != nil || !deleted {
+		t.Fatalf("restore without a receipt: err %v, entry removed %v", err, deleted)
+	}
+}

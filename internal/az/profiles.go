@@ -13,8 +13,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/gofrs/flock"
 )
 
 func (a app) runProfiles(ctx context.Context, args []string) error {
@@ -270,19 +268,11 @@ func withProfileConfigLock(create bool, run func(path, target string) error) (er
 	if _, err := setupFileExists(target); err != nil {
 		return err
 	}
-	lockPath := target + ".lock"
-	if _, err := setupFileExists(lockPath); err != nil {
+	release, err := acquireLockFile(target+".lock", errors.New("another profile transaction holds the tfsaz configuration lock; retry"))
+	if err != nil {
 		return err
 	}
-	lock := flock.New(lockPath)
-	defer func() { err = errors.Join(err, lock.Close()) }()
-	acquired, err := lock.TryLock()
-	if err != nil {
-		return fmt.Errorf("lock tfsaz configuration: %w", err)
-	}
-	if !acquired {
-		return errors.New("another profile transaction holds the tfsaz configuration lock; retry")
-	}
+	defer func() { err = errors.Join(err, release()) }()
 	return run(path, target)
 }
 

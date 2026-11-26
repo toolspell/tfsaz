@@ -176,12 +176,18 @@ func prepareRouteSystem(install bool, dir, configFile, certFile, keyFile, leafSH
 // routeSystemID names every system object of one configuration, so two
 // configurations on one machine never touch each other's entries.
 func routeSystemID(configFile string) string {
+	sum := sha256.Sum256([]byte(routeConfigKey(configFile)))
+	return hex.EncodeToString(sum[:8])
+}
+
+// routeConfigKey is the spelling of a configuration path that identifies its
+// installation.
+func routeConfigKey(configFile string) string {
 	key := filepath.Clean(configFile)
 	if runtime.GOOS == "windows" {
 		key = strings.ToLower(key)
 	}
-	sum := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(sum[:8])
+	return key
 }
 
 func fingerprintHex(der []byte) string {

@@ -169,6 +169,15 @@ func TestRepoSetupRoundTripSharedWorktrees(t *testing.T) {
 	if records := managerTestRecords(t); len(records) != 0 {
 		t.Fatalf("records remain: %+v", records)
 	}
+	registry, err := setupRegistryPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, lock := range []string{registry + ".lock", filepath.Join(c.gitDir, "tfsaz-repo-setup.lock")} {
+		if _, err := os.Lstat(lock); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("restore left the lock file %s: %v", lock, err)
+		}
+	}
 }
 
 func TestRepoSetupResolvesSurvivingCheckout(t *testing.T) {

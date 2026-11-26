@@ -17,6 +17,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"time"
 )
@@ -95,7 +96,7 @@ func readRouteIdentity(dir, configFile string) (routeIdentity, error) {
 	if err != nil {
 		return identity, fmt.Errorf("incomplete browser route identity at %s: %v", dir, err)
 	}
-	if json.Unmarshal(data, &identity) != nil || identity.ConfigFile != configFile || len(identity.Aliases) == 0 {
+	if json.Unmarshal(data, &identity) != nil || routeConfigKey(identity.ConfigFile) != routeConfigKey(configFile) || len(identity.Aliases) == 0 {
 		return identity, errors.New("invalid browser route identity or configuration path")
 	}
 	for i, host := range identity.Aliases {
@@ -122,6 +123,18 @@ func readRouteIdentity(dir, configFile string) (routeIdentity, error) {
 	return identity, nil
 }
 
+var errRouteSystemUnsupported = errors.New("browser routing setup supports macOS, Linux and Windows only")
+
+// routeSystemPlatform runs before setup or restore writes anything, so an
+// unsupported system keeps no private key or recovery certificate.
+var routeSystemPlatform = func() error {
+	switch runtime.GOOS {
+	case "darwin", "linux", "windows":
+		return nil
+	}
+	return errRouteSystemUnsupported
+}
+
 type routeSystemOperation func(context.Context, bool, string, string, string, string, string, []string) error
 
 func runManagedRoute(ctx context.Context, args []string, out io.Writer, system routeSystemOperation) (err error) {
@@ -134,6 +147,9 @@ func runManagedRoute(ctx context.Context, args []string, out io.Writer, system r
 		}
 	} else if len(args) != 1 {
 		return usageError{fmt.Errorf("unexpected arguments for route %s", action)}
+	}
+	if err := routeSystemPlatform(); err != nil {
+		return err
 	}
 	file, err := configPath()
 	if err != nil {
@@ -156,11 +172,14 @@ func runManagedRoute(ctx context.Context, args []string, out io.Writer, system r
 		return err
 	}
 	recovery := filepath.Join(home, ".tfsaz", "route-recovery")
-	if err := os.MkdirAll(recovery, 0700); err != nil {
+	receipt := filepath.Join(recovery, routeSystemID(file)+".pem")
+	if action == "restore" && !routeStateExists(dir) && !routeStateExists(receipt) {
+		_, err = fmt.Fprintln(out, routeNothingRecorded)
 		return err
 	}
-	receipt := filepath.Join(recovery, routeSystemID(file)+".pem")
-	unlock, err := acquireSetupLock(receipt + ".lock")
+	// Runs after the unlock below: the last restore leaves no recovery directory.
+	defer removeEmptyRouteRecovery(recovery)
+	unlock, err := acquireRouteRecoveryLock(recovery, receipt+".lock")
 	if err != nil {
 		return err
 	}
@@ -175,7 +194,7 @@ func runManagedRoute(ctx context.Context, args []string, out io.Writer, system r
 		if missing {
 			der, err := readRouteSystemLeaf(receipt)
 			if errors.Is(err, os.ErrNotExist) {
-				_, err = fmt.Fprintln(out, "No installation recorded for this configuration. If you manually deleted both the route directory and the recovery certificate, inspect OS routing and trust before using the alias.")
+				_, err = fmt.Fprintln(out, routeNothingRecorded)
 				return err
 			}
 			if err != nil {
@@ -261,6 +280,36 @@ func runManagedRoute(ctx context.Context, args []string, out io.Writer, system r
 	}
 	_, err = fmt.Fprintln(out, "Browser routing configured. Run tfsaz route verify with a PR URL and open it in your intended browser.")
 	return err
+}
+
+const routeNothingRecorded = "No installation recorded for this configuration. If you manually deleted both the route directory and the recovery certificate, inspect OS routing and trust before using the alias."
+
+func routeStateExists(path string) bool {
+	_, err := os.Lstat(path)
+	return !errors.Is(err, os.ErrNotExist)
+}
+
+// A concurrent restore may remove the empty recovery directory between the
+// MkdirAll and the lock, so recreate it once.
+func acquireRouteRecoveryLock(recovery, path string) (func() error, error) {
+	for attempt := 0; ; attempt++ {
+		if err := os.MkdirAll(recovery, 0700); err != nil {
+			return nil, err
+		}
+		unlock, err := acquireSetupLock(path)
+		if err == nil || attempt > 0 || !errors.Is(err, os.ErrNotExist) {
+			return unlock, err
+		}
+	}
+}
+
+// removeEmptyRouteRecovery removes the recovery directory and ~/.tfsaz once no
+// installation keeps a file there. A directory that still has entries stays,
+// so the removal errors are expected and carry no information.
+func removeEmptyRouteRecovery(recovery string) {
+	if os.Remove(recovery) == nil {
+		_ = os.Remove(filepath.Dir(recovery))
+	}
 }
 
 func retireRouteIdentity(dir string) error {

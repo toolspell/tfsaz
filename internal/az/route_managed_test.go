@@ -72,6 +72,60 @@ func TestManagedRouteRetryAndOfflineRestore(t *testing.T) {
 	if _, err := os.Stat(file + ".browser-route"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("state directory after restore: %v", err)
 	}
+	// The repeat restore found nothing installed and must not recreate the
+	// recovery directory or its lock.
+	if _, err := os.Lstat(filepath.Join(home, ".tfsaz")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("recovery directory after the last restore: %v", err)
+	}
+}
+
+func TestManagedRouteRestoreAcceptsEquivalentConfigPath(t *testing.T) {
+	file, _, _, _ := redirectTestSetup(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	sep := string(filepath.Separator)
+	t.Setenv("TFSAZ_CONFIG", filepath.Dir(file)+sep+"."+sep+filepath.Base(file))
+	var installed, restored string
+	system := func(_ context.Context, install bool, _, _, _, _, sha string, _ []string) error {
+		if install {
+			installed = sha
+		} else {
+			restored = sha
+		}
+		return nil
+	}
+	if err := runManagedRoute(t.Context(), []string{"setup"}, io.Discard, system); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TFSAZ_CONFIG", file)
+	if err := runManagedRoute(t.Context(), []string{"restore"}, io.Discard, system); err != nil || restored == "" || restored != installed {
+		t.Fatalf("restore under another spelling of the same path: %v", err)
+	}
+}
+
+func TestManagedRouteUnsupportedSystemWritesNothing(t *testing.T) {
+	file, _, _, _ := redirectTestSetup(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("TFSAZ_CONFIG", file)
+	saved := routeSystemPlatform
+	t.Cleanup(func() { routeSystemPlatform = saved })
+	routeSystemPlatform = func() error { return errRouteSystemUnsupported }
+	system := func(context.Context, bool, string, string, string, string, string, []string) error {
+		return errRouteSystemUnsupported
+	}
+	for _, action := range []string{"setup", "restore"} {
+		if err := runManagedRoute(t.Context(), []string{action}, io.Discard, system); !errors.Is(err, errRouteSystemUnsupported) {
+			t.Fatalf("route %s on an unsupported system: %v", action, err)
+		}
+	}
+	for _, path := range []string{file + ".browser-route", filepath.Join(home, ".tfsaz")} {
+		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("unsupported setup wrote %s: %v", path, err)
+		}
+	}
 }
 
 func TestManagedRouteRefusesDriftAndForeignFiles(t *testing.T) {

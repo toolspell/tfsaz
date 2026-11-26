@@ -46,6 +46,16 @@ func TestGitHTTPSHelperKeepsAzureRemoteAndUsesNativeTransport(t *testing.T) {
 	if err := os.Link(binary, helper); err != nil {
 		t.Fatal(err)
 	}
+	// After the build, which needs the real Go caches under HOME.
+	home := filepath.Join(root, "home")
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AppData", filepath.Join(home, "AppData", "Roaming"))
+	userConfig, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	const repoPath = "/tfs/Second%20Collection/Team%20Project/_git/Tool%20Kit"
 	const authPath = "/tfs/Second%20Collection/Team%20Project/_git/RequiresAuth/info/refs"
@@ -125,6 +135,15 @@ func TestGitHTTPSHelperKeepsAzureRemoteAndUsesNativeTransport(t *testing.T) {
 	}
 	if out, err := wrappedGit(root, "ls-remote", strings.TrimSuffix(alias, "Tool%20Kit")+"RequiresAuth"); err == nil || !strings.Contains(out, "terminal prompts disabled") {
 		t.Fatalf("expected a non-interactive authentication failure: %v\n%s", err, out)
+	}
+	// Git for Windows may print the exec path with forward slashes.
+	if out, err := wrappedGit(root, "--exec-path"); err != nil || !strings.EqualFold(filepath.Dir(filepath.FromSlash(strings.TrimSpace(out))), configPath+".run") {
+		t.Fatalf("route run overlay %q is not beside TFSAZ_CONFIG: %v", out, err)
+	}
+	for _, path := range []string{configPath + ".run", filepath.Join(userConfig, "tfsaz")} {
+		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("route run left %s: %v", path, err)
+		}
 	}
 	t.Setenv("GIT_EXEC_PATH", helperDir)
 	t.Setenv("GIT_TERMINAL_PROMPT", "0")

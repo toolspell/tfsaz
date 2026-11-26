@@ -109,22 +109,8 @@ func routeSystemRestoreOS(ctx context.Context, p routeSystemPlan) error {
 			errs = append(errs, err)
 		}
 	}
-	dbs, receiptErr := linuxRouteDBReceipt(p.id, nil)
-	if receiptErr != nil {
-		errs = append(errs, receiptErr)
-	}
-	if len(dbs) > 0 {
-		certutil, err := exec.LookPath("certutil")
-		for _, db := range dbs {
-			if err != nil {
-				// Without certutil nothing could have been added, but say so if a database exists.
-				errs = append(errs, fmt.Errorf("cannot check %s for the routing certificate without certutil (libnss3-tools)", db))
-				break
-			}
-			if err := removeLinuxNSS(ctx, certutil, db, p); err != nil {
-				errs = append(errs, err)
-			}
-		}
+	if err := removeLinuxNSSAll(ctx, p); err != nil {
+		errs = append(errs, err)
 	}
 	if err := errors.Join(errs...); err != nil {
 		return err
@@ -138,6 +124,37 @@ func routeSystemRestoreOS(ctx context.Context, p routeSystemPlan) error {
 		return nil
 	}
 	return err
+}
+
+// removeLinuxNSSAll checks the databases in the receipt and the ones the
+// browsers use now, so a lost receipt cannot strand a trust entry.
+func removeLinuxNSSAll(ctx context.Context, p routeSystemPlan) error {
+	recorded, err := linuxRouteDBReceipt(p.id, nil)
+	if err != nil {
+		return err
+	}
+	dbs := append(slices.Clone(recorded), linuxNSSDBs(true)...)
+	slices.Sort(dbs)
+	dbs = slices.Compact(dbs)
+	if len(dbs) == 0 {
+		return nil
+	}
+	certutil, err := exec.LookPath("certutil")
+	if err != nil {
+		// Setup needs certutil before it records a database, so only a
+		// recorded one can hold an entry that is now out of reach.
+		if len(recorded) > 0 {
+			return fmt.Errorf("cannot check %s for the routing certificate without certutil (libnss3-tools)", recorded[0])
+		}
+		return nil
+	}
+	var errs []error
+	for _, db := range dbs {
+		if err := removeLinuxNSS(ctx, certutil, db, p); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Record the actual database directories before modifying trust. XDG_DATA_HOME

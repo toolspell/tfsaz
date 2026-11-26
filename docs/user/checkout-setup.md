@@ -29,7 +29,7 @@ Setup writes only to the clone's shared Git configuration (used by all its workt
 | Preserved transport (default) | `remote.origin.vcs=tfsaz`, `remote.origin.tfsazBinding` (the native target) | None |
 | Managed SSH | `core.sshCommand`, which runs tfsaz | `tfsaz-<hash>.ssh.conf` in the Git directory |
 
-`tfsaz repo restore PATH` puts back the original URL, unsets the other settings, deletes the `.ssh.conf` file and removes the registry record. It leaves an empty `tfsaz-repo-setup.lock` in the Git directory, which you can delete. `repo show PATH` and `git config --get-regexp '^remote\.origin\.'` show the current state.
+`tfsaz repo restore PATH` puts back the original URL, unsets the other settings, deletes the `.ssh.conf` file and removes the registry record. `repo show PATH` and `git config --get-regexp '^remote\.origin\.'` show the current state.
 
 Restore needs the clone itself. If you deleted or moved a clone without restoring it, `repo list` keeps its record and `repo verify` keeps failing for it; tfsaz has no command to drop that record yet. If restore reports that the managed Git settings have drifted, compare `repo show PATH` with the table above and fix the settings by hand.
 

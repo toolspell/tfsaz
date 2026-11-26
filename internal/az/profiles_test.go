@@ -130,6 +130,9 @@ func TestProfileOnboardingAndLogout(t *testing.T) {
 	if store.values["shared"] != legacy || secondRequests.Load() != 2 {
 		t.Fatal("logout changed credentials outside the selected profile")
 	}
+	if _, err := os.Lstat(path + ".lock"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("profile commands left the configuration lock: %v", err)
+	}
 }
 
 func TestProfileConfigFilesCanReuseIDForDifferentEndpoints(t *testing.T) {
@@ -337,5 +340,8 @@ func TestProfileAddSerializesConfigurationChanges(t *testing.T) {
 	}
 	if err := a.run(t.Context(), args); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Lstat(path + ".lock"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("profile add left the configuration lock: %v", err)
 	}
 }

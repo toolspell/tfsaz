@@ -43,11 +43,11 @@ Undo the parts you set up, in this order, then remove tfsaz itself. Run each com
 
 | Step | What to do |
 | --- | --- |
-| 1. Browser routing | `tfsaz route restore`, then delete `~/.tfsaz`. See [Refresh or remove](browser-routing.md#refresh-or-remove). |
+| 1. Browser routing | `tfsaz route restore`; the last one also removes `~/.tfsaz`. See [Refresh or remove](browser-routing.md#refresh-or-remove). |
 | 2. Link handler and extension | Choose your usual default browser and remove the handler as described in [Desktop link handler](desktop-link-handler.md). Remove the Chromium extension from the browser profile and delete its export directory. |
 | 3. Checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`. |
 | 4. PATs | `tfsaz profile logout --profile ID` for each profile in `tfsaz profile list`. |
-| 5. Configuration | Delete the configuration file and the `.repo-setups.json`, `.browser-route` and `.lock` files beside it. Also delete the `tfsaz` folder under your OS user configuration directory (see [Configure](configure.md#configuration-file)); `route run` keeps temporary files there. |
+| 5. Configuration | Delete the configuration file and any `.repo-setups.json`, `.browser-route`, `.run` or `.lock` entries left beside it. For the default location, delete the `tfsaz` folder under your OS user configuration directory (see [Configure](configure.md#configuration-file)). |
 | 6. Shims and binary | Delete `az`, `git-remote-tfsaz` and `tfsaz` (`.exe` on Windows) from the shim directory, and remove that directory from the PATH of T3 and your shell. |
 
 There is no `shim uninstall` command. Check the result with `command -v az` on macOS and Linux or `Get-Command az` in PowerShell: it should find Microsoft's Azure CLI or nothing.

@@ -87,12 +87,12 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 
 | What the run left | Undo | Check |
 | --- | --- | --- |
-| Browser routing (`route setup`) | `tfsaz route restore` with the same `TFSAZ_CONFIG` path as setup; rerun it if it stops partway. Then delete `~/.tfsaz` if no other configuration on the machine uses routing. | `tfsaz route verify` reports managed browser routing as absent; the hosts file has no `# tfsaz-route` line. |
+| Browser routing (`route setup`) | `tfsaz route restore` with the same `TFSAZ_CONFIG` path as setup; rerun it if it stops partway. | `tfsaz route verify` reports managed browser routing as absent; the hosts file has no `# tfsaz-route` line; `~/.tfsaz` is gone unless another configuration still uses routing. |
 | Managed test checkouts | `tfsaz repo restore PATH` for each entry in `tfsaz repo list`, then delete the throwaway clones. | `tfsaz repo list` is empty; `git -C PATH config --get-regexp '^remote\.origin\.'` shows the native URL. |
 | Desktop link handler, Chromium extension | Select the usual default browser, run the Windows `Uninstall.ps1`, delete the exported app, directory or desktop file, and remove the extension from the browser profile. | The steps in [Desktop link handler](../user/desktop-link-handler.md) and [Chromium extension](../user/routing.md#chromium-extension). |
 | PATs of test profiles | `tfsaz profile logout --profile ID` for each test profile, before you delete the configuration that names it. | Your OS keyring shows no `tfsaz` entry for that profile ID. |
 | Shims | Delete `az` and `git-remote-tfsaz` from the test shim directory, and remove it from PATH. | `command -v az` (PowerShell: `Get-Command az`) no longer finds them. |
-| Temporary configuration | Delete the temp `TFSAZ_CONFIG` file with its `.repo-setups.json`, `.browser-route` and `.lock` siblings, and unset the variable. `route run` ignores `TFSAZ_CONFIG` and writes to `tfsaz/run` in the real OS user configuration directory; delete leftover `git-*` directories there after a killed run. | The temp directory is gone; `tfsaz/run` is empty. |
+| Temporary configuration | Delete the temp `TFSAZ_CONFIG` file with any `.repo-setups.json`, `.browser-route`, `.run` and `.lock` siblings, and unset the variable. A killed `route run` leaves `git-*` directories in `.run`. | The temp directory is gone. |
 
 - Live gates (`TFSAZ_LIVE_LAUNCHD`, `TFSAZ_LIVE_TASK_SCHEDULER`, `TFSAZ_T3_ROOT`) remove what they create when they finish. After an aborted run, check with `launchctl print gui/$(id -u)` (macOS) or `Get-ScheduledTask` (Windows) for leftover tfsaz entries.
 - Deleting a configuration first orphans its PATs and checkout registrations, so `profile logout` and `repo restore` can no longer find them.

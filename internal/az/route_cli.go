@@ -143,7 +143,7 @@ func (a app) runRoute(ctx context.Context, args []string) error {
 
 // Only the child process tree sees the replacement HTTPS transport. The
 // original exec directory stays in PATH so Git can find its other programs.
-func (a app) runWithHTTPSGit(ctx context.Context, args []string) error {
+func (a app) runWithHTTPSGit(ctx context.Context, args []string) (err error) {
 	core := os.Getenv("TFSAZ_GIT_CORE")
 	if core == "" {
 		out, err := exec.CommandContext(ctx, "git", "--exec-path").Output()
@@ -164,20 +164,24 @@ func (a app) runWithHTTPSGit(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	// A T3 server may run longer than the OS temporary-file retention period.
-	parent, err := os.UserConfigDir()
+	// A T3 server may run longer than the OS temporary-file retention period,
+	// so the overlay lives beside the configuration.
+	file, err := configPath()
 	if err != nil {
 		return err
 	}
-	parent = filepath.Join(parent, "tfsaz", "run")
-	if err := os.MkdirAll(parent, 0700); err != nil {
-		return err
-	}
-	overlay, err := os.MkdirTemp(parent, "git-")
+	parent := filepath.Clean(file) + ".run"
+	overlay, err := makeRouteRunOverlay(parent)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(overlay)
+	defer func() {
+		if removeErr := os.RemoveAll(overlay); removeErr != nil {
+			err = errors.Join(err, removeErr)
+		}
+		// Another run's overlay keeps the parent; its removal error says only that.
+		_ = os.Remove(parent)
+	}()
 	shim := filepath.Join(overlay, helper)
 	if err := os.Link(binary, shim); err != nil {
 		// Hard links can cross neither volumes nor filesystem boundaries.
@@ -197,6 +201,20 @@ func (a app) runWithHTTPSGit(ctx context.Context, args []string) error {
 		cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never")
 	}
 	return cmd.Run()
+}
+
+// A run that ends concurrently may remove the empty parent between the
+// MkdirAll and the MkdirTemp, so recreate it once.
+func makeRouteRunOverlay(parent string) (string, error) {
+	for attempt := 0; ; attempt++ {
+		if err := os.MkdirAll(parent, 0700); err != nil {
+			return "", err
+		}
+		overlay, err := os.MkdirTemp(parent, "git-")
+		if err == nil || attempt > 0 || !errors.Is(err, os.ErrNotExist) {
+			return overlay, err
+		}
+	}
 }
 
 // Git scripts source libraries relative to git --exec-path. PATH alone cannot

@@ -136,18 +136,35 @@ func setupFileExists(path string) (bool, error) {
 }
 
 func acquireSetupLock(path string) (func() error, error) {
+	return acquireLockFile(path, fmt.Errorf("another repository setup transaction holds %s; retry", path))
+}
+
+// A lock file exists only while its transaction runs. The lock counts only
+// while its path still names the locked file: a process that opened the file
+// before the previous holder removed it would otherwise lock a deleted file.
+func acquireLockFile(path string, busy error) (func() error, error) {
 	if _, err := setupFileExists(path); err != nil {
 		return nil, err
 	}
 	lock := flock.New(path)
 	ok, err := lock.TryLock()
 	if err != nil {
-		return nil, errors.Join(err, lock.Close())
+		return nil, errors.Join(fmt.Errorf("lock %s: %w", path, err), lock.Close())
 	}
 	if !ok {
-		return nil, errors.Join(fmt.Errorf("another repository setup transaction holds %s; retry", path), lock.Close())
+		return nil, errors.Join(busy, lock.Close())
 	}
-	return lock.Close, nil
+	held, err := lock.Stat()
+	if err == nil {
+		var current os.FileInfo
+		if current, err = os.Lstat(path); err == nil && !os.SameFile(held, current) {
+			err = os.ErrNotExist
+		}
+	}
+	if err != nil {
+		return nil, errors.Join(busy, lock.Close())
+	}
+	return func() error { return releaseSetupLock(lock) }, nil
 }
 
 func syncSetupDir(path string) error {
