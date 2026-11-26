@@ -185,7 +185,7 @@ Pin every workflow action to a full commit SHA with a `# vX.Y.Z` comment (`TestP
 
 ### Review bots
 
-Macroscope reads [`.macroscope/`](../../.macroscope): `approvability.md` (what needs human review), `ignore.md` (skipped files) and the check-run agents in `check-run-agents/`. CodeRabbit reads [`.coderabbit.config.ts`](../../.coderabbit.config.ts), which it evaluates on its side, so the repository needs no Node toolchain for it. Codex reads [Code review rules](../../AGENTS.md#code-review-rules) in AGENTS.md. All three point at the rules in AGENTS.md, `docs/internals/` and `SECURITY.md`; change a rule and the bot file that repeats it together.
+CodeRabbit and Codex review PRs. CodeRabbit reads [`.coderabbit.config.ts`](../../.coderabbit.config.ts), which it evaluates on its side, so the repository needs no Node toolchain for it. Codex reads [Code review rules](../../AGENTS.md#code-review-rules) in AGENTS.md. The Macroscope config in [`.macroscope/`](../../.macroscope) (`approvability.md`, `ignore.md` and the check-run agents in `check-run-agents/`) is kept, but the Macroscope app is not enabled for TFSaz. All three bot files point at the rules in AGENTS.md, `docs/internals/` and `SECURITY.md`; change a rule and the bot file that repeats it together.
 
 ## GitHub workflows
 
