@@ -73,5 +73,35 @@
     "name": "routing",
     "color": "bfd4f2",
     "description": "Synthetic URL routing: redirector, link handler, extension, Git launcher."
+  },
+  {
+    "name": "size:XS",
+    "color": "0e8a16",
+    "description": "0-9 changed lines without go.sum, and without tests in mixed PRs."
+  },
+  {
+    "name": "size:S",
+    "color": "5ebd3e",
+    "description": "10-29 changed lines without go.sum, and without tests in mixed PRs."
+  },
+  {
+    "name": "size:M",
+    "color": "fbca04",
+    "description": "30-99 changed lines without go.sum, and without tests in mixed PRs."
+  },
+  {
+    "name": "size:L",
+    "color": "fe7d37",
+    "description": "100-499 changed lines without go.sum, and without tests in mixed PRs."
+  },
+  {
+    "name": "size:XL",
+    "color": "d93f0b",
+    "description": "500-999 changed lines without go.sum, and without tests in mixed PRs."
+  },
+  {
+    "name": "size:XXL",
+    "color": "b60205",
+    "description": "1,000+ changed lines without go.sum, and without tests in mixed PRs."
   }
 ]

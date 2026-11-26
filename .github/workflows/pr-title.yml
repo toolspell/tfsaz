@@ -1,0 +1,30 @@
+# Checks that the PR title is a Conventional Commit subject; see .github/scripts/pr-title.cjs.
+# Its own workflow, so a title edit reruns only this check, not CI.
+# Adapted from Toolspell's pr-title.yml.
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    name: PR title
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      # The title goes through the environment, never into the script text.
+      - env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: node .github/scripts/pr-title.cjs

@@ -46,7 +46,7 @@ func testIrrelevant(f string) bool {
 	if toolModule(f) != "" {
 		return true
 	}
-	for _, prefix := range []string{"docs/", ".agents/", ".claude/", ".githooks/", ".github/ISSUE_TEMPLATE/"} {
+	for _, prefix := range []string{"docs/", ".agents/", ".claude/", ".githooks/", ".github/ISSUE_TEMPLATE/", ".github/scripts/"} {
 		if strings.HasPrefix(f, prefix) {
 			return true
 		}
