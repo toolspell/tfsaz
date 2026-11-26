@@ -10,8 +10,8 @@
 
 | Command | What it runs | When |
 | --- | --- | --- |
-| `go run ./tools/dev check` | On the files changed since the merge base with `main`, uncommitted and untracked ones included: gofmt on changed Go files; `go vet` and golangci-lint (new issues only) for darwin, linux and windows; `go mod tidy -diff` for the touched modules; actionlint when a workflow changed; gitleaks on the branch's commits and uncommitted changes; `go test` on the root package and the changed packages. | Before every commit. A few seconds; about 35 s more when `internal/az` changed. |
-| `go run ./tools/dev ready` | The whole tree: gofmt, `go vet`, golangci-lint new issues and govulncheck for all three systems, `go mod tidy -diff` for every module, actionlint, gitleaks over the full history and uncommitted changes, `go test -race -count=1 ./...`. Reports that never fail it: all golangci-lint findings as counts and deadcode, each for all three systems. | Before a push. About 40 s. |
+| `go run ./tools/dev check` | On the files changed since the merge base with `main`, uncommitted and untracked ones included: gofmt on changed Go files; `go vet` and golangci-lint on the whole tree for darwin, linux and windows; `go mod tidy -diff` for the touched modules; actionlint when a workflow changed; gitleaks on the branch's commits and uncommitted changes; `go test` on the root package and the changed packages. | Before every commit. A few seconds; about 35 s more when `internal/az` changed. |
+| `go run ./tools/dev ready` | The whole tree: gofmt, `go vet`, golangci-lint and govulncheck for all three systems, `go mod tidy -diff` for every module, actionlint, gitleaks over the full history and uncommitted changes, `go test -race -count=1 ./...`. A report that never fails it: deadcode for all three systems. | Before a push. About 40 s. |
 | `go run ./tools/dev ci-local` | The [CI workflow](#ci) with act in Docker: the Linux jobs only. | Before a push that changes CI, or to reproduce a CI failure. A few minutes. |
 | Pre-commit hook | Staged content only: gofmt, gitleaks `--staged`, and the repo checks when a `.go`, `.md` or `.github/` file is staged. | On `git commit`. About 1 s. |
 | `go test -count=1 ./internal/az -run 'TestName'` | Focused tests. `-run` takes a regular expression, so `'TestA\|TestB'` runs both. | While iterating. |
@@ -33,11 +33,11 @@ Go tests in the root package that read the whole tree. Every `go test` of `.` ru
 | `TestPinnedActions` (`repo_checks_test.go`) | Every `uses:` in `.github/workflows/` and `.github/actions/` names a full 40-hex commit SHA followed by a `# vX` version comment. Local `./` actions are exempt; `docker://` images need a `sha256` digest. |
 | `TestNoEmDashInMarkdown` (`repo_checks_test.go`) | No em dash (U+2014) in any markdown file Git tracks or would track; reports `file:line`. |
 
-### Lint and existing findings
+### Lint
 
-`.golangci.yml` enables golangci-lint's standard linters plus `unused` and `nolintlint`. A `//nolint` must name a specific linter and give a reason.
+`.golangci.yml` enables golangci-lint's standard linters plus `unused` and `nolintlint`. Every finding fails `check`, `ready` and CI. A deliberate exception names its reason: a `//nolint` names a specific linter and says why, and an exclusion rule in `.golangci.yml` carries a comment. The `ST1005` rule, for example, exempts error strings that start with a proper noun.
 
-The existing code has findings that the structure phase leaves unfixed; the [backlog](../backlog.md#code) summarizes them. The gates therefore run golangci-lint with `--new-from-merge-base=main`: an issue fails only on a line changed since the merge base. Unlike an exclusion list, this hides no new issue of an already-known kind, and a finding resurfaces as soon as its line is edited. `ready` and CI print the full counts as a report. CI compares against its own base ([lint base](#lint-base)).
+deadcode only reports. It lists, per system, functions that `main` cannot reach, including code that only tests call on that system. Delete such code or move it to the file of the system that uses it; a function kept on purpose says why in its comment, as `editRouteHosts` does for Linux.
 
 ## Pre-commit hook
 
@@ -110,27 +110,27 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 
 ### Gates and reports
 
-- **Gates** (Checks): gofmt; `go vet`, golangci-lint new issues and govulncheck for darwin, linux and windows; `go mod tidy -diff` for the root and every tool module; actionlint; gitleaks over the full history; the repo checks. The test matrix gates too.
-- **Reports** that never fail a run: all golangci-lint findings as counts, and deadcode, for each system.
+- **Gates** (Checks): gofmt; `go vet`, golangci-lint and govulncheck for darwin, linux and windows; `go mod tidy -diff` for the root and every tool module; actionlint; gitleaks over the full history; the repo checks. The test matrix gates too.
+- **Report** that never fails a run: deadcode for each system.
 - tfsaz has no cgo code, so vet, lint and govulncheck with `GOOS` set on Linux see what native runs would see. Only the tests need the three runners.
 - Checks and the test matrix run on the Go version in `go.mod`: govulncheck judges the standard library of the Go it runs on, and that version is the minimum every build uses.
 - All three systems need the race detector; Windows x64 needs a compatible MinGW-w64 C compiler on PATH, which GitHub's runner has. [Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements)
 
-### Lint base
+### Change base
 
-CI gates golangci-lint on lines changed since a base, like `check` and `ready` do against `main`:
+The path filter compares against a base:
 
 | Event | Base | Why |
 | --- | --- | --- |
-| Pull request | The PR base: the first parent of GitHub's merge commit | Exactly the lines the PR changes. |
+| Pull request | The PR base: the first parent of GitHub's merge commit | Exactly the files the PR changes. |
 | Push to `main` | `github.event.before`, the previous head of `main` | Covers every commit of the push, including direct pushes that had no PR run. |
-| Manual run, first push, or a base the clone lacks (force push) | None: counts only | Nothing to compare against. |
+| Manual run, first push, or a base the clone lacks (force push) | None: the matrix runs | Nothing to compare against. |
 
-The existing findings sit on unchanged lines, so they fail no run. Editing such a line brings its finding back into the gate, as it does locally.
+The workflow also passes the base to `ci-checks`, which ignores it: every gate there covers the whole tree.
 
 ### Path filter
 
-`ci-changes` lists the files changed since the same base. The test matrix is skipped only when every file is outside the code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml`, `.golangci.yml` and the tool modules `tools/<tool>/`. Any other file runs the matrix, including every workflow and file types nobody listed yet. Without a base, or when the diff fails, the matrix runs and the log says why. The list is `testIrrelevant` in `tools/dev/ci.go`.
+`ci-changes` lists the files changed since the [change base](#change-base). The test matrix is skipped only when every file is outside the code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml`, `.golangci.yml` and the tool modules `tools/<tool>/`. Any other file runs the matrix, including every workflow and file types nobody listed yet. Without a base, or when the diff fails, the matrix runs and the log says why. The list is `testIrrelevant` in `tools/dev/ci.go`.
 
 Checks always runs, so a docs-only change still gets the doc link, em dash and pinned-action checks. Skipping the matrix matters in a private repository, where a macOS minute counts ten times and a Windows minute twice.
 

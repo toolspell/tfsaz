@@ -29,7 +29,7 @@ const usage = `usage: go run ./tools/dev <command>
 
 CI workflow steps:
   ci-changes -base <rev>  print tests=true|false: whether the native test matrix must run
-  ci-checks -base <rev>   whole-tree gates and reports; lint gates on lines changed since rev
+  ci-checks               whole-tree gates and reports (-base is accepted and ignored)
 `
 
 func main() {
@@ -68,9 +68,10 @@ func main() {
 		_ = flags.Parse(os.Args[2:])
 		ok = ciChanges(*base)
 	case "ci-checks":
-		base := flags.String("base", "", "gate golangci-lint on lines changed since this commit; empty only reports")
+		// The workflow still passes -base; every check covers the whole tree.
+		_ = flags.String("base", "", "ignored")
 		_ = flags.Parse(os.Args[2:])
-		ok = ciChecks(*base)
+		ok = ciChecks()
 	case "ci-local":
 		base := flags.String("base", "main", "simulate a push of the changes since the merge base with this ref")
 		context := flags.String("context", "", "docker context to run the containers in")

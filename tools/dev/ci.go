@@ -95,12 +95,8 @@ func appendFile(name, text string) error {
 
 // ciChecks is the CI checks job: the whole-tree gates and reports of ready,
 // without the tests (the matrix runs those) but with the repo checks.
-func ciChecks(base string) bool {
-	sha, reason := resolveBase(base)
-	if reason != "" {
-		fmt.Printf("ci-checks: %s; golangci-lint reports only.\n", reason)
-	}
-	steps, err := treeSteps(sha, true)
+func ciChecks() bool {
+	steps, err := treeSteps(true)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ci-checks:", err)
 		return false

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"slices"
 	"strings"
 )
@@ -22,12 +21,11 @@ func gitleaksArgs(verbose bool) []string {
 	return gitleaksFlags
 }
 
-// lintNew fails on lint issues in lines changed since the merge base with
-// base. The existing code has findings that the current phase may not fix
-// (docs/backlog.md); this keeps them out of the gate without hiding new ones.
-func lintNew(base string) step {
-	return step{name: "golangci-lint, new issues", run: eachTarget(func(goos string) func(*bytes.Buffer) error {
-		return toolFor(goos, "golangci-lint", "run", "--allow-parallel-runners", "--new-from-merge-base="+base, "./...")
+// lint fails on any golangci-lint finding in the tree. A deliberate exception
+// is a rule in .golangci.yml or a //nolint, each with its reason.
+func lint() step {
+	return step{name: "golangci-lint", run: eachTarget(func(goos string) func(*bytes.Buffer) error {
+		return toolFor(goos, "golangci-lint", "run", "--allow-parallel-runners", "--max-issues-per-linter=0", "--max-same-issues=0", "./...")
 	})}
 }
 
@@ -111,7 +109,7 @@ func check(base string) bool {
 		steps = append(steps, step{name: "gofmt", run: gofmtCheck(p.goFiles, readWorktree)})
 	}
 	if p.goChanged {
-		steps = append(steps, vet(), lintNew(base))
+		steps = append(steps, vet(), lint())
 	}
 	steps = append(steps, tidy(p.modules)...)
 	if p.workflows {
@@ -126,7 +124,7 @@ func check(base string) bool {
 }
 
 func ready() bool {
-	steps, err := treeSteps("main", false)
+	steps, err := treeSteps(false)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ready:", err)
 		return false
@@ -142,9 +140,8 @@ func ready() bool {
 	return runSteps("ready", steps)
 }
 
-// treeSteps are the whole-tree checks that ready and ci-checks share. An
-// empty lintBase leaves out the new-issues gate; the full counts still print.
-func treeSteps(lintBase string, ci bool) ([]step, error) {
+// treeSteps are the whole-tree checks that ready and ci-checks share.
+func treeSteps(ci bool) ([]step, error) {
 	goFiles, err := gitPaths("ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.go")
 	if err != nil {
 		return nil, err
@@ -162,33 +159,12 @@ func treeSteps(lintBase string, ci bool) ([]step, error) {
 		{name: "govulncheck", run: eachTarget(func(goos string) func(*bytes.Buffer) error {
 			return toolFor(goos, "govulncheck", "./...")
 		})},
-		{name: "golangci-lint, all findings", report: true, run: eachTarget(lintSummary)},
+		lint(),
 		{name: "deadcode", report: true, run: eachTarget(func(goos string) func(*bytes.Buffer) error {
 			return toolFor(goos, "deadcode", "./...")
 		})},
 	}
-	if lintBase != "" {
-		steps = append(steps, lintNew(lintBase))
-	}
 	return append(steps, tidy(modules)...), nil
-}
-
-var lintSummaryStart = regexp.MustCompile(`(?m)^(\d+ issues:|0 issues\.)`)
-
-// lintSummary prints only golangci-lint's per-linter counts; the full list is
-// one `golangci-lint run` away and would bury the other results.
-func lintSummary(goos string) func(*bytes.Buffer) error {
-	return func(out *bytes.Buffer) error {
-		var full bytes.Buffer
-		err := toolFor(goos, "golangci-lint", "run", "--allow-parallel-runners", "--max-issues-per-linter=0", "--max-same-issues=0", "./...")(&full)
-		text := full.String()
-		if loc := lintSummaryStart.FindStringIndex(text); loc != nil {
-			out.WriteString(text[loc[0]:])
-			return err
-		}
-		out.WriteString(text)
-		return err
-	}
 }
 
 func staged() bool {
