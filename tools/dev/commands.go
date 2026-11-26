@@ -236,7 +236,7 @@ func undoSetup() bool {
 		fmt.Fprintf(os.Stderr, "setup -undo: git config --get core.hooksPath: %v\n", err)
 		return false
 	}
-	if value := strings.TrimSpace(string(out)); value != ".githooks" {
+	if value := strings.TrimSuffix(string(out), "\n"); value != ".githooks" {
 		fmt.Printf("setup -undo: core.hooksPath is %q, not set by setup; left unchanged.\n", value)
 		return true
 	}
