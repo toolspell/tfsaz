@@ -65,6 +65,14 @@ func TestShimUninstall(t *testing.T) {
 			}
 			return exe
 		}, []string{"az"}, ""},
+		{"link to another installation with the same bytes", func(t *testing.T, bin, exe string) string {
+			other := filepath.Join(filepath.Dir(exe), "other")
+			write(t, other, "current fixture")
+			if err := os.Symlink(other, shimPath(bin, "az")); err != nil {
+				t.Skip("symbolic links unavailable:", err)
+			}
+			return exe
+		}, []string{"az"}, ""},
 		{"started through the az link", func(t *testing.T, bin, exe string) string {
 			for _, name := range shimNames {
 				if err := os.Symlink(exe, shimPath(bin, name)); err != nil {

@@ -170,13 +170,18 @@ func uninstallShimLinks(w io.Writer, dir, executable string) error {
 }
 
 func keepShimReason(path string, info os.FileInfo, executable string) string {
+	current, err := os.Stat(executable)
+	if err != nil {
+		return "the running TFSaz executable is unavailable: " + err.Error()
+	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		if sameBinary(path, executable) {
+		// Identical bytes elsewhere can be another TFSaz installation.
+		if target, err := os.Stat(path); err == nil && os.SameFile(target, current) {
 			return ""
 		}
 		return "it does not link to this TFSaz executable"
 	}
-	if current, err := os.Stat(executable); err == nil && os.SameFile(info, current) {
+	if os.SameFile(info, current) {
 		return "it is the running TFSaz executable itself"
 	}
 	if runtime.GOOS != "windows" || !info.Mode().IsRegular() {

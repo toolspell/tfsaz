@@ -54,16 +54,14 @@ func TestDoctorChecksOnlyCheckoutCredential(t *testing.T) {
 	if report.SelectedProfile != "second" || !slices.Equal(store.reads, []string{"second"}) || strings.Contains(out.String(), "hidden-test-token") {
 		t.Fatal("diagnostic failed to isolate checkout credentials")
 	}
-	shimStatus := func(report doctorReport) map[string]string {
+	statuses := func(report doctorReport) map[string]string {
 		status := map[string]string{}
 		for _, c := range report.Checks {
-			if slices.Contains(shimNames, c.Name) {
-				status[c.Name] = c.Status
-			}
+			status[c.Name] = c.Status
 		}
 		return status
 	}
-	if status := shimStatus(report); status["az"] != "ok" || status["git-remote-tfsaz"] != "ok" {
+	if status := statuses(report); status["az"] != "ok" || status["git-remote-tfsaz"] != "ok" {
 		t.Fatalf("shim checks: %v", status)
 	}
 	delete(store.values, "second")
@@ -82,8 +80,9 @@ func TestDoctorChecksOnlyCheckoutCredential(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if status := shimStatus(report); status["az"] != "ok" || status["git-remote-tfsaz"] != "error" {
-		t.Fatalf("stale shim checks: %v", status)
+	if status := statuses(report); status["az"] != "ok" || status["git-remote-tfsaz"] != "error" ||
+		status["authentication second"] != "error" {
+		t.Fatalf("stale shim and missing PAT checks: %v", status)
 	}
 }
 
