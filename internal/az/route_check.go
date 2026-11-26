@@ -297,7 +297,7 @@ func (c routeCheck) probe(ctx context.Context, target routeCheckTarget, address 
 	case resp.StatusCode != http.StatusFound:
 		return fmt.Errorf("got HTTP %d, want 302; check that the redirect service runs with the current configuration", resp.StatusCode)
 	case resp.Header.Get("Location") != target.location:
-		return fmt.Errorf("Location is %q, want %q", resp.Header.Get("Location"), target.location)
+		return fmt.Errorf("redirect Location %q, want %q", resp.Header.Get("Location"), target.location)
 	case resp.Header.Get("Cache-Control") != "no-store":
 		return errors.New("the redirect is missing Cache-Control: no-store")
 	case resp.Header.Get("Referrer-Policy") != "no-referrer":

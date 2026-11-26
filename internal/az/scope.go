@@ -27,7 +27,7 @@ func (cfg config) selectBase(raw string) (*Profile, Scope) {
 		p := &cfg.Profiles[i]
 		for _, candidate := range p.selectors() {
 			if !strings.EqualFold(candidate, requested) &&
-				!(u.Host == "dev.azure.com" && strings.EqualFold(canonicalAzureOrganization(candidate), requested)) {
+				(u.Host != "dev.azure.com" || !strings.EqualFold(canonicalAzureOrganization(candidate), requested)) {
 				continue
 			}
 			if selected != nil && selected != p {

@@ -459,9 +459,10 @@ func writeHelp(w io.Writer, topic string) error {
 			fmt.Fprintf(&b, "  %s%s\n", strings.Join(aliases, ", "), value)
 		}
 		fmt.Fprintf(&b, "\nExamples:\n  tfsaz %s\n", command.example)
-		if topic == "account show" {
+		switch topic {
+		case "account show":
 			fmt.Fprintln(&b, "  tfsaz account show --query user -o json --organization https://engineering-example.visualstudio.com")
-		} else if topic == "devops invoke" {
+		case "devops invoke":
 			fmt.Fprintln(&b, "  tfsaz devops invoke --area build --query '[].[resourceName,routeTemplate]' -o tsv")
 		}
 	} else if command, ok := nativeCommands[topic]; ok {

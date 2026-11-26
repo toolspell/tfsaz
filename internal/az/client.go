@@ -21,7 +21,9 @@ import (
 const (
 	maxResponseBytes = 32 << 20
 	maxErrorBytes    = 64 << 10
-	loginHint        = "Run 'az devops login' for this collection."
+	// T3 classifies stderr that contains "az devops login" as an authentication
+	// failure (AzureDevOpsCli.ts, classifyAzFailure).
+	loginHint = "run 'az devops login' for this collection"
 )
 
 var serviceErrorCode = regexp.MustCompile(`\b(?:tf|vs)[0-9]{4,8}\b`)
@@ -38,7 +40,7 @@ type Client struct {
 
 func newClient(profile Profile, pat string) (*Client, error) {
 	if strings.TrimSpace(pat) == "" {
-		return nil, fmt.Errorf("no PAT is configured. %s", loginHint)
+		return nil, fmt.Errorf("no PAT is configured; %s", loginHint)
 	}
 	collection, err := url.Parse(profile.CollectionURL)
 	if err != nil || collection.Scheme != "https" || collection.Hostname() == "" ||
@@ -180,7 +182,7 @@ func (c *Client) permissionError(ctx context.Context, err error) error {
 	if _, probeErr := c.authenticatedUser(ctx); probeErr != nil {
 		return probeErr
 	}
-	return errors.New("Azure DevOps authenticated the PAT but denied this operation. Check the PAT's scopes and the account's project permissions")
+	return errors.New("Azure DevOps authenticated the PAT but denied this operation; check the PAT's scopes and the account's project permissions")
 }
 
 func collectionRequestError(err error) error {
@@ -208,7 +210,7 @@ func collectionResponseError(resp *http.Response, path []string) error {
 	status := resp.StatusCode
 	switch {
 	case status == http.StatusUnauthorized || status == http.StatusNonAuthoritativeInfo:
-		return fmt.Errorf("%w (HTTP %d). %s", errRejectedPAT, status, loginHint)
+		return fmt.Errorf("%w (HTTP %d); %s", errRejectedPAT, status, loginHint)
 	case status >= 300 && status < 400:
 		return fmt.Errorf("Azure DevOps collection returned a redirect (HTTP %d)", status)
 	case status == http.StatusTooManyRequests:
@@ -277,7 +279,7 @@ func (c *Client) authenticatedUser(ctx context.Context) (collectionIdentity, err
 	}
 	user := connection.AuthenticatedUser
 	if !user.isUser() {
-		return collectionIdentity{}, fmt.Errorf("Azure DevOps did not authenticate a PAT user. %s", loginHint)
+		return collectionIdentity{}, fmt.Errorf("Azure DevOps did not authenticate a PAT user; %s", loginHint)
 	}
 	return user, nil
 }
