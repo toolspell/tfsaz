@@ -5,8 +5,11 @@ package az
 import "errors"
 
 // Tests that run a built binary build it with -tags tfsaztest, so the binary
-// never reads or writes the developer's OS keyring.
-func init() { processStore = testBinaryStore{} }
+// never reads or writes the developer's OS keyring or its keyring entry list.
+func init() {
+	processStore = testBinaryStore{}
+	processKeyringList = func() (string, error) { return "", errKeyringListUnknown }
+}
 
 type testBinaryStore struct{}
 

@@ -132,12 +132,15 @@ type app struct {
 	stdout, stderr io.Writer
 	stdin          *os.File
 	store          credentialStore
+	keyringList    string
 }
 
 // Run writes command output to stdout. The executable reports returned errors
 // on stderr and exits nonzero.
 func Run(ctx context.Context, args []string) error {
-	a := app{stdout: os.Stdout, stderr: os.Stderr, stdin: os.Stdin, store: processStore}
+	// Without a home directory, only commands that need the list fail.
+	list, _ := processKeyringList()
+	a := app{stdout: os.Stdout, stderr: os.Stderr, stdin: os.Stdin, store: processStore, keyringList: list}
 	return a.run(ctx, args)
 }
 

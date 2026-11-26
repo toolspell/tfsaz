@@ -16,14 +16,15 @@ Every test runs against temporary state, never the developer's configuration, ke
 | --- | --- | --- |
 | Configuration | `t.Setenv("TFSAZ_CONFIG", ...)` with an absolute path under `t.TempDir()` | `cli_test.go` |
 | Keyring | `app{store: &memoryStore{...}}`; never `systemStore` | `api_call_test.go`, `cli_test.go` |
-| Keyring of a built binary | Build it with `-tags tfsaztest`: `credentials_testbinary.go` swaps in a store that is always empty and refuses writes | `setup_manager_test.go`, `https_git_test.go` |
+| Keyring entry list `~/.tfsaz/keyring-entries.json` | `app{keyringList: testKeyringList(t)}`; without it, commands that write or delete a PAT fail | `profiles_test.go` |
+| Keyring of a built binary | Build it with `-tags tfsaztest`: `credentials_testbinary.go` swaps in a store that is always empty and refuses writes, and no keyring entry list | `setup_manager_test.go`, `https_git_test.go` |
 | System commands of `route setup` and `route restore` | Replace `runRouteSystemCommand` and restore it in `t.Cleanup` | `route_system_test.go` |
 | Home directory | `t.Setenv` of `HOME` and `USERPROFILE` to a temp directory | `route_managed_test.go` |
 | Git configuration | `GIT_CONFIG_GLOBAL` to a temp file or `os.DevNull`, `GIT_CONFIG_NOSYSTEM=1`, clones under `t.TempDir()` | `setup_manager_test.go`, `setup_ssh_test.go` |
 | Azure DevOps Server | Loopback `httptest` TLS servers; names such as `example.invalid` and `192.0.2.1` | `client_test.go`, `profiles_test.go` |
 
 - `t.Setenv` and package-level hooks such as `runRouteSystemCommand` rule out `t.Parallel`. The suite has no parallel tests; keep it that way unless a test touches neither.
-- The one test that uses the real keyring is `TestStockT3Adapter`, with a random entry it removes. Its binary is built without the `tfsaztest` tag.
+- The one test that uses the real keyring is `TestStockT3Adapter`, with a random entry it removes, together with its name in the real keyring entry list. Its binary is built without the `tfsaztest` tag.
 
 ## Waiting
 
