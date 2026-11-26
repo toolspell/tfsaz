@@ -29,10 +29,12 @@ func TestDocLinks(t *testing.T) {
 			return err
 		}
 		p = filepath.ToSlash(p)
+		// .reference-apps holds upstream checkouts whose links are not ours, and
+		// testdata fixtures carry deliberately odd links and URLs.
 		if d.IsDir() && (p == ".git" || p == ".reference-apps" || p == "testdata" || strings.HasSuffix(p, "/testdata")) {
 			return filepath.SkipDir
 		}
-		if !d.IsDir() && (strings.HasSuffix(p, ".go") || p == "README.md" || p == "AGENTS.md" || strings.HasPrefix(p, "docs/") && strings.HasSuffix(p, ".md")) {
+		if !d.IsDir() && (strings.HasSuffix(p, ".go") || strings.HasSuffix(p, ".md")) {
 			files = append(files, p)
 		}
 		return nil
@@ -72,6 +74,13 @@ func TestDocLinks(t *testing.T) {
 	}
 }
 
+// githubPages are repository pages GitHub serves that no file in the tree
+// backs, so the checker cannot verify them.
+var githubPages = map[string]bool{
+	"/issues/new/choose":       true,
+	"/security/advisories/new": true,
+}
+
 type linkChecker struct {
 	anchors  map[string]map[string]bool
 	problems []string
@@ -106,6 +115,7 @@ func (c *linkChecker) checkOwnURL(where, u string) {
 		c.checkTarget(where, u, "README.md", anchor)
 	case strings.HasPrefix(rest, "/blob/main/"), strings.HasPrefix(rest, "/tree/main/"):
 		c.checkTarget(where, u, path.Clean(rest[len("/blob/main/"):]), anchor)
+	case githubPages[rest]:
 	default:
 		c.report(where, u, "unsupported GitHub URL form")
 	}
@@ -187,6 +197,28 @@ func TestHeadingSlug(t *testing.T) {
 	} {
 		if got := headingSlug(heading); got != want {
 			t.Errorf("headingSlug(%q) = %q, want %q", heading, got, want)
+		}
+	}
+}
+
+func TestCheckOwnURL(t *testing.T) {
+	const repo = "https://github.com/toolspell/tfsaz"
+	for u, wantOK := range map[string]bool{
+		repo:                                     true,
+		repo + "#readme":                         true,
+		repo + "/blob/main/SECURITY.md":          true,
+		repo + "/blob/main/SECURITY.md#security": true,
+		repo + "/blob/main/SECURITY.md#no-such":  false,
+		repo + "/tree/main/docs":                 true,
+		repo + "/issues/new/choose":              true,
+		repo + "/security/advisories/new":        true,
+		repo + "/issues/12345":                   false,
+		repo + "/blob/feature/SECURITY.md":       false,
+	} {
+		c := linkChecker{anchors: map[string]map[string]bool{}}
+		c.checkOwnURL("test", u)
+		if gotOK := len(c.problems) == 0; gotOK != wantOK {
+			t.Errorf("checkOwnURL(%q) ok = %v, want %v (problems: %v)", u, gotOK, wantOK, c.problems)
 		}
 	}
 }
