@@ -1,3 +1,7 @@
+> [!CAUTION]
+> # DO NOT USE YET
+> **WORK IN PROGRESS, KNOWN REAL ISSUES.**
+
 # TFSaz
 
 TFSaz lets stock T3 Code work with Git repositories, pull requests and work items in an on-premises Azure DevOps Server collection. T3 needs no patch or fork: TFSaz answers the `az` calls T3 already makes.
