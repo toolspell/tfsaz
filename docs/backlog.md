@@ -61,7 +61,6 @@ Deferred work, so any session or worktree can pick it up.
   - `internal/az/link_export_linux_test.go:101` (`TestDesktopLinkHandlerGIOArguments`): polls a trace file every 10 ms after `gio launch`. GIO starts the receiver detached, so there may be no event to wait on; if so, keep it and add the reason as a comment.
   - `internal/az/route_system_windows_test.go:475` and `:482` (`TestWindowsScheduledServiceRestartsFailedAction`, live gate): polls the task's retries every second, then sleeps 12 s to prove no restart after stop. The 12 s sleep is on purpose: it outlasts the supervisor's 10 s retry delay (`route_system_windows.go:146`), and a restart that did not happen has no event; add that reason as a comment. The 1 s poll could stay for the same reason.
 
-- **Windows live test skip message:** `internal/az/route_system_windows_test.go:446` (`TestWindowsScheduledServiceRestartsFailedAction`) skips with "requires an interactive Windows test session" and does not name `TFSAZ_LIVE_TASK_SCHEDULER`, unlike the launchd live test (`set TFSAZ_LIVE_LAUNCHD=1 ...`).
 
 ## Reversibility and verify gaps
 

@@ -443,7 +443,7 @@ func TestWindowsRootListingMarksMachineRoots(t *testing.T) {
 // Register a real task only on an explicitly selected Windows test desktop.
 func TestWindowsScheduledServiceRestartsFailedAction(t *testing.T) {
 	if os.Getenv("TFSAZ_LIVE_TASK_SCHEDULER") != "1" {
-		t.Skip("requires an interactive Windows test session")
+		t.Skip("set TFSAZ_LIVE_TASK_SCHEDULER=1 in an interactive Windows test session to register a temporary scheduled task")
 	}
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "fail once.cmd")
