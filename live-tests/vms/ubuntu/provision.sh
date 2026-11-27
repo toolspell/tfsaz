@@ -5,7 +5,18 @@ set -eu
 
 # The first boot can start apt-daily before Packer takes the APT lists lock.
 systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
-while systemctl show -p ActiveState --value apt-daily.service apt-daily-upgrade.service | grep -Eq '^(activating|active|deactivating)$'; do
+attempts=60
+while :; do
+    jobs=$(systemctl list-jobs --no-legend --no-pager apt-daily.service apt-daily-upgrade.service)
+    states=$(systemctl show -p ActiveState --value apt-daily.service apt-daily-upgrade.service)
+    if [ -z "$jobs" ] && ! printf '%s\n' "$states" | grep -Eq '^(activating|active|deactivating)$'; then
+        break
+    fi
+    if [ "$attempts" -eq 0 ]; then
+        echo 'Timed out waiting for apt-daily and apt-daily-upgrade to finish.' >&2
+        exit 1
+    fi
+    attempts=$((attempts - 1))
     sleep 5
 done
 
@@ -41,6 +52,14 @@ printf 'repo_add_once="false"\nrepo_reenable_on_distupgrade="false"\n' >/etc/def
 printf 'deb [signed-by=/etc/apt/keyrings/google-chrome.asc] https://dl.google.com/linux/chrome/deb/ stable main\n' >/etc/apt/sources.list.d/google-chrome.list
 apt-get update
 apt-get -y -o DPkg::Lock::Timeout=600 install google-chrome-stable
+for browser in x-www-browser gnome-www-browser; do
+    update-alternatives --set "$browser" /usr/bin/firefox
+    alternative=$(LC_ALL=C update-alternatives --query "$browser")
+    printf '%s\n' "$alternative" | grep -Fx 'Value: /usr/bin/firefox'
+done
+handler=$(runuser -u tester -- env LC_ALL=C XDG_CURRENT_DESKTOP=ubuntu:GNOME \
+    XDG_DATA_DIRS=/usr/local/share:/usr/share:/var/lib/snapd/desktop gio mime x-scheme-handler/https)
+printf '%s\n' "$handler" | grep -E '^Default application .*: firefox_firefox\.desktop$'
 
 # Log tester in to GNOME at boot.
 cat >/etc/gdm3/custom.conf <<'EOF'
