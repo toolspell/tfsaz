@@ -83,7 +83,7 @@ func newRequestEntry(r *http.Request, pat string) requestEntry {
 	return requestEntry{
 		Time: time.Now().UTC(), ClientIP: ip, Method: r.Method,
 		Scheme: requestScheme(r), Host: redact(r.Host),
-		Path: redact(r.URL.EscapedPath()), Query: journalQuery(r.URL.RawQuery, redact),
+		Path: journalPath(r.URL, redact), Query: journalQuery(r.URL.RawQuery, redact),
 		UserAgent: redact(r.UserAgent()), AuthScheme: authScheme(header),
 	}
 }
@@ -108,6 +108,15 @@ func authScheme(header string) string {
 	}
 }
 
+// journalPath redacts a secret in the path even when the client encoded
+// some of its characters, such as %61 for a.
+func journalPath(u *url.URL, redact func(string) string) string {
+	if decoded := u.Path; redact(decoded) != decoded {
+		return redact(decoded)
+	}
+	return redact(u.EscapedPath())
+}
+
 func journalQuery(query string, redact func(string) string) string {
 	pairs := strings.Split(query, "&")
 	for i, pair := range pairs {
@@ -117,7 +126,13 @@ func journalQuery(query string, redact func(string) string) string {
 		case "authorization", "access_token", "api_key", "client_secret", "password", "pat", "sig", "token":
 			pairs[i] = name + "=[redacted]"
 		default:
-			pairs[i] = redact(pair)
+			// A value with an encoded secret, such as %61 for a, matches
+			// only when decoded.
+			if value, err := url.QueryUnescape(pair); err == nil && redact(value) != value {
+				pairs[i] = name + "=[redacted]"
+			} else {
+				pairs[i] = redact(pair)
+			}
 		}
 	}
 	return strings.Join(pairs, "&")
