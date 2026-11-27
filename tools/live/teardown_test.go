@@ -10,6 +10,31 @@ import (
 	"testing"
 )
 
+func TestFailedVMUpKeepsLog(t *testing.T) {
+	e := &env{home: t.TempDir(), instance: "first"}
+	o := oses[1]
+	name := e.cloneName(o, "up")
+	logFile := filepath.Join(e.runDir(name), "tart.log")
+	putLiveFile(t, filepath.Join(e.runDir(name), "id_ed25519"))
+	const body = "old line\n2\n3\n4\n5\nVNC server is running at vnc://:secret@127.0.0.1:5900\nVM failed to boot\n"
+	if err := os.WriteFile(logFile, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cause := errors.New("VM did not start")
+	err := e.cleanupFailedVM(o, name, cause)
+	kept := e.instancePath("failed-starts", name+".log")
+	if got := readLiveFile(t, kept); got != body {
+		t.Errorf("kept log = %q; want %q", got, body)
+	}
+	if !errors.Is(err, cause) || !strings.Contains(err.Error(), kept) || !strings.Contains(err.Error(), "VM failed to boot") ||
+		strings.Contains(err.Error(), "old line") || strings.Contains(err.Error(), "secret") {
+		t.Errorf("startup error = %v", err)
+	}
+	if _, err := os.Stat(e.runDir(name)); !os.IsNotExist(err) {
+		t.Errorf("failed clone's run directory remains: %v", err)
+	}
+}
+
 func TestLiveRemovePeer(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -154,6 +179,8 @@ func TestLiveCleanAndDown(t *testing.T) {
 	putLiveFile(t, filepath.Join(otherClone, "disk.qcow2"))
 	serviceState := e.instancePath("mock-keys", "ca.pem")
 	putLiveFile(t, serviceState)
+	keptLog := e.instancePath("failed-starts", "clone.log")
+	putLiveFile(t, keptLog)
 	for _, action := range []string{"clean", "down"} {
 		t.Run(action, func(t *testing.T) {
 			clone := e.cloneName(oses[2], "abc123")
@@ -173,13 +200,14 @@ func TestLiveCleanAndDown(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, serviceStateErr := os.Stat(serviceState)
+			_, keptLogErr := os.Stat(keptLog)
 			switch action {
 			case "clean":
-				if downs != 0 || len(slots) != 1 || serviceStateErr != nil {
+				if downs != 0 || len(slots) != 1 || serviceStateErr != nil || keptLogErr != nil {
 					t.Errorf("clean changed services or slot: down calls %d, slots %v, state %v", downs, slots, serviceStateErr)
 				}
 			case "down":
-				if downs != 1 || len(slots) != 0 || !os.IsNotExist(serviceStateErr) {
+				if downs != 1 || len(slots) != 0 || !os.IsNotExist(serviceStateErr) || !os.IsNotExist(keptLogErr) {
 					t.Errorf("down did not clear services or slot: down calls %d, slots %v, state %v", downs, slots, serviceStateErr)
 				}
 			}

@@ -115,6 +115,7 @@ The tool stores state outside the worktree in `~/.tfsaz-live` (or the absolute p
 | `keys/<os>-base/` | The key of the last base build; for Windows also the password of `tester` |
 | `slots.json`, `*.lock` | Shared slot registry and locks for allocating slots, changing bases and starting macOS VMs |
 | `instances/ID/runs/NAME/` | Clone SSH key, known_hosts, `vm.json` and VM log. `tart.log` holds the VNC address with password (mode 600). |
+| `instances/ID/failed-starts/` | Last startup log per failed clone. `down` and `prune` remove these logs. |
 | `instances/ID/router/`, `instances/ID/mock-keys/`, `instances/ID/Corefile` | Instance WireGuard keys and peers, mock CA and SSH keys, generated sinkhole config |
 | `instance-locks/ID.lock`, `qemu/start.lock` | Locks for instance lifecycle changes and QEMU starts |
 
@@ -280,7 +281,7 @@ In the commands below, set `state_dir="${TFSAZ_LIVE_HOME:-$HOME/.tfsaz-live}"` t
 - The Ubuntu system must ask DHCP with its MAC address (`dhcp-identifier: mac` in the autoinstall and clone network config); otherwise Tart finds no IP and Packer waits until its SSH timeout.
 - Packer finds the Ubuntu installer's autoinstall prompt by OCR, which sometimes misreads it; when a build waits longer than 5 minutes after "Typing commands", stop it and build again. `PACKER_LOG=1` shows what the OCR reads.
 - A running Ubuntu installer accepts the build key for the user `installer`; `ssh -i "$state_dir/keys/ubuntu-build/id_ed25519" installer@IP` shows its progress.
-- A clone's Tart output is in `$state_dir/instances/ID/runs/NAME/tart.log`. `vm up` deletes a clone that fails to come up.
+- A clone's Tart output is in `$state_dir/instances/ID/runs/NAME/tart.log`. When `vm up` deletes a failed clone, it saves its startup log under `failed-starts/` and reports the path and last lines with the VNC address omitted.
 - To see a clone's screen, use `vm screenshot NAME FILE`. A Windows build prints a VNC address without a password and has no clone name; to capture its screen, send QMP `screendump` to `$state_dir/build/windows/qmp.sock`, for example `{ echo '{"execute":"qmp_capabilities"}'; sleep 1; echo '{"execute":"screendump","arguments":{"filename":"/tmp/screen.png","format":"png"}}'; sleep 2; } | nc -U SOCKET`. A Windows build logs its first logon to `C:\Windows\Temp\tfsaz-setup.log`; a clone's QEMU output is in `$state_dir/instances/ID/runs/NAME/qemu.log`.
 - A macOS clone's tunnel logs to `/var/log/tfsaz-live-wg0.log` in the VM; `sudo launchctl kickstart -k system/com.tfsaz.live.wg0` restarts it.
 

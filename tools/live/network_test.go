@@ -27,9 +27,9 @@ func TestDockerNetworks(t *testing.T) {
 				{"Name":"tfsaz-live-second_bed","IPAM":{"Config":[{"Subnet":"172.30.55.0/24"}]}}
 			]`,
 			want: []existingNetwork{
-				{netip.MustParsePrefix("172.30.54.0/24"), "Docker network tfsaz-live-first_bed", "tfsaz-live-first", "br-123456789abc"},
-				{netip.MustParsePrefix("172.30.53.0/24"), "Docker network tfsaz-live_bed", "tfsaz-live", "br-legacy"},
-				{netip.MustParsePrefix("172.30.55.0/24"), "Docker network tfsaz-live-second_bed", "", ""},
+				{prefix: netip.MustParsePrefix("172.30.54.0/24"), source: "Docker network tfsaz-live-first_bed", project: "tfsaz-live-first", interfaceName: "br-123456789abc"},
+				{prefix: netip.MustParsePrefix("172.30.53.0/24"), source: "Docker network tfsaz-live_bed", project: "tfsaz-live", interfaceName: "br-legacy"},
+				{prefix: netip.MustParsePrefix("172.30.55.0/24"), source: "Docker network tfsaz-live-second_bed"},
 			},
 		},
 		{name: "invalid JSON", json: "{", wantError: "unexpected end"},

@@ -32,7 +32,7 @@ func TestHostRoutes(t *testing.T) {
 	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
 		t.Skip("host route inspection is unavailable on this platform")
 	}
-	got, err := hostRoutes()
+	got, err := hostRoutes(nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -66,10 +66,11 @@ func (b bedNetwork) journalURL() string {
 }
 
 type existingNetwork struct {
-	prefix        netip.Prefix
-	source        string
-	project       string
-	interfaceName string
+	prefix           netip.Prefix
+	source           string
+	project          string
+	interfaceName    string
+	interfaceAddress netip.Addr
 }
 
 func selectSlot(slots slotRegistry, instance string, networks []existingNetwork, probe func(bedPorts) error) (int, error) {
@@ -143,18 +144,30 @@ func busyPort(protocol string, port int, err error) error {
 
 func overlappingNetwork(subnet netip.Prefix, project string, networks []existingNetwork) string {
 	ownBridges := make(map[string]bool)
+	ownNetwork := false
 	for _, n := range networks {
-		if project != "" && n.project == project && n.prefix == subnet && n.interfaceName != "" {
-			ownBridges[n.interfaceName] = true
+		if project != "" && n.project == project && n.prefix == subnet {
+			ownNetwork = true
+			if n.interfaceName != "" {
+				ownBridges[n.interfaceName] = true
+			}
+		}
+	}
+	if ownNetwork {
+		for _, n := range networks {
+			// OrbStack assigns the subnet's base address to its macOS host bridge.
+			if n.interfaceName != "" && n.prefix == subnet && n.interfaceAddress == subnet.Addr() {
+				ownBridges[n.interfaceName] = true
+			}
 		}
 	}
 	for _, n := range networks {
 		if !subnet.Overlaps(n.prefix) {
 			continue
 		}
-		ownNetwork := project != "" && n.project == project && n.prefix == subnet
-		ownHostLink := n.project == "" && ownBridges[n.interfaceName] && n.prefix.Bits() >= subnet.Bits()
-		if !ownNetwork && !ownHostLink {
+		ownDocker := ownNetwork && n.project == project && n.prefix == subnet
+		ownHostLink := n.project == "" && ownBridges[n.interfaceName] && (n.prefix == subnet || n.prefix.Bits() == 32)
+		if !ownDocker && !ownHostLink {
 			return n.source + " (" + n.prefix.String() + ")"
 		}
 	}
@@ -166,13 +179,13 @@ func networkSnapshot() ([]existingNetwork, error) {
 	if err != nil {
 		return nil, fmt.Errorf("inspect Docker networks before starting the bed: %w", err)
 	}
-	routes, err := hostRoutes()
-	if err != nil {
-		return nil, fmt.Errorf("inspect host routes before starting the bed: %w", err)
-	}
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
+	}
+	routes, err := hostRoutes(interfaces)
+	if err != nil {
+		return nil, fmt.Errorf("inspect host routes before starting the bed: %w", err)
 	}
 	networks = append(networks, routes...)
 	for _, iface := range interfaces {
@@ -186,7 +199,7 @@ func networkSnapshot() ([]existingNetwork, error) {
 				return nil, fmt.Errorf("inspect host interface %s: %w", iface.Name, err)
 			}
 			if p.Addr().Is4() {
-				networks = append(networks, existingNetwork{prefix: p.Masked(), source: "host interface " + iface.Name, interfaceName: iface.Name})
+				networks = append(networks, existingNetwork{prefix: p.Masked(), source: "host interface " + iface.Name, interfaceName: iface.Name, interfaceAddress: p.Addr()})
 			}
 		}
 	}

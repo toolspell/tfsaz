@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/netip"
 	"runtime"
 	"strings"
@@ -12,7 +13,7 @@ import (
 
 type routeRow struct{ Dst, Dev string }
 
-func hostRoutes() ([]existingNetwork, error) {
+func hostRoutes(_ []net.Interface) ([]existingNetwork, error) {
 	var table []routeRow
 	switch runtime.GOOS {
 	case "linux":

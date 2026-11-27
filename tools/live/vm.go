@@ -153,7 +153,7 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 	defer func() {
 		if err != nil {
 			step("cleaning up %s after the error", name)
-			err = errors.Join(err, e.vmDown(name))
+			err = e.cleanupFailedVM(o, name, err)
 		}
 	}()
 	dir := e.runDir(name)
@@ -211,6 +211,33 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 	}
 	info.SSH = "go run ./tools/live vm ssh " + name + " -- CMD"
 	return info, e.saveVM(info)
+}
+
+func (e *env) cleanupFailedVM(o osDef, name string, cause error) error {
+	logFile := filepath.Join(e.runDir(name), o.provider+".log")
+	if _, err := os.Stat(logFile); errors.Is(err, os.ErrNotExist) {
+		return errors.Join(cause, e.vmDown(name))
+	}
+	kept := e.instancePath("failed-starts", name+".log")
+	err := os.MkdirAll(filepath.Dir(kept), 0o700)
+	if err == nil {
+		err = os.Rename(logFile, kept)
+	}
+	if err != nil {
+		return errors.Join(vmStartError(cause, logFile), fmt.Errorf("save startup log: %w; run vm down %s after inspecting it", err, name), e.vms(o).stop(name))
+	}
+	cleanupErr := e.vmDown(name)
+	return errors.Join(vmStartError(cause, kept), cleanupErr)
+}
+
+func vmStartError(cause error, logFile string) error {
+	data, err := os.ReadFile(logFile)
+	if err != nil || strings.TrimSpace(string(data)) == "" {
+		return fmt.Errorf("%w\nStartup log: %s", cause, logFile)
+	}
+	lines := strings.Split(strings.TrimSpace(vncPattern.ReplaceAllString(string(data), "[VNC address omitted]")), "\n")
+	tail := strings.Join(lines[max(0, len(lines)-5):], "\n")
+	return fmt.Errorf("%w\nStartup log: %s\n%s", cause, logFile, tail)
 }
 
 func printVM(info vmInfo) error {
@@ -298,7 +325,7 @@ func (e *env) startVMProcess(o osDef, name string) error {
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	return errors.Join(fmt.Errorf("%s did not start; check its Tart log and retry", name), v.stop(name))
+	return errors.Join(fmt.Errorf("%s did not start within 20s", name), v.stop(name))
 }
 
 // restart reboots the clone and waits until SSH answers from the new boot.
@@ -435,6 +462,9 @@ func (e *env) startVM(name string) (vmInfo, error) {
 			info.IP, info.Port, err = v.address(name, 3*time.Minute)
 		} else {
 			info.IP, info.Port, err = e.bootVM(o, name)
+			if err != nil {
+				err = vmStartError(err, filepath.Join(e.runDir(name), o.provider+".log"))
+			}
 		}
 		if err != nil {
 			return info, err

@@ -307,25 +307,35 @@ func TestMacOSCapacity(t *testing.T) {
 }
 
 func TestLiveNetworkOverlap(t *testing.T) {
+	subnet := slotNetwork(1).subnet
+	orbBridge := existingNetwork{prefix: subnet, source: "host interface bridge101", interfaceName: "bridge101", interfaceAddress: subnet.Addr()}
 	for _, tc := range []struct {
 		name, prefix, project, device string
 		wantConflict                  bool
+		orbStack                      bool
 	}{
 		{name: "parent route", prefix: "172.30.0.0/16", wantConflict: true},
 		{name: "host address", prefix: "172.30.54.100/32", wantConflict: true},
 		{name: "foreign Docker network", prefix: "172.30.54.0/24", project: "tfsaz-live-other", wantConflict: true},
-		{name: "own Docker network", prefix: "172.30.54.0/24", project: "tfsaz-live-first"},
+		{name: "Docker Desktop without a host bridge", prefix: "172.30.54.0/24", project: "tfsaz-live-first"},
 		{name: "wrong own subnet", prefix: "172.30.54.0/25", project: "tfsaz-live-first", wantConflict: true},
 		{name: "own bridge address", prefix: "172.30.54.1/32", device: "br-own"},
 		{name: "route on another interface", prefix: "172.30.54.1/32", device: "utun0", wantConflict: true},
+		{name: "OrbStack subnet route", prefix: "172.30.54.0/24", device: "bridge101", orbStack: true},
+		{name: "OrbStack neighbor route", prefix: "172.30.54.2/32", device: "bridge101", orbStack: true},
+		{name: "foreign exact route alongside OrbStack", prefix: "172.30.54.0/24", device: "utun0", orbStack: true, wantConflict: true},
+		{name: "foreign narrower route alongside OrbStack", prefix: "172.30.54.128/25", device: "utun0", orbStack: true, wantConflict: true},
+		{name: "foreign route via gateway on OrbStack bridge", prefix: "172.30.54.128/25", orbStack: true, wantConflict: true},
 		{name: "adjacent subnet", prefix: "172.30.55.0/24"},
 		{name: "IPv6", prefix: "fd00::/64"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			subnet := slotNetwork(1).subnet
 			networks := []existingNetwork{
 				{prefix: subnet, source: "own Docker network", project: "tfsaz-live-first", interfaceName: "br-own"},
 				{prefix: netip.MustParsePrefix(tc.prefix), source: tc.name, project: tc.project, interfaceName: tc.device},
+			}
+			if tc.orbStack {
+				networks = append(networks, orbBridge)
 			}
 			got := overlappingNetwork(subnet, "tfsaz-live-first", networks)
 			if (got != "") != tc.wantConflict {

@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func hostRoutes() ([]existingNetwork, error) {
+func hostRoutes(interfaces []net.Interface) ([]existingNetwork, error) {
 	rib, err := route.FetchRIB(unix.AF_INET, route.RIBTypeRoute, 0)
 	if err != nil {
 		return nil, err
@@ -18,10 +18,14 @@ func hostRoutes() ([]existingNetwork, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseRouteMessages(messages)
+	return parseRouteMessages(messages, interfaces)
 }
 
-func parseRouteMessages(messages []route.Message) ([]existingNetwork, error) {
+func parseRouteMessages(messages []route.Message, interfaces []net.Interface) ([]existingNetwork, error) {
+	names := make(map[int]string, len(interfaces))
+	for _, iface := range interfaces {
+		names[iface.Index] = iface.Name
+	}
 	var routes []existingNetwork
 	for _, msg := range messages {
 		m, ok := msg.(*route.RouteMessage)
@@ -47,7 +51,11 @@ func parseRouteMessages(messages []route.Message) ([]existingNetwork, error) {
 		}
 		if bits >= 8 {
 			p := netip.PrefixFrom(netip.AddrFrom4(dst.IP), bits).Masked()
-			routes = append(routes, existingNetwork{prefix: p, source: "host route"})
+			n := existingNetwork{prefix: p, source: "host route"}
+			if m.Flags&unix.RTF_GATEWAY == 0 {
+				n.interfaceName = names[m.Index]
+			}
+			routes = append(routes, n)
 		}
 	}
 	return routes, nil

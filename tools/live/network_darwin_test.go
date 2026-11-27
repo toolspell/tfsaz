@@ -21,11 +21,17 @@ func TestHostRoutes(t *testing.T) {
 		} else {
 			addrs[unix.RTAX_NETMASK] = &route.Inet4Addr{IP: [4]byte(net.CIDRMask(p.Bits(), 32))}
 		}
-		messages = append(messages, &route.RouteMessage{Addrs: addrs, Flags: flags})
+		if p.Bits() == 32 {
+			flags |= unix.RTF_GATEWAY
+		}
+		messages = append(messages, &route.RouteMessage{Addrs: addrs, Flags: flags, Index: 42})
 	}
-	got, err := parseRouteMessages(messages)
+	got, err := parseRouteMessages(messages, []net.Interface{{Index: 42, Name: "bridge101"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkRouteOverlap(t, got)
+	if got[1].interfaceName != "bridge101" || got[2].interfaceName != "" {
+		t.Errorf("host routes = %+v; want bridge101 only for directly connected routes", got)
+	}
 }

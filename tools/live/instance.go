@@ -262,7 +262,7 @@ func (e *env) down() error {
 	if err := e.services("down"); err != nil {
 		return err
 	}
-	for _, dir := range []string{"router", "mock-keys", "Corefile"} {
+	for _, dir := range []string{"router", "mock-keys", "Corefile", "failed-starts"} {
 		if err := os.RemoveAll(e.instancePath(dir)); err != nil {
 			return err
 		}
