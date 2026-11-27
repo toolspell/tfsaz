@@ -29,12 +29,16 @@ func (e *env) base(action, osName string, force bool) error {
 	if err != nil {
 		return err
 	}
-	unlock, err := acquireLock(e.path("bases.lock"), false)
+	unlock, err := e.lockBase(o, false)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 	return e.changeBase(o, action, force)
+}
+
+func (e *env) lockBase(o osDef, shared bool) (func(), error) {
+	return acquireLock(e.path("base-locks", o.name+".lock"), shared)
 }
 
 func baseCloneError(o osDef, clones []string) error {

@@ -45,12 +45,41 @@ func TestLiveInstanceLock(t *testing.T) {
 	}
 }
 
+func TestLiveBaseLock(t *testing.T) {
+	builder := &env{home: t.TempDir(), instance: "builder"}
+	other := &env{home: builder.home, instance: "other"}
+	for _, base := range oses {
+		t.Run(base.name, func(t *testing.T) {
+			unlock, err := builder.lockBase(base, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(unlock)
+			for _, guest := range oses {
+				path := other.path("base-locks", guest.name+".lock")
+				for _, shared := range []bool{false, true} {
+					probe := flock.New(path)
+					tryLock := probe.TryLock
+					if shared {
+						tryLock = probe.TryRLock
+					}
+					got, err := tryLock()
+					_ = probe.Close()
+					if want := guest.name != base.name; got != want || err != nil {
+						t.Errorf("lock %s (shared=%t) = %t, %v; want %t", path, shared, got, err, want)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestLiveInstanceLockPolicy(t *testing.T) {
-	locked := strings.Split("up,down,clean,setup,verify,base build,base update,base rm,services up,services down,vm up,vm start,vm stop,vm down", ",")
+	locked := strings.Split("up,down,clean,setup,verify,services up,services down,vm up,vm start,vm stop,vm down", ",")
 	for _, h := range liveCommands {
 		t.Run(h.path, func(t *testing.T) {
 			command, action, _ := strings.Cut(h.path, " ")
-			if got, want := locksInstance(command, action), slices.Contains(locked, h.path) || h.path == "base"; got != want {
+			if got, want := locksInstance(command, action), slices.Contains(locked, h.path); got != want {
 				t.Errorf("locksInstance(%s) = %t; want %t", h.path, got, want)
 			}
 		})

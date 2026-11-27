@@ -31,7 +31,7 @@ func (e *env) setup(osName string) error {
 }
 
 func (e *env) ensureBase(o osDef) error {
-	unlock, err := acquireLock(e.path("bases.lock"), false)
+	unlock, err := e.lockBase(o, false)
 	if err != nil {
 		return err
 	}

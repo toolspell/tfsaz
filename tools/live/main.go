@@ -134,7 +134,7 @@ func usesInstanceNetwork(command string) bool {
 
 func locksInstance(command, action string) bool {
 	switch command {
-	case "up", "down", "clean", "setup", "verify", "base":
+	case "up", "down", "clean", "setup", "verify":
 		return true
 	case "services":
 		return action == "up" || action == "down"

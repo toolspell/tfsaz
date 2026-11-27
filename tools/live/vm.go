@@ -258,7 +258,7 @@ func guestHostname(o osDef, name string) string {
 }
 
 func (e *env) cloneVM(o osDef, name string) error {
-	unlock, err := acquireLock(e.path("bases.lock"), true)
+	unlock, err := e.lockBase(o, true)
 	if err != nil {
 		return err
 	}

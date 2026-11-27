@@ -149,7 +149,7 @@ Windows has no update in place: `base update windows` refuses. A newer Windows c
 | `base update OS` | Boots the base, upgrades its packages (apt on Ubuntu, Homebrew on macOS), prepares it again; not on Windows |
 | `base rm OS` | Deletes the base and its build key |
 
-All three hold the shared base lock and refuse while any worktree has clones of that OS, even if those clones are stopped.
+Base commands and clone creation share a lock per guest OS across worktrees. Base commands refuse while any worktree has clones of that OS, even if those clones are stopped.
 
 ## Clones
 
