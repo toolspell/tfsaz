@@ -1,6 +1,6 @@
 ---
 name: update-references
-description: Bump TFSaz's pinned reference checkouts (T3 Code, Azure CLI, the azure-devops extension, knack) to the latest upstream releases and assess whether TFSaz must follow. Use when asked to update or check the reference pins, when T3 Code or Azure CLI ships a release, or before a compatibility audit.
+description: Check the T3 Code, Azure CLI, azure-devops extension and knack reference pins against upstream releases, update them and assess TFSaz compatibility. Use on request, on a T3 Code or Azure CLI release, or before a compatibility audit.
 ---
 
 # Update the reference pins

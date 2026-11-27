@@ -1,6 +1,6 @@
 ---
 name: reference-azure-cli
-description: Read Microsoft's Azure CLI, its azure-devops extension and the knack framework, the behavioral references for TFSaz's Azure CLI compatibility, before changing argument parsing, --query or -o output, error texts and exit codes, account show, rest, devops invoke, devops login, devops team, repos, repos pr or boards work-item behavior, or the connection-data and identity lookups.
+description: Check Microsoft's Azure CLI, its azure-devops extension and knack before changing argument parsing, --query, -o output, error texts or exit codes, account show, rest, devops invoke, devops login, devops team, repos, repos pr, boards work-item, or connection-data and identity lookups.
 ---
 
 # Reference: Azure CLI and the DevOps extension

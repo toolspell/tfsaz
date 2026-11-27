@@ -17,7 +17,7 @@ func (e *env) setup(osName string) error {
 		return err
 	}
 	step("checking host tools")
-	if err := e.doctor(true); err != nil {
+	if err := e.doctor(true, false); err != nil {
 		return err
 	}
 	if err := e.services("up"); err != nil {

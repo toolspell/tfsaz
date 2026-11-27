@@ -1,6 +1,6 @@
 ---
 name: reference-t3code
-description: Read T3 Code's stock Azure DevOps adapter, the source of TFSaz's compatibility contract, before implementing or changing a command T3 calls, an output shape or error T3 consumes, remote or URL recognition, discovery probes, or when T3 releases a new version. Not for how Microsoft's Azure CLI itself behaves; use reference-azure-cli for that.
+description: Check T3 Code's stock Azure DevOps adapter before adding or changing commands T3 calls, output shapes or errors it consumes, remote or URL recognition, or discovery probes, and when T3 releases a new version. For Microsoft's Azure CLI behavior, use reference-azure-cli.
 ---
 
 # Reference: T3 Code

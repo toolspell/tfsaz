@@ -81,15 +81,12 @@ func versionLess(a, b string) bool {
 	return false
 }
 
-// doctor checks the host tools and installs missing ones with Homebrew:
-// in a terminal after asking, or right away with install. It fails while a
-// tool is missing or not working.
-func (e *env) doctor(install bool) error {
+func (e *env) doctor(install, checkOnly bool) error {
 	if err := requireMac(); err != nil {
 		return err
 	}
 	missing, failing := checkTools()
-	if len(missing) > 0 {
+	if !checkOnly && len(missing) > 0 {
 		if err := brewInstall(missing, install); err != nil {
 			return err
 		}
@@ -101,6 +98,9 @@ func (e *env) doctor(install bool) error {
 		return fmt.Errorf("%d tools missing or not working", n)
 	}
 	fmt.Println("state    " + e.home)
+	if checkOnly {
+		return nil
+	}
 	return e.ensureHome()
 }
 

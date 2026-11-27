@@ -105,19 +105,27 @@ func run(command string, args []string) error {
 		fmt.Print(usage)
 		return nil
 	}
-	e, err := newEnv()
-	if err != nil {
-		return err
-	}
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
-	switch command {
-	case "doctor":
+	var installTools bool
+	if command == "doctor" {
 		install := flags.Bool("install", false, "install missing tools with Homebrew without asking")
 		yes := flags.Bool("yes", false, "answer yes to prompts")
 		if err := flags.Parse(args); err != nil {
 			return errUsage
 		}
-		return e.doctor(*install || *yes)
+		installTools = *install || *yes
+	}
+	ci := ciEnvironment()
+	if ci != "" && !ciReadOnly(command, args, installTools) {
+		return fmt.Errorf("live test changes are disabled when %s is set", ci)
+	}
+	e, err := newEnv()
+	if err != nil {
+		return err
+	}
+	switch command {
+	case "doctor":
+		return e.doctor(installTools, ci != "")
 	case "services":
 		if len(args) != 1 {
 			return errUsage
@@ -154,4 +162,34 @@ func run(command string, args []string) error {
 		return e.status()
 	}
 	return errUsage
+}
+
+func ciEnvironment() string {
+	for _, name := range []string{"CI", "GITHUB_ACTIONS"} {
+		if _, set := os.LookupEnv(name); set {
+			return name
+		}
+	}
+	return ""
+}
+
+func ciReadOnly(command string, args []string, installTools bool) bool {
+	switch command {
+	case "status":
+		return true
+	case "doctor":
+		return !installTools
+	}
+	if len(args) == 0 {
+		return false
+	}
+	switch command {
+	case "services":
+		return args[0] == "status"
+	case "mock":
+		return args[0] == "ca" || args[0] == "requests"
+	case "vm":
+		return args[0] == "list" || args[0] == "vnc"
+	}
+	return false
 }

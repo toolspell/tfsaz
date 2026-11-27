@@ -48,10 +48,13 @@ go run ./tools/live status
 
 `go run ./tools/live help` lists all commands. None prompts unless it runs in a terminal; `setup` and `doctor -install` install without asking. `vm ssh` passes on the remote exit code, but `go run` turns any nonzero code into 1 and prints `exit status N`. For the exact code, build the tool once with `go build -o bin/live ./tools/live` and run `bin/live`.
 
+Run the live suite outside GitHub CI and `ci-local`. When `CI` or `GITHUB_ACTIONS` is present, the tool allows help and read-only diagnostics. In that mode, plain `doctor` checks the host without prompting or creating state.
+
 `verify` checks from a new clone that `devops.mock.test` resolves to the mock, that the mock's REST API answers through the router, that internet traffic goes through the tunnel and works, that the router reaches the VM, and that the test user is logged in to the desktop. It prints one line per check, deletes the clone and fails if any check failed.
 
 ## For agents
 
+- Use the [live-tests skill](../../.agents/skills/live-tests/SKILL.md) to choose guests and run the cases affected by your change.
 - Target the mock. Use the shared Azure DevOps Server testbed only when the maintainer asks ([AGENTS.md](../../AGENTS.md#ways-to-hurt-yourself)).
 - Run `base build` and `setup` in the background and watch their output. Do not wait past Packer's SSH timeout (25 minutes for Ubuntu, 10 for macOS, 60 for Windows); [Troubleshooting](#troubleshooting) has the known causes.
 - When the Windows ISO is missing, ask the maintainer to download it; do not fetch it from another source.
