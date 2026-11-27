@@ -100,8 +100,10 @@ source "qemu" "windows" {
   ]
 
   # The ISO's boot loader waits a few seconds for a key before Setup starts.
+  # Arrow keys count as a key there but press no button: Enter would hit
+  # Setup's focused Cancel button if Setup came up while keys still go out.
   boot_wait    = "1s"
-  boot_command = ["<enter><wait><enter><wait><enter><wait><enter><wait><enter><wait><enter><wait><enter><wait><enter><wait><enter><wait><enter>"]
+  boot_command = ["<down><wait><down><wait><down><wait><down><wait><down><wait><down><wait><down><wait><down><wait><down><wait><down>"]
 
   communicator         = "ssh"
   ssh_username         = "tester"
