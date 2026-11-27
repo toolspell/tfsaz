@@ -54,12 +54,18 @@ func (t sshTarget) runContext(ctx context.Context, stdin io.Reader, command stri
 	if t.powershell {
 		remote = encodePowerShell(command)
 	}
+	return t.runRemote(ctx, stdin, remote, command)
+}
+
+// runRemote runs remote as the login shell's command line, unchanged;
+// label names it in errors.
+func (t sshTarget) runRemote(ctx context.Context, stdin io.Reader, remote, label string) (string, error) {
 	c := exec.CommandContext(ctx, "ssh", t.args(remote)...)
 	c.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	c.Stdout, c.Stderr = &stdout, &stderr
 	if err := c.Run(); err != nil {
-		return stdout.String(), fmt.Errorf("ssh %s %q: %w: %s", t.host, command, err, strings.TrimSpace(stderr.String()))
+		return stdout.String(), fmt.Errorf("ssh %s %q: %w: %s", t.host, label, err, strings.TrimSpace(stderr.String()))
 	}
 	return strings.TrimSpace(stdout.String()), nil
 }

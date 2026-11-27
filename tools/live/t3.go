@@ -2,14 +2,17 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha512"
 	"encoding/base64"
+	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 const t3Releases = "https://github.com/pingdotgg/t3code/releases/download/"
@@ -153,14 +156,41 @@ func hasSHA512(path, want string) (bool, error) {
 	return base64.StdEncoding.EncodeToString(h.Sum(nil)) == want, nil
 }
 
-// vmT3 installs the stock T3 Code desktop app of the reference pin into a
-// clone, as its user would: the clones start without it, so a test can also
-// cover a machine without T3.
+// t3Name is the product name of a T3 Code release: the app's name on macOS
+// and its executable's on Windows.
+func t3Name(tag string) string {
+	if strings.Contains(tag, "nightly") {
+		return "T3 Code (Nightly)"
+	}
+	return "T3 Code"
+}
+
+// vmT3 runs vm t3 install and vm t3 start.
 func (e *env) vmT3(args []string) error {
-	if len(args) != 1 {
+	if len(args) < 2 {
 		return errUsage
 	}
-	name := args[0]
+	switch args[0] {
+	case "install":
+		if len(args) != 2 {
+			return errUsage
+		}
+		return e.vmT3Install(args[1])
+	case "start":
+		flags := flag.NewFlagSet("vm t3 start", flag.ContinueOnError)
+		port := flags.Int("port", 9222, "Chrome debugging port of T3 in the clone")
+		if flags.Parse(args[2:]) != nil || flags.NArg() != 0 || *port < 1 || *port > 65535 {
+			return errUsage
+		}
+		return e.vmT3Start(args[1], *port)
+	}
+	return errUsage
+}
+
+// vmT3Install installs the stock T3 Code desktop app of the reference pin
+// into a clone, as its user would: the clones start without it, so a test
+// can also cover a machine without T3.
+func (e *env) vmT3Install(name string) error {
 	info, err := e.loadVM(name)
 	if err != nil {
 		return err
@@ -181,4 +211,41 @@ func (e *env) vmT3(args []string) error {
 	}
 	fmt.Println(tag)
 	return nil
+}
+
+// vmT3Start starts the installed T3 Code in the clone's desktop session with
+// Chrome's debugging port on the clone's loopback, waits until the port
+// answers and prints its URL in the clone. Playwright attaches to it through
+// vm forward.
+func (e *env) vmT3Start(name string, port int) error {
+	info, err := e.loadVM(name)
+	if err != nil {
+		return err
+	}
+	o, _ := osOfVM(name)
+	tag, err := e.t3Pin()
+	if err != nil {
+		return err
+	}
+	remote, err := guiRemote(o, fmt.Sprintf(o.guest.t3Start, t3Name(tag), port), time.Minute)
+	if err != nil {
+		return err
+	}
+	login := info.login()
+	step("starting T3 Code in %s", name)
+	if _, err := login.runRemote(context.Background(), nil, remote, "vm t3 start"); err != nil {
+		return err
+	}
+	url := fmt.Sprintf("http://127.0.0.1:%d", port)
+	deadline := time.Now().Add(time.Minute)
+	for {
+		if _, err = login.run(nil, fmt.Sprintf(o.guest.answers, url+"/json/version")); err == nil {
+			fmt.Println(url)
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("T3's debugging port %d in %s did not answer within a minute; a T3 that already ran without it keeps running, so quit it first: %w", port, name, err)
+		}
+		time.Sleep(2 * time.Second)
+	}
 }

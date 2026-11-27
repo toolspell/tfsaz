@@ -61,12 +61,10 @@ func (e *env) vmRun(args []string) error {
 	login := info.login()
 	var remote string
 	switch {
-	case *gui && o.guest.powershell:
-		remote = encodePowerShell(windowsGUI(userScript(script), *timeout))
-	case *gui && o.guest.gui == "":
-		return fmt.Errorf("%s has no desktop session for -gui yet", o.name)
 	case *gui:
-		remote = fmt.Sprintf(o.guest.gui, shellQuote(script))
+		if remote, err = guiRemote(o, script, *timeout); err != nil {
+			return err
+		}
 	case o.guest.powershell:
 		remote = encodeScript(userScript(script))
 	default:
@@ -122,6 +120,18 @@ func (e *env) vmRun(args []string) error {
 		fmt.Println(string(data))
 	}
 	return err
+}
+
+// guiRemote returns the remote command that runs script in the test user's
+// desktop session.
+func guiRemote(o osDef, script string, timeout time.Duration) (string, error) {
+	switch {
+	case o.guest.powershell:
+		return encodePowerShell(windowsGUI(userScript(script), timeout)), nil
+	case o.guest.gui == "":
+		return "", fmt.Errorf("%s has no desktop session for -gui yet", o.name)
+	}
+	return fmt.Sprintf(o.guest.gui, shellQuote(script)), nil
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
