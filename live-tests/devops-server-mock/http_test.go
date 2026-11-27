@@ -146,9 +146,18 @@ func TestTextGenerator(t *testing.T) {
 		}
 	})
 	t.Run("journal", func(t *testing.T) {
+		s := &server{cfg: config{pat: "mock-pat"}}
+		for _, auth := range []string{"", "Bearer anything"} {
+			r := httptest.NewRequest(http.MethodPost, "http://llm.mock.test/v1/chat/completions", strings.NewReader(`{"model":"live-test"}`))
+			if auth != "" {
+				r.Header.Set("Authorization", auth)
+			}
+			s.serveLLM(httptest.NewRecorder(), r)
+		}
+		s.serveLLM(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "http://llm.mock.test/other", nil))
 		entries := s.journal.requests("")
-		if len(entries) == 0 {
-			t.Fatal("journal is empty")
+		if len(entries) != 3 {
+			t.Fatalf("journal has %d entries; want 3", len(entries))
 		}
 		first := entries[0]
 		if first.Method != http.MethodPost || first.Path != "/v1/chat/completions" || first.Host != "llm.mock.test" ||
