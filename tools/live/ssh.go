@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -29,7 +30,11 @@ func (t sshTarget) args(command ...string) []string {
 
 // run executes a remote shell command; stdin may be nil.
 func (t sshTarget) run(stdin io.Reader, command string) (string, error) {
-	c := exec.Command("ssh", t.args(command)...)
+	return t.runContext(context.Background(), stdin, command)
+}
+
+func (t sshTarget) runContext(ctx context.Context, stdin io.Reader, command string) (string, error) {
+	c := exec.CommandContext(ctx, "ssh", t.args(command)...)
 	c.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	c.Stdout, c.Stderr = &stdout, &stderr
@@ -43,7 +48,11 @@ func (t sshTarget) run(stdin io.Reader, command string) (string, error) {
 func (t sshTarget) wait(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
-		_, err := t.run(nil, "true")
+		// ConnectTimeout bounds only the connection; a guest that stalls
+		// after it must not hold the attempt past the deadline.
+		ctx, cancel := context.WithDeadline(context.Background(), deadline)
+		_, err := t.runContext(ctx, nil, "true")
+		cancel()
 		if err == nil {
 			return nil
 		}

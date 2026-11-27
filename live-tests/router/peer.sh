@@ -16,8 +16,8 @@ apply() {
 case "${1:-}" in
 add)
 	[ $# -eq 4 ] || { echo "usage: peer add NAME PUBLIC_KEY ADDRESS" >&2; exit 2; }
-	printf '%s %s\n' "$3" "$4" >"$dir/$2"
 	apply "$3" "$4"
+	printf '%s %s\n' "$3" "$4" >"$dir/$2"
 	;;
 remove)
 	[ $# -eq 2 ] || { echo "usage: peer remove NAME" >&2; exit 2; }
@@ -31,7 +31,7 @@ load)
 	for file in "$dir"/*; do
 		[ -f "$file" ] || continue
 		read -r key address <"$file"
-		apply "$key" "$address"
+		apply "$key" "$address" || echo "peer: skipped $(basename "$file"): cannot apply it" >&2
 	done
 	;;
 list)

@@ -97,7 +97,7 @@ The VMs use Tart's NAT for SSH from the host, and a WireGuard tunnel to the rout
 | Address | What |
 | --- | --- |
 | `172.30.53.2` | Router: WireGuard on UDP 51820 (published on the host), resolver for the VMs |
-| `172.30.53.10` | Mock, `devops.mock.test`; ports 8080 and 2222 also published on the host |
+| `172.30.53.10` | Mock, `devops.mock.test`; ports 8080 and 2222 also published on the host's loopback |
 | `172.30.53.53` | DNS sinkhole |
 | `172.30.53.129` and up | VMs, one address each |
 

@@ -11,9 +11,11 @@ services:
     volumes:
       # The mock writes a fresh SSH client key and known_hosts here on start.
       - ./devops-server-mock/keys:/keys
+    # Loopback only: VMs reach the mock through the router, and nobody else
+    # on the network should change its state.
     ports:
-      - "8080:8080"
-      - "2222:2222"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:2222:2222"
     dns: 172.30.53.53
     networks:
       bed:

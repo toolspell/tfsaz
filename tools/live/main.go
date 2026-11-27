@@ -116,9 +116,13 @@ func run(command string, args []string) error {
 			return e.setup(args[0])
 		}
 		return e.verify(args[0])
-	case "clean":
-		return e.clean()
-	case "status":
+	case "clean", "status":
+		if len(args) != 0 {
+			return errUsage
+		}
+		if command == "clean" {
+			return e.clean()
+		}
 		return e.status()
 	}
 	return errUsage
