@@ -46,7 +46,7 @@ The other answers are NXDOMAIN rather than REFUSED because Docker's resolver ret
 
 Containers on the compose network use the sinkhole through `dns:`. VMs point their resolver at the host's port 53 (or `MOCK_DNS_PORT`). They cannot reach the compose network, so for VM clients set `MOCK_ADDRESS` to the host address the VMs reach, where the mock's ports 8080 and 2222 are published. Containers on the compose network reach that address too. The test machine must not reach any other resolver, or a lookup that bypasses the hosts file goes unnoticed.
 
-Browsers with DNS over HTTPS (secure DNS) send lookups to their own provider and skip both the hosts file and the sinkhole. Turn it off in test browser profiles: Chrome and Edge under **Privacy and security → Use secure DNS**, Firefox under **Privacy & Security → DNS over HTTPS**, or by policy (`DnsOverHttpsMode` set to `off`).
+Test browsers keep their default settings, as users have them. In this offline test bed, DNS-over-HTTPS (secure DNS) providers are unreachable, so browsers fall back to the system resolver: the hosts file first, then the sinkhole. A later browser test case runs once with DNS over HTTPS forced on, to find out whether an alias host leaks past TFSaz's hosts lines.
 
 ## Seed
 
