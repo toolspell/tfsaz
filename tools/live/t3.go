@@ -245,15 +245,17 @@ func (e *env) vmT3Start(name string, port int) error {
 		return err
 	}
 	url := fmt.Sprintf("http://127.0.0.1:%d", port)
-	deadline := time.Now().Add(time.Minute)
+	wait, stop := context.WithTimeout(context.Background(), time.Minute)
+	defer stop()
 	for {
-		if _, err = login.run(nil, fmt.Sprintf(o.guest.serves, url+"/json/version", t3UserAgent)); err == nil {
+		if _, err = login.runContext(wait, nil, fmt.Sprintf(o.guest.serves, url+"/json/version", t3UserAgent)); err == nil {
 			fmt.Println(url)
 			return nil
 		}
-		if time.Now().After(deadline) {
+		select {
+		case <-wait.Done():
 			return fmt.Errorf("port %d in %s did not answer as T3's debugging port within a minute; a T3 that already ran without the port keeps running, so quit it first, or pick another -port when another app uses it: %w", port, name, err)
+		case <-time.After(2 * time.Second):
 		}
-		time.Sleep(2 * time.Second)
 	}
 }
