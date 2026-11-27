@@ -126,12 +126,14 @@ func (e *env) vmRun(args []string) error {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// userScript gives a PowerShell script of vm run the exit code PowerShell
-// itself would give it, with and without -gui: its own exit N, else 0 when
-// the last statement succeeded, else the exit code of a failed native
-// command or 1 for a failed cmdlet.
+// userScript gives a PowerShell script of vm run its exit code, with and
+// without -gui: its own exit N, else 0 when the last statement succeeded,
+// else 1 when the script recorded an error (a failed cmdlet), else the exit
+// code of the failed native command. For an exact native exit code after
+// handled errors, end the script with exit $LASTEXITCODE.
 func userScript(script string) string {
-	return script + "\nif ($?) { exit 0 }; if ($LASTEXITCODE) { exit $LASTEXITCODE }; exit 1"
+	return "$tfsazLiveErrors = $Error.Count\n" + script +
+		"\nif ($?) { exit 0 }; if ($Error.Count -gt $tfsazLiveErrors -or -not $LASTEXITCODE) { exit 1 }; exit $LASTEXITCODE"
 }
 
 // windowsGUI returns a PowerShell script that runs command as its own
