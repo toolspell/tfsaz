@@ -65,7 +65,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := &req{w: w, r: r, c: c, parts: segments[1:], l: s.links(r, c)}
-	if len(q.parts) >= 2 && !strings.EqualFold(q.parts[0], "_apis") {
+	if len(q.parts) >= 2 && !strings.EqualFold(q.parts[0], "_apis") && !strings.EqualFold(q.parts[0], "_git") {
 		q.project = c.project(q.parts[0])
 		if q.project == nil {
 			if strings.EqualFold(q.parts[1], "_apis") {

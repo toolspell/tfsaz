@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -122,7 +123,11 @@ func guid(parts ...string) string {
 var seedTime = time.Date(2026, 11, 2, 9, 0, 0, 0, time.UTC)
 
 func newServer(cfg config) (*server, error) {
-	s := &server{cfg: cfg, gitRoot: filepath.Join(cfg.data, "git")}
+	data, err := filepath.Abs(cfg.data)
+	if err != nil {
+		return nil, err
+	}
+	s := &server{cfg: cfg, gitRoot: filepath.Join(data, "git")}
 	for i, p := range [][2]string{
 		{"tester", "Test User"}, {"rreviewer", "Rita Reviewer"}, {"oother", "Oscar Other"},
 		{"aarcher", "Alice Archer"}, {"bbuilder", "Ben Builder"},
@@ -226,10 +231,10 @@ type links struct {
 
 func (s *server) links(r *http.Request, c *collection) links {
 	host := r.Host
-	if h, _, ok := strings.Cut(host, ":"); ok && !strings.HasPrefix(host, "[") {
+	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	return links{base: "http://" + r.Host, c: c, ssh: host + ":" + s.cfg.sshPort}
+	return links{base: "http://" + r.Host, c: c, ssh: net.JoinHostPort(strings.Trim(host, "[]"), s.cfg.sshPort)}
 }
 
 func (l links) coll() string { return l.base + "/" + url.PathEscape(l.c.Name) }

@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -345,38 +346,40 @@ func (s *server) updatePR(q *req, pr *pullRequest) {
 	if !decodeBody(q, &body) {
 		return
 	}
+	// Edits apply to a copy that replaces the PR only if the whole PATCH
+	// succeeds.
+	staged := *pr
+	staged.Completion = maps.Clone(pr.Completion)
 	if body.Title != nil {
-		pr.Title = *body.Title
+		staged.Title = *body.Title
 	}
 	if body.Description != nil {
-		pr.Description = *body.Description
+		staged.Description = *body.Description
 	}
 	if body.IsDraft != nil {
-		pr.Draft = *body.IsDraft
+		staged.Draft = *body.IsDraft
 	}
 	if body.CompletionOptions != nil {
-		if pr.Completion == nil {
-			pr.Completion = map[string]any{}
+		if staged.Completion == nil {
+			staged.Completion = map[string]any{}
 		}
-		for k, v := range body.CompletionOptions {
-			pr.Completion[k] = v
-		}
+		maps.Copy(staged.Completion, body.CompletionOptions)
 	}
 	if body.AutoCompleteSetBy != nil {
-		pr.AutoComplete = nil
+		staged.AutoComplete = nil
 		if body.AutoCompleteSetBy.ID != emptyGUID {
-			pr.AutoComplete = s.findIdentity(body.AutoCompleteSetBy.ID)
+			staged.AutoComplete = s.findIdentity(body.AutoCompleteSetBy.ID)
 		}
 	}
 	switch body.Status {
 	case "":
 	case "abandoned":
-		pr.commits()
-		pr.Status, pr.Closed, pr.ClosedBy = "abandoned", time.Now().UTC(), s.viewer
+		staged.commits()
+		staged.Status, staged.Closed, staged.ClosedBy = "abandoned", time.Now().UTC(), s.viewer
 	case "active":
-		pr.Status, pr.Closed, pr.ClosedBy = "active", time.Time{}, nil
+		staged.Status, staged.Closed, staged.ClosedBy = "active", time.Time{}, nil
 	case "completed":
-		if err := s.completePR(pr, body, gitIdentityEnv); err != nil {
+		if err := s.completePR(&staged, body, gitIdentityEnv); err != nil {
 			serviceError(q.w, http.StatusConflict, err.Error(), "GitPullRequestUpdateRejectedException")
 			return
 		}
@@ -384,6 +387,7 @@ func (s *server) updatePR(q *req, pr *pullRequest) {
 		serviceError(q.w, http.StatusBadRequest, "Unsupported status "+body.Status, "InvalidArgumentValueException")
 		return
 	}
+	*pr = staged
 	writeJSON(q.w, http.StatusOK, s.prJSON(q.l, pr, false))
 }
 
@@ -408,13 +412,14 @@ func (s *server) completePR(pr *pullRequest, body prWrite, env []string) error {
 	if err != nil {
 		return err
 	}
-	if err := updateRef(pr.Repo.Dir, pr.Target, commit, target); err != nil {
-		return err
-	}
+	// The target update and the source deletion succeed or fail together,
+	// and each fails if its branch moved since it was read.
+	refs := []string{"update " + pr.Target + " " + commit + " " + target}
 	if del, _ := pr.Completion["deleteSourceBranch"].(bool); del {
-		if err := deleteRef(pr.Repo.Dir, pr.Source); err != nil {
-			return err
-		}
+		refs = append(refs, "delete "+pr.Source+" "+source)
+	}
+	if err := refTransaction(pr.Repo.Dir, refs...); err != nil {
+		return err
 	}
 	pr.MergeCommit, pr.Status, pr.Closed, pr.ClosedBy, pr.AutoComplete = commit, "completed", time.Now().UTC(), s.viewer, nil
 	return nil
@@ -428,14 +433,16 @@ func (s *server) addReviewers(q *req, pr *pullRequest) {
 	if !decodeBody(q, &body) {
 		return
 	}
-	var added []*reviewer
-	for _, b := range body {
-		who := s.findIdentity(b.ID)
-		if who == nil {
+	people := make([]*identity, len(body))
+	for i, b := range body {
+		if people[i] = s.findIdentity(b.ID); people[i] == nil {
 			serviceError(q.w, http.StatusBadRequest, "TF401199: The identity "+b.ID+" is not valid.", "InvalidArgumentValueException")
 			return
 		}
-		added = append(added, s.setReviewer(pr, who, b.IsRequired))
+	}
+	var added []*reviewer
+	for i, b := range body {
+		added = append(added, s.setReviewer(pr, people[i], b.IsRequired))
 	}
 	writeList(q.w, s.reviewersJSON(q.l, pr, added))
 }
@@ -504,10 +511,16 @@ func (s *server) iterationChanges(q *req, pr *pullRequest, iteration string) {
 		}
 		rows = append(rows, map[string]any{"changeTrackingId": i + 1, "changeId": i + 1, "item": item, "changeType": c.Type})
 	}
+	query := q.r.URL.Query()
+	skip, skipErr := strconv.Atoi(query.Get("$skip"))
+	top, topErr := strconv.Atoi(query.Get("$top"))
+	if (query.Has("$skip") && (skipErr != nil || skip < 0)) || (query.Has("$top") && (topErr != nil || top < 1)) {
+		serviceError(q.w, http.StatusBadRequest, "$skip must be 0 or more and $top 1 or more.", "InvalidArgumentValueException")
+		return
+	}
 	paged := page(rows, q.r)
 	out := map[string]any{"changeEntries": orEmpty(paged)}
-	if q.r.URL.Query().Has("$top") {
-		skip, _ := strconv.Atoi(q.r.URL.Query().Get("$skip"))
+	if query.Has("$top") {
 		if next := skip + len(paged); next < len(rows) {
 			out["nextSkip"], out["nextTop"] = next, len(paged)
 		} else {
@@ -526,7 +539,11 @@ func orEmpty(rows []any) []any {
 
 func (s *server) item(q *req, rp *repo) {
 	query := q.r.URL.Query()
+	// The server's own item URLs use version; clients send versionDescriptor.version.
 	path, commit := query.Get("path"), query.Get("versionDescriptor.version")
+	if commit == "" {
+		commit = query.Get("version")
+	}
 	object := objectAt(rp.Dir, commit, path)
 	if object == "" {
 		serviceError(q.w, http.StatusNotFound, "TF401174: The item '"+path+"' could not be found in the repository '"+rp.Name+"' at the version specified by '"+commit+"'.", "GitItemNotFoundException")
@@ -547,7 +564,7 @@ func (s *server) item(q *req, rp *repo) {
 	out := map[string]any{
 		"objectId": object, "gitObjectType": "blob", "commitId": commit, "path": path,
 		"contentMetadata": metadata,
-		"url":             q.l.api(rp.Project.ID, "_apis", "git", "repositories", rp.ID, "items") + "?path=" + url.QueryEscape(path) + "&versionType=Commit&version=" + commit + "&versionOptions=None",
+		"url":             q.l.api(rp.Project.ID, "_apis", "git", "repositories", rp.ID, "items") + "?" + url.Values{"path": {path}, "versionType": {"Commit"}, "version": {commit}, "versionOptions": {"None"}}.Encode(),
 	}
 	if query.Get("includeContent") == "true" {
 		out["content"] = string(content)

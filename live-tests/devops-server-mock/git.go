@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/cgi"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -205,18 +207,17 @@ func merge(dir, source, target, message string, squash bool, env []string) (stri
 	return strings.TrimSpace(out), nil
 }
 
-// updateRef and deleteRef pass the ref on stdin; see resolve.
-func updateRef(dir, ref, commit, old string) error {
-	return refTransaction(dir, "update "+ref+" "+commit+" "+old+"\n")
-}
-
-func deleteRef(dir, ref string) error { return refTransaction(dir, "delete "+ref+"\n") }
-
-func refTransaction(dir, command string) error {
-	if strings.Count(command, "\n") != 1 || strings.Contains(command, "\x00") {
-		return fmt.Errorf("invalid ref")
+// refTransaction applies update-ref commands, such as "update REF NEW OLD"
+// or "delete REF OLD", all or none. Refs reach Git on stdin; see resolve.
+func refTransaction(dir string, commands ...string) error {
+	var input strings.Builder
+	for _, c := range commands {
+		if strings.ContainsAny(c, "\n\x00") {
+			return fmt.Errorf("invalid ref")
+		}
+		input.WriteString(c + "\n")
 	}
-	_, err := git(dir, gitIdentityEnv, []byte(command), "update-ref", "--stdin")
+	_, err := git(dir, gitIdentityEnv, []byte(input.String()), "update-ref", "--stdin")
 	return err
 }
 
@@ -237,5 +238,26 @@ func (s *server) serveGitHTTP(w http.ResponseWriter, r *http.Request, rp *repo, 
 	clone := r.Clone(r.Context())
 	clone.URL.Path = "/" + filepath.Base(rp.Dir) + rest
 	clone.URL.RawPath = ""
+	// Git sends pushes over http.postBuffer (1 MiB) chunked, which CGI
+	// cannot take. Spool such a body so it has a length.
+	if len(r.TransferEncoding) > 0 {
+		spool, err := os.CreateTemp("", "git-body-")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer func() { _ = os.Remove(spool.Name()) }()
+		defer func() { _ = spool.Close() }()
+		size, err := io.Copy(spool, r.Body)
+		if err == nil {
+			_, err = spool.Seek(0, io.SeekStart)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		clone.Body, clone.ContentLength, clone.TransferEncoding = spool, size, nil
+		clone.Header.Set("Content-Length", strconv.FormatInt(size, 10))
+	}
 	h.ServeHTTP(w, clone)
 }

@@ -43,7 +43,7 @@ IDs are derived from names, and seeded commits have fixed dates, so IDs and comm
 ## Examples
 
 ```sh
-IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$(docker compose ps -q)")
+IP=127.0.0.1 # the published ports; container addresses are not reachable from the host with Docker Desktop
 curl -u :mock-pat "http://$IP:8080/DefaultCollection/_apis/git/pullrequests/1?api-version=7.1"
 git clone "http://user:mock-pat@$IP:8080/DefaultCollection/Mock%20Project/_git/api"
 GIT_SSH_COMMAND="ssh -i $PWD/keys/client_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$PWD/keys/known_hosts" \

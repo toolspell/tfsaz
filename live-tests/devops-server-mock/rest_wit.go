@@ -168,13 +168,20 @@ func (s *server) listComments(q *req, w *workItem) {
 	if strings.EqualFold(query.Get("order"), "desc") {
 		slices.Reverse(comments)
 	}
-	start, _ := strconv.Atoi(strings.TrimPrefix(query.Get("continuationToken"), "mock-"))
+	start := 0
+	if token := query.Get("continuationToken"); token != "" {
+		n, err := strconv.Atoi(strings.TrimPrefix(token, "mock-"))
+		if err != nil || n < 0 || !strings.HasPrefix(token, "mock-") {
+			serviceError(q.w, http.StatusBadRequest, "The continuation token is not valid.", "InvalidArgumentValueException")
+			return
+		}
+		start = min(n, len(comments))
+	}
 	top, err := strconv.Atoi(query.Get("$top"))
 	if err != nil || top <= 0 {
 		top = 200
 	}
-	start = min(start, len(comments))
-	end := min(start+top, len(comments))
+	end := start + min(top, len(comments)-start)
 	rows := []any{}
 	for _, cm := range comments[start:end] {
 		rows = append(rows, s.commentJSON(q.l, w, cm, strings.EqualFold(query.Get("$expand"), "reactions")))
@@ -183,7 +190,9 @@ func (s *server) listComments(q *req, w *workItem) {
 	if end < len(comments) {
 		out["continuationToken"] = fmt.Sprintf("mock-%d", end)
 		q.w.Header().Set("X-MS-ContinuationToken", fmt.Sprintf("mock-%d", end))
-		out["nextPage"] = q.l.api(w.Project.ID, "_apis", "wit", "workItems", strconv.Itoa(w.ID), "comments") + "?continuationToken=" + fmt.Sprintf("mock-%d", end)
+		next := q.r.URL.Query()
+		next.Set("continuationToken", fmt.Sprintf("mock-%d", end))
+		out["nextPage"] = q.l.api(w.Project.ID, "_apis", "wit", "workItems", strconv.Itoa(w.ID), "comments") + "?" + next.Encode()
 	}
 	writeJSON(q.w, http.StatusOK, out)
 }
@@ -286,6 +295,10 @@ type patchOp struct {
 }
 
 func (s *server) createWorkItem(q *req, typ string) {
+	if q.project == nil {
+		serviceError(q.w, http.StatusBadRequest, "Creating a work item needs a project.", "InvalidArgumentValueException")
+		return
+	}
 	if !slices.ContainsFunc(workItemTypes, func(t struct{ name, color string }) bool { return strings.EqualFold(t.name, typ) }) {
 		serviceError(q.w, http.StatusNotFound, "TF401326: Invalid work item type "+typ+".", "WorkItemTypeNotFoundException")
 		return
@@ -308,7 +321,12 @@ func (s *server) createWorkItem(q *req, typ string) {
 		serviceError(q.w, http.StatusBadRequest, err.Error(), "WorkItemFieldInvalidException")
 		return
 	}
-	q.c.WorkItems = append(q.c.WorkItems, w)
+	if validateOnly(q) {
+		q.c.nextWI--
+		w.ID = 0
+	} else {
+		q.c.WorkItems = append(q.c.WorkItems, w)
+	}
 	writeJSON(q.w, http.StatusOK, s.workItemJSON(q.l, w, nil, true))
 }
 
@@ -317,11 +335,27 @@ func (s *server) patchWorkItem(q *req, w *workItem) {
 	if !decodeBody(q, &ops) {
 		return
 	}
-	if err := s.applyPatch(w, ops, time.Now().UTC()); err != nil {
+	target := w
+	if validateOnly(q) {
+		// applyPatch replaces fields, relations and updates, so a shallow
+		// copy leaves the stored item unchanged.
+		staged := *w
+		staged.Updates = slices.Clone(w.Updates)
+		target = &staged
+	}
+	if err := s.applyPatch(target, ops, time.Now().UTC()); err != nil {
 		serviceError(q.w, http.StatusBadRequest, err.Error(), "WorkItemFieldInvalidException")
 		return
 	}
-	writeJSON(q.w, http.StatusOK, s.workItemJSON(q.l, w, nil, true))
+	writeJSON(q.w, http.StatusOK, s.workItemJSON(q.l, target, nil, true))
+}
+
+func validateOnly(q *req) bool { return strings.EqualFold(q.r.URL.Query().Get("validateOnly"), "true") }
+
+// changedAt parses a date field so WIQL sorts and cursors compare instants.
+func changedAt(w *workItem, field string) time.Time {
+	t, _ := time.Parse(time.RFC3339Nano, fmt.Sprint(w.Fields[field]))
+	return t
 }
 
 // applyPatch applies JSON Patch to fields and relations and records the
@@ -475,9 +509,9 @@ func (s *server) wiql(q *req) {
 		}
 	}
 	sort.SliceStable(hits, func(i, j int) bool {
-		a, b := fmt.Sprint(hits[i].Fields["System."+dateField]), fmt.Sprint(hits[j].Fields["System."+dateField])
-		if a != b {
-			return a > b
+		a, b := changedAt(hits[i], "System."+dateField), changedAt(hits[j], "System."+dateField)
+		if !a.Equal(b) {
+			return a.After(b)
 		}
 		return hits[i].ID > hits[j].ID
 	})
