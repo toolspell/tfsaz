@@ -29,6 +29,8 @@ func (t sshTarget) args(command ...string) []string {
 		"-i", t.key, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
 		"-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=" + t.knownHosts,
 		"-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR",
+		// A guest that restarts or shuts down may never close the session.
+		"-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3",
 	}
 	if t.port != 0 {
 		args = append(args, "-p", strconv.Itoa(t.port))

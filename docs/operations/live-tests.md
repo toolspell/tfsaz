@@ -78,7 +78,7 @@ The tool keeps everything large or secret in `~/.tfsaz-live` (or `$TFSAZ_LIVE_HO
 | Path | Contents |
 | --- | --- |
 | `tart/` | Tart's home for these VMs only (`TART_HOME`), so they never mix with other Tart VMs; its `cache/` holds the pulled macOS image |
-| `qemu/` | QEMU's VMs, one directory each: `disk.qcow2` (a clone's is an overlay on the base's), UEFI variables, and while it runs its PID, SSH port and QMP socket |
+| `qemu/` | QEMU's VMs, one directory each: `disk.qcow2` (a clone's is an overlay on the base's), UEFI variables, its last SSH port, and while it runs its PID and QMP socket |
 | `cache/iso/` | Installer ISOs, checked against the SHA-256 in `vms/<os>/iso.json` (and `virtio.json` for Windows) |
 | `packer/` | Packer plugins and cache |
 | `keys/<os>-base/` | The key of the last base build; for Windows also the password of `tester` |
@@ -163,7 +163,7 @@ It also advises shortening macOS's DHCP leases for VMs from a day to ten minutes
 - A base build prints a VNC address and password; open it to watch the installer or, on macOS, the desktop.
 - The Ubuntu system must ask DHCP with its MAC address (`dhcp-identifier: mac` in the autoinstall and clone network config); otherwise Tart finds no IP and Packer waits until its 25-minute SSH timeout.
 - A clone's Tart output is in `~/.tfsaz-live/runs/NAME/tart.log`. `vm up` deletes a clone that fails to come up.
-- A Windows build or clone shows nothing on the host. To see its screen, send QMP `screendump` to `~/.tfsaz-live/build/windows/qmp.sock` or `~/.tfsaz-live/qemu/NAME/qmp.sock`, for example `{ echo '{"execute":"qmp_capabilities"}'; sleep 1; echo '{"execute":"screendump","arguments":{"filename":"/tmp/screen.png","format":"png"}}'; sleep 2; } | nc -U SOCKET`. A Windows build logs its first logon to `C:\Windows\Temp\tfsaz-setup.log`; a clone's QEMU output is in `~/.tfsaz-live/runs/NAME/qemu.log`.
+- A Windows build prints a VNC address without a password; a Windows clone shows nothing on the host. To capture either screen, send QMP `screendump` to `~/.tfsaz-live/build/windows/qmp.sock` or `~/.tfsaz-live/qemu/NAME/qmp.sock`, for example `{ echo '{"execute":"qmp_capabilities"}'; sleep 1; echo '{"execute":"screendump","arguments":{"filename":"/tmp/screen.png","format":"png"}}'; sleep 2; } | nc -U SOCKET`. A Windows build logs its first logon to `C:\Windows\Temp\tfsaz-setup.log`; a clone's QEMU output is in `~/.tfsaz-live/runs/NAME/qemu.log`.
 - A macOS clone's tunnel logs to `/var/log/tfsaz-live-wg0.log` in the VM; `sudo launchctl kickstart -k system/com.tfsaz.live.wg0` restarts it.
 
 ## Remove everything

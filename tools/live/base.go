@@ -74,6 +74,9 @@ func (e *env) buildBase(o osDef, force bool) error {
 	if err := newSSHKey(key, "tfsaz-live "+o.base()); err != nil {
 		return err
 	}
+	// The build directory holds the seed ISO, for Windows with the test
+	// user's password; only the copy beside the base key stays.
+	defer func() { _ = os.RemoveAll(e.path("build", o.name)) }()
 	inputs, from, err := e.buildInputs(o, dir, key)
 	if err != nil {
 		return err

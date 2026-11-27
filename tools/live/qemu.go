@@ -58,7 +58,7 @@ func (q qemu) pid(name string) int {
 	}
 	// A stale pid file can name another process by now.
 	out, err := output(nil, "ps", "-p", strconv.Itoa(pid), "-o", "command=")
-	if err != nil || !strings.Contains(out, "qemu-system") || !strings.Contains(out, q.dir(name)) {
+	if err != nil || !strings.Contains(out, "qemu-system") || !strings.Contains(out, q.dir(name)+string(filepath.Separator)) {
 		return 0
 	}
 	return pid
@@ -137,16 +137,30 @@ func (q qemu) start(name, logFile string) error {
 		"-device", "nvme,drive=disk,serial=disk0",
 		"-device", "qemu-xhci", "-device", "usb-kbd", "-device", "usb-tablet", "-device", "ramfb",
 		"-device", "virtio-net-pci,netdev=net0",
-		"-netdev", fmt.Sprintf("user,id=net0,hostfwd=tcp:127.0.0.1:%d-:22", port),
+		// Without IPv6 the NAT offers no second DNS server past the router.
+		"-netdev", fmt.Sprintf("user,id=net0,ipv6=off,hostfwd=tcp:127.0.0.1:%d-:22", port),
 		"-qmp", "unix:"+filepath.Join(dir, "qmp.sock")+",server=on,wait=off",
-		"-display", "none", "-daemonize", "-pidfile", filepath.Join(dir, "qemu.pid"),
+		"-display", "none", "-pidfile", filepath.Join(dir, "qemu.pid"),
 	)
-	// With -daemonize, QEMU returns once the VM runs, or fails with its error.
+	// Not -daemonize, which sends QEMU's later errors to /dev/null.
 	c.Stdout, c.Stderr = log, log
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("qemu-system-aarch64 failed; see %s: %w", logFile, err)
+	detach(c)
+	if err := c.Start(); err != nil {
+		return err
 	}
-	return nil
+	exited := make(chan error, 1)
+	go func() { exited <- c.Wait() }()
+	for range 50 {
+		select {
+		case err := <-exited:
+			return fmt.Errorf("qemu-system-aarch64 exited at start (%v); see %s", err, logFile)
+		case <-time.After(200 * time.Millisecond):
+		}
+		if q.pid(name) != 0 {
+			return nil
+		}
+	}
+	return fmt.Errorf("qemu-system-aarch64 did not start %s within 10s; see %s", name, logFile)
 }
 
 func (q qemu) address(name string, _ time.Duration) (string, int, error) {

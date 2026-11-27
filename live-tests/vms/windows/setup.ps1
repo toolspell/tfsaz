@@ -1,7 +1,7 @@
 # First logon of the Windows base build, started by Autounattend.xml from
 # the seed ISO: the network driver and OpenSSH Server with the build key.
 # Packer connects once sshd runs and does the rest. `base build windows`
-# fills in ${ssh_public_key}.
+# fills in the build key.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Start-Transcript -Path C:\Windows\Temp\tfsaz-setup.log

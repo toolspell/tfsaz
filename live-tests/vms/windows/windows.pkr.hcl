@@ -94,7 +94,7 @@ source "qemu" "windows" {
     ["-device", "usb-tablet"],
     ["-device", "ramfb"],
     ["-device", "virtio-net-pci,netdev=user.0"],
-    ["-netdev", "user,id=user.0,hostfwd=tcp:127.0.0.1:{{ .SSHHostPort }}-:22"],
+    ["-netdev", "user,id=user.0,ipv6=off,hostfwd=tcp:127.0.0.1:{{ .SSHHostPort }}-:22"],
     ["-qmp", "unix:${var.qmp_socket},server=on,wait=off"],
     ["-display", "none"],
   ]

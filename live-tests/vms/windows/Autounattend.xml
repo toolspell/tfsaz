@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Answers for Windows Setup in the Windows base build. `base build windows`
-  fills in ${password} and puts this file on the seed ISO, where Setup finds
-  it. The key is Microsoft's generic install key for Windows 11 Pro; it
+  fills in the password of tester and puts this file on the seed ISO, where
+  Setup finds it. The key is Microsoft's generic install key for Windows 11 Pro; it
   selects the edition and does not activate Windows.
 -->
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
