@@ -43,7 +43,8 @@ go run ./tools/live status
 - When a base command refuses because clones exist, remove the clones; do not work around it. Leave the base VM and `~/.tfsaz-live/cache` in place between tasks.
 - Never commit anything from `live-tests/.state` or copy keys into the repository.
 - Ask the maintainer before the `sudo` step `doctor` advises.
-- Run `clean` before you hand back. Record dated live results in [`docs/verification/`](../verification/).
+- Delete a clone with `vm down NAME` as soon as its case is done and you will not need it again, not only at the end. Nothing keeps running when nothing needs it: run `clean` and `services down` before you hand back; the base VM stays stopped.
+- Record dated live results in [`docs/verification/`](../verification/).
 - Prefer the tools already in use (Tart, Packer, `curl`, `wg`, cloud-init, CoreDNS) over new code.
 
 ## Layout
