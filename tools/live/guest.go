@@ -49,6 +49,10 @@ var ubuntuGuest = guest{
 		"PostUp = resolvectl dns %i " + routerAddress.String() + "; resolvectl domain %i '~.'\n",
 	wgUp:     "sudo sh -c 'umask 077 && cat >/etc/wireguard/wg0.conf' && sudo systemctl enable --now wg-quick@wg0",
 	resolves: "getent hosts devops.mock.test | grep -q '^172.30.53.10 '",
+	session:  "pgrep -u \"$USER\" -x gnome-shell >/dev/null",
+	// SSH and the desktop share the user's D-Bus and runtime directory; only
+	// the display is missing.
+	gui:      "WAYLAND_DISPLAY=wayland-0 DISPLAY=:0 XDG_SESSION_TYPE=wayland sh -c %s",
 	reaches:  "timeout 5 bash -c '</dev/tcp/devops.mock.test/8080'",
 	tunneled: "ip route get 1.1.1.1 | grep -q ' dev wg0 '",
 	update:   "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update && apt-get -y -o DPkg::Lock::Timeout=600 full-upgrade && apt-get -y autoremove'",

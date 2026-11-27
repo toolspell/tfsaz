@@ -223,6 +223,9 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 	if info.BedAddress, err = e.joinRouter(o, name, login); err != nil {
 		return info, err
 	}
+	if err := waitSession(o, login); err != nil {
+		return info, err
+	}
 	// Flush the setup to the clone's disk, so a later stop cannot lose it.
 	if _, err := login.run(nil, o.guest.sync); err != nil {
 		return info, err
@@ -282,6 +285,22 @@ func (e *env) joinRouter(o osDef, name string, login sshTarget) (string, error) 
 		return "", err
 	}
 	return address.String(), reachesMock(o, login)
+}
+
+// waitSession waits until the test user's desktop session runs, so a clone
+// is ready for -gui commands and screenshots when vm up or vm start returns.
+func waitSession(o osDef, login sshTarget) error {
+	if o.guest.session == "" {
+		return nil
+	}
+	var last error
+	for range 40 {
+		if _, last = login.run(nil, o.guest.session); last == nil {
+			return nil
+		}
+		time.Sleep(3 * time.Second)
+	}
+	return fmt.Errorf("the test user's desktop session did not start within 2 minutes: %w", last)
 }
 
 // reachesMock waits until the clone reaches the mock by name through the router.
@@ -355,6 +374,9 @@ func (e *env) vmStart(name string) error {
 		return err
 	}
 	if err := reachesMock(o, login); err != nil {
+		return err
+	}
+	if err := waitSession(o, login); err != nil {
 		return err
 	}
 	fmt.Println(string(data))

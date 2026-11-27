@@ -12,7 +12,7 @@ go run ./tools/live setup macos
 go run ./tools/live setup windows
 ```
 
-`setup OS` installs what is missing, starts the test bed, builds the OS's base VM if it does not exist, and ends with `verify`. It skips steps that are done, so it is safe to rerun. The first Ubuntu run takes about 10 minutes plus the 3 GB ISO download; the first macOS run takes about 25 minutes to pull the 29 GB image and 3 minutes for the rest; the first Windows run takes about 15 minutes once Microsoft's ISO is in the cache, plus the 880 MB virtio-win download.
+`setup OS` installs what is missing, starts the test bed, builds the OS's base VM if it does not exist, and ends with `verify`. It skips steps that are done, so it is safe to rerun. The first Ubuntu run takes 15 to 45 minutes, mostly downloading the desktop, plus the 3 GB ISO download; the first macOS run takes about 25 minutes to pull the 29 GB image and 3 minutes for the rest; the first Windows run takes about 15 minutes once Microsoft's ISO is in the cache, plus the 880 MB virtio-win download.
 
 | Step | Done by | Human part |
 | --- | --- | --- |
@@ -46,12 +46,12 @@ go run ./tools/live status
 
 `go run ./tools/live help` lists all commands. None prompts unless it runs in a terminal; `setup` and `doctor -install` install without asking. `vm ssh` passes on the remote exit code, but `go run` turns any nonzero code into 1 and prints `exit status N`. For the exact code, build the tool once with `go build -o bin/live ./tools/live` and run `bin/live`.
 
-`verify` checks from a new clone that `devops.mock.test` resolves to the mock, that the mock's REST API answers through the router, that internet traffic goes through the tunnel and works, that the router reaches the VM, and on macOS and Windows that the test user is logged in to the GUI. It prints one line per check, deletes the clone and fails if any check failed.
+`verify` checks from a new clone that `devops.mock.test` resolves to the mock, that the mock's REST API answers through the router, that internet traffic goes through the tunnel and works, that the router reaches the VM, and that the test user is logged in to the desktop. It prints one line per check, deletes the clone and fails if any check failed.
 
 ## For agents
 
 - Target the mock. Use the shared Azure DevOps Server testbed only when the maintainer asks ([AGENTS.md](../../AGENTS.md#ways-to-hurt-yourself)).
-- Run `base build` and `setup` in the background and watch their output. Do not wait past Packer's SSH timeout (25 minutes, 60 for Windows); [Troubleshooting](#troubleshooting) has the known causes.
+- Run `base build` and `setup` in the background and watch their output. Do not wait past Packer's SSH timeout (25 minutes for Ubuntu, 10 for macOS, 60 for Windows); [Troubleshooting](#troubleshooting) has the known causes.
 - When the Windows ISO is missing, ask the maintainer to download it; do not fetch it from another source.
 - When a base command refuses because clones exist, remove the clones; do not work around it. Leave the base VM and `~/.tfsaz-live/cache` in place between tasks.
 - Never commit anything from `live-tests/.state` or copy keys into the repository.
@@ -98,7 +98,7 @@ Only `base build` downloads, and only what the cache lacks: an ISO matching `iso
 
 ### Ubuntu
 
-`base build ubuntu` checks the ISO, writes the autoinstall config with a new build key to a seed ISO, and runs Packer with the Tart plugin. The installer runs unattended; Packer answers its one autoinstall prompt. The last step, `prepare-base.sh`, removes what must differ per clone (SSH host keys, machine ID, interface-specific network config) and turns off Ubuntu's automatic updates, so clones do not run `apt` during tests. The build goes into `tfsaz-ubuntu-build` and replaces `tfsaz-ubuntu-base` only when it succeeded. It takes about 8 minutes and 6 GB.
+`base build ubuntu` checks the ISO, writes the autoinstall config with a new build key to a seed ISO, and runs Packer with the Tart plugin. The installer runs unattended and installs the server system; Packer answers its one autoinstall prompt. `provision.sh` then installs the desktop (`ubuntu-desktop-minimal`) on the booted system, where snapd runs (in the installer, its snaps such as Firefox never finish), logs `tester` in to GNOME at boot, gives `tester` a login keyring without a password, which stays unlocked as after a password login, removes the welcome wizard, turns off screen lock and blanking, and adds `secret-tool` for tests that check Secret Service entries. The last step, `prepare-base.sh`, removes what must differ per clone (SSH host keys, machine ID, interface-specific network config) and turns off Ubuntu's automatic updates, so clones do not run `apt` during tests. The build goes into `tfsaz-ubuntu-build` and replaces `tfsaz-ubuntu-base` only when it succeeded. It takes 15 to 45 minutes, depending on the Ubuntu archive's speed, and 9 GB.
 
 The base has one user, `tester`, with passwordless sudo, no password and no other login than the build key.
 
@@ -126,9 +126,9 @@ All three refuse while clones of the base exist.
 
 ## Clones
 
-`vm up OS` clones the base (an APFS copy, or a qcow2 overlay for Windows, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in under 10 seconds for Ubuntu, about 30 for macOS and about a minute for Windows. A macOS clone boots into the logged-in GUI session of `admin`, a Windows clone into the one of `tester`; a Windows clone restarts once for its computer name. It prints `vm.json`: name, NAT address (for Windows `127.0.0.1` and a port), address in the test bed, SSH key. Commands over `vm ssh` run in sh on Ubuntu and macOS and in PowerShell 7 (`pwsh`) on Windows. TFSaz must not rely on PowerShell 7, since users may have only Windows PowerShell 5.1 and cmd: run a step whose shell matters with `powershell` or `cmd /c`. `vm stop NAME` shuts a clone down from inside and keeps it with its key and router peer; when it cannot reach the clone it leaves it running, and `-force` stops it without a shutdown, which can lose unwritten changes. `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
+`vm up OS` clones the base (an APFS copy, or a qcow2 overlay for Windows, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in about 20 seconds for Ubuntu, 30 for macOS and a minute for Windows. A macOS clone boots into the logged-in GUI session of `admin`, an Ubuntu or Windows clone into the one of `tester`, and `vm up` and `vm start` wait until that session runs; a Windows clone restarts once for its computer name. It prints `vm.json`: name, NAT address (for Windows `127.0.0.1` and a port), address in the test bed, SSH key. Commands over `vm ssh` run in sh on Ubuntu and macOS and in PowerShell 7 (`pwsh`) on Windows. TFSaz must not rely on PowerShell 7, since users may have only Windows PowerShell 5.1 and cmd: run a step whose shell matters with `powershell` or `cmd /c`. `vm stop NAME` shuts a clone down from inside and keeps it with its key and router peer; when it cannot reach the clone it leaves it running, and `-force` stops it without a shutdown, which can lose unwritten changes. `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
 
-Every clone's desktop is 1920x1080. Tart clones get it from `tart set NAME --display 1920x1080px` when `vm up` clones them.
+Every clone's desktop is 1920x1080. Tart clones get it from `tart set NAME --display 1920x1080px` when `vm up` clones them; GNOME starts at 1280x720 and switches a few seconds after login, so an early screenshot of an Ubuntu clone can be smaller.
 
 ## Commands in a clone
 
@@ -137,10 +137,10 @@ Every clone's desktop is 1920x1080. Tart clones get it from `tart set NAME --dis
 | `vm run NAME [-json] [-timeout D] [-gui] -- CMD...` | Runs CMD in the clone and passes on stdin (not with `-gui`) and the exit code. CMD is an sh command on Ubuntu and macOS, and a PowerShell 7 script on Windows: it is sent encoded so quotes survive and uses PowerShell's default error handling, so after a native command end with `exit $LASTEXITCODE` to pass its exit code. |
 | `-timeout D` | Default 10m. On timeout the tool prints a message and exits 124. |
 | `-json` | Prints `{"exitCode","stdout","stderr","timedOut","seconds"}`. The tool itself exits 0 when the command ran. |
-| `-gui` | Runs CMD in the test user's desktop session, where keychains, link handlers, browsers and T3 behave as for a user at the machine. macOS: through `launchctl asuser` in the Aqua session of `admin`, with the login keychain unlocked and apps opening on screen. Windows: through a one-time scheduled task in the interactive session of `tester`, without elevation like the user's own programs; output and exit code go through files in `%TEMP%` that are removed afterwards, and on timeout the task and the processes of its script are stopped. Ubuntu refuses `-gui` until its desktop base exists (planned). |
+| `-gui` | Runs CMD in the test user's desktop session, where keychains, link handlers, browsers and T3 behave as for a user at the machine. macOS: through `launchctl asuser` in the Aqua session of `admin`, with the login keychain unlocked and apps opening on screen. Windows: through a one-time scheduled task in the interactive session of `tester`, without elevation like the user's own programs; output and exit code go through files in `%TEMP%` that are removed afterwards, and on timeout the task and the processes of its script are stopped. Ubuntu: with the Wayland display of the GNOME session of `tester`, whose D-Bus and keyring SSH sessions already share. |
 | `vm push NAME LOCAL REMOTE`, `vm pull NAME REMOTE LOCAL` | Copy files and folders with scp and the clone's key. Windows paths look like `C:/Users/tester/file`. |
 | `vm forward NAME PORT[:PORT]` | Forwards the host's 127.0.0.1:PORT to the clone's loopback port until stopped, for example to reach a browser's or an app's debugging port from Playwright on the host. Run it in the background. |
-| `vm screenshot NAME FILE` | Saves a PNG of the clone's desktop, taken from the hypervisor, so the guest needs no permission and nobody has to click anything. Windows: QEMU's QMP `screendump` of the virtio GPU. macOS and Ubuntu: the VNC server of Apple's Virtualization.framework, which Tart starts for every clone (`tart run --no-graphics --vnc-experimental`, which prints the address instead of opening a window). An Ubuntu clone shows a black console until its desktop base exists. |
+| `vm screenshot NAME FILE` | Saves a PNG of the clone's desktop, taken from the hypervisor, so the guest needs no permission and nobody has to click anything. Windows: QEMU's QMP `screendump` of the virtio GPU. macOS and Ubuntu: the VNC server of Apple's Virtualization.framework, which Tart starts for every clone (`tart run --no-graphics --vnc-experimental`, which prints the address instead of opening a window). |
 | `vm vnc NAME` | Prints `vnc://:PASSWORD@127.0.0.1:PORT` for a VNC client or an agent's VNC tool. The hypervisor serves it (Virtualization.framework for Tart, QEMU's own VNC server bound to the virtio GPU for Windows). Loopback only, a new random password per start; nothing runs in the guest for it. |
 
 ## Network
@@ -197,7 +197,9 @@ It also advises shortening macOS's DHCP leases for VMs from a day to ten minutes
 ## Troubleshooting
 
 - A base build prints a VNC address and password; open it to watch the installer or, on macOS, the desktop.
-- The Ubuntu system must ask DHCP with its MAC address (`dhcp-identifier: mac` in the autoinstall and clone network config); otherwise Tart finds no IP and Packer waits until its 25-minute SSH timeout.
+- The Ubuntu system must ask DHCP with its MAC address (`dhcp-identifier: mac` in the autoinstall and clone network config); otherwise Tart finds no IP and Packer waits until its SSH timeout.
+- Packer finds the Ubuntu installer's autoinstall prompt by OCR, which sometimes misreads it; when a build waits longer than 5 minutes after "Typing commands", stop it and build again. `PACKER_LOG=1` shows what the OCR reads.
+- A running Ubuntu installer accepts the build key for the user `installer`; `ssh -i ~/.tfsaz-live/keys/ubuntu-build/id_ed25519 installer@IP` shows its progress.
 - A clone's Tart output is in `~/.tfsaz-live/runs/NAME/tart.log`. `vm up` deletes a clone that fails to come up.
 - To see a clone's screen, use `vm screenshot NAME FILE`. A Windows build prints a VNC address without a password and has no clone name; to capture its screen, send QMP `screendump` to `~/.tfsaz-live/build/windows/qmp.sock`, for example `{ echo '{"execute":"qmp_capabilities"}'; sleep 1; echo '{"execute":"screendump","arguments":{"filename":"/tmp/screen.png","format":"png"}}'; sleep 2; } | nc -U SOCKET`. A Windows build logs its first logon to `C:\Windows\Temp\tfsaz-setup.log`; a clone's QEMU output is in `~/.tfsaz-live/runs/NAME/qemu.log`.
 - A macOS clone's tunnel logs to `/var/log/tfsaz-live-wg0.log` in the VM; `sudo launchctl kickstart -k system/com.tfsaz.live.wg0` restarts it.
