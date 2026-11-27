@@ -13,8 +13,8 @@ import (
 )
 
 type config struct {
-	httpAddr, httpsAddr, httpsAltAddr, adminAddr string
-	sshAddr, sshPort, data, pat, keysDir         string
+	httpAddr, httpsAddr, httpsAltAddr, adminAddr, llmAddr string
+	sshAddr, sshPort, data, pat, keysDir                  string
 }
 
 func env(name, fallback string) string {
@@ -30,6 +30,7 @@ func main() {
 		httpsAddr:    env("MOCK_HTTPS_ADDR", ":443"),
 		httpsAltAddr: env("MOCK_HTTPS_ALT_ADDR", ":8443"),
 		adminAddr:    env("MOCK_ADMIN_ADDR", ":19090"),
+		llmAddr:      env("MOCK_LLM_ADDR", ":80"),
 		sshAddr:      env("MOCK_SSH_ADDR", ":2222"),
 		sshPort:      env("MOCK_SSH_PORT", "2222"),
 		data:         env("MOCK_DATA", "/data"),
@@ -58,9 +59,12 @@ func main() {
 		log.Fatal(http.ListenAndServe(cfg.adminAddr, srv.journal.adminHandler()))
 	}()
 	go func() {
+		log.Fatal(http.ListenAndServe(cfg.llmAddr, http.HandlerFunc(srv.serveLLM)))
+	}()
+	go func() {
 		log.Fatal(srv.serveSSH(cfg.sshAddr, cfg.keysDir))
 	}()
-	log.Printf("HTTP on %s, HTTPS on %s and %s, SSH on %s, admin on %s, collections: %s",
-		cfg.httpAddr, cfg.httpsAddr, cfg.httpsAltAddr, cfg.sshAddr, cfg.adminAddr, strings.Join(srv.collectionNames(), ", "))
+	log.Printf("HTTP on %s, HTTPS on %s and %s, SSH on %s, admin on %s, text generator on %s, collections: %s",
+		cfg.httpAddr, cfg.httpsAddr, cfg.httpsAltAddr, cfg.sshAddr, cfg.adminAddr, cfg.llmAddr, strings.Join(srv.collectionNames(), ", "))
 	log.Fatal(http.ListenAndServe(cfg.httpAddr, srv))
 }

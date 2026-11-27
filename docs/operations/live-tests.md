@@ -162,7 +162,7 @@ The VMs use Tart's NAT for SSH from the host (Windows: QEMU's user-mode NAT, wit
 | Address | What |
 | --- | --- |
 | `172.30.53.2` | Router: WireGuard on UDP 51820 (published on the host), resolver for the VMs |
-| `172.30.53.10` | Mock, `devops.mock.test`, with HTTPS on 443 and 8443, HTTP on 8080, and SSH on 2222. All but 443 are also published on the host's loopback, where TFSaz's own redirector may use 443. |
+| `172.30.53.10` | Mock, `devops.mock.test`, with HTTPS on 443 and 8443, HTTP on 8080, and SSH on 2222, and its [text generator](../../live-tests/devops-server-mock/README.md#text-generator), `llm.mock.test`, on HTTP port 80. 8443, 8080 and 2222 are also published on the host's loopback, where TFSaz's own redirector may use 443. |
 | `172.30.53.53` | DNS sinkhole |
 | `172.30.53.129` and up | VMs, one address each |
 | `127.0.0.1:19090` | Mock journal on the host. The router blocks direct access from VMs. |
@@ -178,9 +178,13 @@ go run ./tools/live mock requests [-vm NAME] [-json]
 go run ./tools/live mock reset
 ```
 
-The mock keeps the last 5,000 completed HTTP and HTTPS requests in memory. Each entry includes the time, client IP, method, scheme, host, path, query, status, user agent and authentication scheme. It omits authorization values and masks known credentials and common credential query parameters. The router only masquerades traffic destined outside the bed, so journal entries for a VM use the `bedAddress` recorded in its `vm.json`.
+The mock keeps the last 5,000 completed HTTP and HTTPS requests, text generator requests included, in memory. Each entry includes the time, client IP, method, scheme, host, path, query, status, user agent and authentication scheme. It omits authorization values and masks known credentials and common credential query parameters. The router only masquerades traffic destined outside the bed, so journal entries for a VM use the `bedAddress` recorded in its `vm.json`.
 
 `mock requests` prints one line per request. Use `-vm NAME` to read only that clone's requests and `-json` to get a JSON array. The host admin API exposes `GET /requests` with optional `?ip=ADDRESS` and `DELETE /requests` to clear the journal. Resetting the journal leaves the mock's repositories and work items in place.
+
+## Text generator
+
+T3 generates PR text and commit messages through a model. The mock fakes an OpenAI-compatible one at `http://llm.mock.test/v1`, with one fixed reply, so no real model runs. A test enables it by writing `textGenerators` and `textGenerationModelSelection` into T3's `settings.json` before T3 starts, as T3's own user configuration; TFSaz does not do that. The reply and the settings are in the [mock's README](../../live-tests/devops-server-mock/README.md#text-generator).
 
 ## DNS sinkhole
 
@@ -189,6 +193,7 @@ The `dns` service (CoreDNS, `live-tests/dns/Corefile`) logs every query with the
 | Name | Answer | Meaning |
 | --- | --- | --- |
 | `devops.mock.test` | `172.30.53.10` | The mock |
+| `llm.mock.test` | `172.30.53.10` | The mock's text generator |
 | `*.visualstudio.com`, `dev.azure.com` | NXDOMAIN | TFSaz's hosts-file entries must answer these on the client. A query that reaches the sinkhole is a leak. |
 | Anything else | NXDOMAIN | Offline test runs |
 

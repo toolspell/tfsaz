@@ -11,5 +11,5 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=build /devops-server-mock /usr/local/bin/devops-server-mock
 ENV MOCK_DATA=/data
-EXPOSE 443 8080 8443 2222 19090
+EXPOSE 80 443 8080 8443 2222 19090
 ENTRYPOINT ["devops-server-mock"]
