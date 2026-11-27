@@ -152,6 +152,7 @@ func TestSetupSSHGitLSRemote(t *testing.T) {
 	script := `#!/bin/sh
 printf '%s\n' "$GIT_PROTOCOL" "$@" > "$TFSAZ_TEST_TRACE"
 printf '0000'
+cat >/dev/null
 `
 	writeShellFixture(t, filepath.Join(dir, "ssh"), script)
 	trace := filepath.Join(dir, "trace")

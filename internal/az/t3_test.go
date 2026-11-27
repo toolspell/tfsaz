@@ -186,9 +186,10 @@ func TestStockT3Adapter(t *testing.T) {
 	if out, err := probe.Output(); err != nil || string(out) != "author@example.invalid\n" {
 		t.Fatalf("discovery probe: %v, %q", err, out)
 	}
-	// A read-only empty repository speaks the Git packet protocol. This
-	// keeps the production Git/SSH helper and stock T3 entry points in the test.
-	setupTestSSH(t, bin, "#!/bin/sh\nprintf '0000'\n")
+	// A read-only empty repository speaks the Git packet protocol and reads
+	// until Git hangs up. This keeps the production Git/SSH helper and stock
+	// T3 entry points in the test.
+	setupTestSSH(t, bin, "#!/bin/sh\nprintf '0000'\ncat >/dev/null\n")
 	gitAt(t, cwd, "remote", "add", "origin", p.CollectionURL+"/Shared%20Project/_git/Tool%20Kit")
 	setup := exec.CommandContext(t.Context(), exe, "repo", "setup", cwd, "--managed-ssh")
 	if out, err := setup.CombinedOutput(); err != nil {

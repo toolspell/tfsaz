@@ -86,6 +86,9 @@ if [ -n "$TFSAZ_TEST_SSH_FAILURE" ]; then
     exit 255
 fi
 printf '0000'
+# Read until Git hangs up, as a server does. Exiting first can kill Git with
+# SIGPIPE when it writes its closing flush packet.
+cat >/dev/null
 `
 	setupTestSSH(t, root, script)
 	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
