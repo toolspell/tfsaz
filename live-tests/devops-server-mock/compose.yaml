@@ -17,6 +17,8 @@ services:
   dns:
     image: coredns/coredns:1.12.1
     command: ["-conf", "/etc/coredns/Corefile"]
+    environment:
+      MOCK_ADDRESS: ${MOCK_ADDRESS:-172.30.53.10}
     volumes:
       - ./dns/Corefile:/etc/coredns/Corefile:ro
     ports:

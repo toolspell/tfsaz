@@ -20,6 +20,7 @@ docker compose up -d --build
 | --- | --- | --- |
 | `MOCK_PAT` | `mock-pat` | The only PAT the mock accepts. Its permissions are not checked. |
 | `MOCK_DNS_PORT` | `53` | Host port of the DNS sinkhole, UDP and TCP. |
+| `MOCK_ADDRESS` | `172.30.53.10` | The address the sinkhole returns for `devops.mock.test`. |
 
 On every start the mock generates a fresh SSH host key and client key and writes them to `keys/` (gitignored): `client_ed25519`, `client_ed25519.pub` and `known_hosts`. SSH accepts only that client key. No personal key is used or needed.
 
@@ -31,7 +32,7 @@ The `dns` service (CoreDNS, configured in `dns/Corefile`) is the resolver for th
 
 | Name | Answer | Meaning |
 | --- | --- | --- |
-| `devops.mock.test` | `172.30.53.10` | The mock |
+| `devops.mock.test` | `MOCK_ADDRESS` | The mock |
 | `*.visualstudio.com`, `dev.azure.com` | NXDOMAIN | TFSaz's hosts-file entries must answer these on the client. A query that reaches the sinkhole is a leak. |
 | Anything else | NXDOMAIN | Test runs stay offline. |
 
@@ -43,7 +44,7 @@ docker compose logs dns | grep -E 'visualstudio\.com|dev\.azure\.com'
 
 The other answers are NXDOMAIN rather than REFUSED because Docker's resolver retries a refusal for 10 seconds before it gives up.
 
-Containers on the compose network use the sinkhole through `dns:`. VMs point their resolver at the host's port 53 (or `MOCK_DNS_PORT`). The test machine must not reach any other resolver, or a lookup that bypasses the hosts file goes unnoticed.
+Containers on the compose network use the sinkhole through `dns:`. VMs point their resolver at the host's port 53 (or `MOCK_DNS_PORT`). They cannot reach the compose network, so for VM clients set `MOCK_ADDRESS` to the host address the VMs reach, where the mock's ports 8080 and 2222 are published. Containers on the compose network reach that address too. The test machine must not reach any other resolver, or a lookup that bypasses the hosts file goes unnoticed.
 
 Browsers with DNS over HTTPS (secure DNS) send lookups to their own provider and skip both the hosts file and the sinkhole. Turn it off in test browser profiles: Chrome and Edge under **Privacy and security → Use secure DNS**, Firefox under **Privacy & Security → DNS over HTTPS**, or by policy (`DnsOverHttpsMode` set to `off`).
 
