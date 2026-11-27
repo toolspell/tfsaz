@@ -36,6 +36,16 @@ go run ./tools/live status
 
 `verify` checks from a new clone that `devops.mock.test` resolves to the mock, that the mock's REST API answers through the router, that internet traffic goes through the tunnel and works, and that the router reaches the VM. It prints one line per check, deletes the clone and fails if any check failed.
 
+## For agents
+
+- Target the mock. Use the shared Azure DevOps Server testbed only when the maintainer asks ([AGENTS.md](../../AGENTS.md#ways-to-hurt-yourself)).
+- Run `base build` and `setup` in the background and watch their output. Do not wait past Packer's 25-minute SSH timeout; [Troubleshooting](#troubleshooting) has the known causes.
+- When a base command refuses because clones exist, remove the clones; do not work around it. Leave the base VM and `~/.tfsaz-live/cache` in place between tasks.
+- Never commit anything from `live-tests/.state` or copy keys into the repository.
+- Ask the maintainer before the `sudo` step `doctor` advises.
+- Run `clean` before you hand back. Record dated live results in [`docs/verification/`](../verification/).
+- Prefer the tools already in use (Tart, Packer, `curl`, `wg`, cloud-init, CoreDNS) over new code.
+
 ## Layout
 
 | Path | Contents |
