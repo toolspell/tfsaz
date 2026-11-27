@@ -62,7 +62,7 @@ func TestRequestJournal(t *testing.T) {
 	r4.RemoteAddr = "172.30.53.132:34567"
 	r4.SetBasicAuth("tester", "password")
 	s.ServeHTTP(httptest.NewRecorder(), r4)
-	r5 := httptest.NewRequest(http.MethodGet, "http://devops.mock.test:8080/?%61ttempt=value&x=1", nil)
+	r5 := httptest.NewRequest(http.MethodGet, "http://devops.mock.test:8080/?%61ttempt=value&x=%ZZ", nil)
 	r5.RemoteAddr = "172.30.53.133:45678"
 	r5.SetBasicAuth("tester", "attempt=value")
 	s.ServeHTTP(httptest.NewRecorder(), r5)

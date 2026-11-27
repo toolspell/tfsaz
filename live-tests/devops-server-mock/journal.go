@@ -140,7 +140,7 @@ func journalQuery(query string, redact func(string) string) string {
 	}
 	// A secret with = or & in it spans pairs.
 	joined := strings.Join(pairs, "&")
-	if decoded, err := url.QueryUnescape(joined); err == nil && redact(decoded) != decoded {
+	if decoded := lenientUnescape(joined); redact(decoded) != decoded {
 		return "[redacted]"
 	}
 	return redact(joined)
@@ -152,10 +152,43 @@ func redactPart(raw string, redact func(string) string) (string, bool) {
 	if redact(raw) != raw {
 		return raw, true
 	}
-	if decoded, err := url.QueryUnescape(raw); err == nil && redact(decoded) != decoded {
+	if decoded := lenientUnescape(raw); redact(decoded) != decoded {
 		return raw, true
 	}
 	return raw, false
+}
+
+// lenientUnescape decodes a query the way a server would read it, but keeps
+// an invalid escape such as %ZZ as it is, so that one bad escape cannot
+// hide a secret elsewhere in the same text.
+func lenientUnescape(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] == '+':
+			b.WriteByte(' ')
+		case s[i] == '%' && i+2 < len(s) && isHex(s[i+1]) && isHex(s[i+2]):
+			b.WriteByte(unhex(s[i+1])<<4 | unhex(s[i+2]))
+			i += 2
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
+}
+
+func isHex(c byte) bool {
+	return '0' <= c && c <= '9' || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
+}
+
+func unhex(c byte) byte {
+	switch {
+	case c <= '9':
+		return c - '0'
+	case c <= 'F':
+		return c - 'A' + 10
+	}
+	return c - 'a' + 10
 }
 
 type journalResponse struct {
