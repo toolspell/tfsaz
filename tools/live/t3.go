@@ -156,6 +156,10 @@ func hasSHA512(path, want string) (bool, error) {
 	return base64.StdEncoding.EncodeToString(h.Sum(nil)) == want, nil
 }
 
+// t3UserAgent is in the user agent of T3's debugging port, which another
+// app's port on the same number lacks.
+const t3UserAgent = "T3Code"
+
 // t3Name is the product name of a T3 Code release: the app's name on macOS
 // and its executable's on Windows.
 func t3Name(tag string) string {
@@ -243,12 +247,12 @@ func (e *env) vmT3Start(name string, port int) error {
 	url := fmt.Sprintf("http://127.0.0.1:%d", port)
 	deadline := time.Now().Add(time.Minute)
 	for {
-		if _, err = login.run(nil, fmt.Sprintf(o.guest.answers, url+"/json/version")); err == nil {
+		if _, err = login.run(nil, fmt.Sprintf(o.guest.serves, url+"/json/version", t3UserAgent)); err == nil {
 			fmt.Println(url)
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("T3's debugging port %d in %s did not answer within a minute; a T3 that already ran without it keeps running, so quit it first: %w", port, name, err)
+			return fmt.Errorf("port %d in %s did not answer as T3's debugging port within a minute; a T3 that already ran without the port keeps running, so quit it first, or pick another -port when another app uses it: %w", port, name, err)
 		}
 		time.Sleep(2 * time.Second)
 	}

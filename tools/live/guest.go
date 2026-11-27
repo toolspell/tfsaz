@@ -23,7 +23,7 @@ type guest struct {
 	tempDir    string // where vm t3 copies the installer, with a trailing slash
 	t3Install  string // installs the T3 Code desktop app from the installer %[1]s and deletes it
 	t3Start    string // starts T3 Code, named %[1]s, in the desktop session with Chrome's debugging port %[2]d
-	answers    string // succeeds when the URL %[1]s answers
+	serves     string // succeeds when the URL %[1]s answers with a body that contains %[2]s
 	sync       string // flushes the disk cache
 	update     string // upgrades the packages of the base; empty when a rebuild is the update
 	poweroff   string
@@ -37,7 +37,7 @@ var posix = guest{
 	allowedIPs: "0.0.0.0/0",
 	rest:       `test "$(curl -s -u :%[1]s -o /dev/null -w '%%{http_code}' '` + connectionData + `')" = 200`,
 	internet:   "curl -s -o /dev/null --max-time 15 https://github.com",
-	answers:    "curl -fsS -o /dev/null --max-time 2 '%[1]s'",
+	serves:     "curl -fsS --max-time 2 '%[1]s' | grep -qF '%[2]s'",
 	sync:       "sync",
 }
 
@@ -46,7 +46,7 @@ var ubuntuGuest = guest{
 	allowedIPs: posix.allowedIPs,
 	rest:       posix.rest,
 	internet:   posix.internet,
-	answers:    posix.answers,
+	serves:     posix.serves,
 	sync:       posix.sync,
 	gateway:    "ip -4 route show default | awk '{print $3; exit}'",
 	hostname:   "sudo hostnamectl set-hostname %[1]s && sudo sed -i 's/^127\\.0\\.1\\.1 .*/127.0.1.1 %[1]s/' /etc/hosts",
@@ -79,7 +79,7 @@ var macosGuest = guest{
 	allowedIPs: posix.allowedIPs,
 	rest:       posix.rest,
 	internet:   posix.internet,
-	answers:    posix.answers,
+	serves:     posix.serves,
 	sync:       posix.sync,
 	gateway:    "route -n get default | awk '/gateway:/{print $2; exit}'",
 	hostname:   "sudo scutil --set HostName %[1]s && sudo scutil --set LocalHostName %[1]s && sudo scutil --set ComputerName %[1]s",
@@ -139,6 +139,6 @@ Get-NetAdapter | Where-Object Name -ne 'wg0' | Set-DnsClientServerAddress -Serve
 		"for ($try = 1; ; $try++) { try { Remove-Item '%[1]s'; break } catch { if ($try -ge 30) { throw }; Start-Sleep 1 } }\n" +
 		"exit $p.ExitCode",
 	t3Start:  `Start-Process "$env:LOCALAPPDATA\Programs\t3code\%[1]s.exe" -ArgumentList '--remote-debugging-port=%[2]d'`,
-	answers:  "Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%[1]s' | Out-Null",
+	serves:   "if ((Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%[1]s').Content -notlike '*%[2]s*') { exit 1 }",
 	poweroff: "shutdown /s /t 0 /f",
 }
