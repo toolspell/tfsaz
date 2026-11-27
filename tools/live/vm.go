@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -38,11 +37,22 @@ func (e *env) loadVM(name string) (vmInfo, error) {
 	if _, ok := osOfVM(name); !ok {
 		return info, fmt.Errorf("%s is not a clone name (tfsaz-OS-SUFFIX)", name)
 	}
-	data, err := os.ReadFile(filepath.Join(e.runDir(name), "vm.json"))
-	if err != nil {
-		return info, fmt.Errorf("no clone %s: %w", name, err)
+	dir := e.runDir(name)
+	file := filepath.Join(dir, "vm.json")
+	data, err := os.ReadFile(file)
+	const hint = "check with go run ./tools/live vm list -json"
+	if errors.Is(err, os.ErrNotExist) {
+		if _, statErr := os.Stat(dir); errors.Is(statErr, os.ErrNotExist) {
+			return info, fmt.Errorf("no clone %s in this testbed; %s: %w", name, hint, err)
+		}
 	}
-	return info, json.Unmarshal(data, &info)
+	if err != nil {
+		return info, fmt.Errorf("read metadata for %s; %s: %w", name, hint, err)
+	}
+	if err := json.Unmarshal(data, &info); err != nil {
+		return info, fmt.Errorf("decode metadata for %s in %s; %s: %w", name, file, hint, err)
+	}
+	return info, nil
 }
 
 func (info vmInfo) login() sshTarget {
@@ -63,21 +73,18 @@ func (e *env) saveVM(info vmInfo) ([]byte, error) {
 
 var suffixPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,19}$`)
 
-func (e *env) vm(args []string) error {
-	if len(args) == 0 {
-		return errUsage
-	}
+func validSuffix(s string) bool {
+	return suffixPattern.MatchString(s) && s != "base" && s != "build"
+}
+
+func (e *env) vm(action string, call liveInvocation) error {
 	if err := requireMac(); err != nil {
 		return err
 	}
-	flags := flag.NewFlagSet("vm "+args[0], flag.ContinueOnError)
-	switch args[0] {
+	args := call.args
+	switch action {
 	case "up":
-		name := flags.String("name", "", "clone name suffix: tfsaz-OS-SUFFIX (default random)")
-		if len(args) < 2 || flags.Parse(args[2:]) != nil || flags.NArg() != 0 {
-			return errUsage
-		}
-		info, err := e.vmUp(args[1], *name)
+		info, err := e.vmUp(args[0], call.suffix)
 		if err != nil {
 			return err
 		}
@@ -87,53 +94,37 @@ func (e *env) vm(args []string) error {
 		}
 		return err
 	case "ssh":
-		if len(args) < 2 || (len(args) > 2 && args[2] != "--") {
-			return errUsage
-		}
-		info, err := e.loadVM(args[1])
+		info, err := e.loadVM(args[0])
 		if err != nil {
 			return err
 		}
-		var command []string
-		if len(args) > 3 {
-			command = args[3:]
-		}
-		return info.login().attach(command)
+		return info.login().attach(call.guest)
 	case "run":
-		return e.vmRun(args[1:])
-	case "push", "pull":
-		return e.vmCopy(args[1:], args[0] == "push")
+		return e.vmRun(args[0], call.guest, call.asJSON, call.gui, call.timeout)
+	case "push":
+		return e.vmCopy(args[0], args[1], args[2], true)
+	case "pull":
+		return e.vmCopy(args[0], args[2], args[1], false)
 	case "forward":
-		return e.vmForward(args[1:])
+		return e.vmForward(args[0], call.localPort, call.remotePort)
 	case "screenshot":
-		return e.vmScreenshot(args[1:])
+		return e.vmScreenshot(args[0], args[1])
 	case "vnc":
-		return e.vmVNC(args[1:])
-	case "t3":
-		return e.vmT3(args[1:])
+		return e.vmVNC(args[0])
+	case "t3 install":
+		return e.vmT3Install(args[0])
+	case "t3 start":
+		return e.vmT3Start(args[0], call.port)
 	case "stop":
-		force := flags.Bool("force", false, "stop without a shutdown; can lose unwritten changes")
-		if len(args) < 2 || flags.Parse(args[2:]) != nil || flags.NArg() != 0 {
-			return errUsage
-		}
-		return e.vmStop(args[1], *force)
-	case "down", "start":
-		if len(args) != 2 {
-			return errUsage
-		}
-		switch args[0] {
-		case "start":
-			return e.vmStart(args[1])
-		}
-		return e.vmDown(args[1])
+		return e.vmStop(args[0], call.force)
+	case "start":
+		return e.vmStart(args[0])
+	case "down":
+		return e.vmDown(args[0])
 	case "list":
-		asJSON := flags.Bool("json", false, "print JSON")
-		if flags.Parse(args[1:]) != nil {
-			return errUsage
-		}
-		return e.vmList(*asJSON)
+		return e.vmList(call.asJSON)
 	}
-	return errUsage
+	return fmt.Errorf("unknown vm action %q", action)
 }
 
 // vmUp clones the base, boots the clone, replaces the build key with a new
@@ -148,7 +139,7 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 		_, _ = rand.Read(b)
 		suffix = hex.EncodeToString(b)
 	}
-	if !suffixPattern.MatchString(suffix) || suffix == "base" || suffix == "build" {
+	if !validSuffix(suffix) {
 		return info, fmt.Errorf("-name must be 1 to 20 lowercase letters, digits or dashes, not base or build")
 	}
 	name := prefix + o.name + "-" + suffix

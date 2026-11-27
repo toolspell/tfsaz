@@ -12,8 +12,8 @@ import (
 	"strings"
 )
 
-// env holds the paths every command uses. Large or secret files (VM disks,
-// ISOs, keys) live in home, outside the repository; bed/.state links to it.
+// env holds the paths every command uses. bed/.state links to home for
+// VM disks, ISOs, and VM and router keys.
 type env struct {
 	root string // repository root
 	bed  string // live-tests
@@ -87,22 +87,29 @@ var oses = []osDef{
 	{name: "windows", provider: "qemu", user: "tester", guest: windowsGuest},
 }
 
-func lookupOS(name string) (osDef, error) {
+func guestOS(name string) (osDef, bool) {
 	for _, o := range oses {
-		if o.name != name {
-			continue
+		if o.name == name {
+			return o, true
 		}
-		if o.macos > 0 {
-			// Virtualization.framework runs no macOS guest newer than its host.
-			out, err := exec.Command("sw_vers", "-productVersion").Output()
-			major, _ := strconv.Atoi(strings.SplitN(strings.TrimSpace(string(out)), ".", 2)[0])
-			if err != nil || major < o.macos {
-				return o, fmt.Errorf("macOS %d guests need a macOS %d host or newer", o.macos, o.macos)
-			}
-		}
-		return o, nil
 	}
-	return osDef{}, fmt.Errorf("unknown OS %q; use ubuntu, macos or windows", name)
+	return osDef{}, false
+}
+
+func lookupOS(name string) (osDef, error) {
+	o, ok := guestOS(name)
+	if !ok {
+		return o, fmt.Errorf("unknown OS %q; use ubuntu, macos or windows", name)
+	}
+	if o.macos > 0 {
+		// Virtualization.framework runs no macOS guest newer than its host.
+		out, err := exec.Command("sw_vers", "-productVersion").Output()
+		major, _ := strconv.Atoi(strings.SplitN(strings.TrimSpace(string(out)), ".", 2)[0])
+		if err != nil || major < o.macos {
+			return o, fmt.Errorf("macOS %d guests need a macOS %d host or newer", o.macos, o.macos)
+		}
+	}
+	return o, nil
 }
 
 const prefix = "tfsaz-"
@@ -114,7 +121,7 @@ func (o osDef) build() string { return prefix + o.name + "-build" }
 // one vm up accepts, so no clone name leads out of the runs directory.
 func (o osDef) isClone(name string) bool {
 	suffix, ok := strings.CutPrefix(name, prefix+o.name+"-")
-	return ok && suffixPattern.MatchString(suffix) && suffix != "base" && suffix != "build"
+	return ok && validSuffix(suffix)
 }
 
 // osOfVM returns the OS of a clone name such as tfsaz-ubuntu-a1b2c3.

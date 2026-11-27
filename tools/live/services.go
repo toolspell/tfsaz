@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 )
@@ -28,19 +27,20 @@ func (e *env) services(action string) error {
 			return err
 		}
 		// The router writes its public key on start.
+		var err error
 		for range 20 {
-			if _, err := e.routerKey(); err == nil {
+			if _, err = e.routerKey(); err == nil {
 				return nil
 			}
 			time.Sleep(500 * time.Millisecond)
 		}
-		return fmt.Errorf("router did not write %s", e.path("router", "public.key"))
+		return fmt.Errorf("wait for router public key: %w", err)
 	case "down":
 		return e.compose("down")
 	case "status":
 		return e.compose("ps")
 	}
-	return errUsage
+	return fmt.Errorf("unknown services action %q", action)
 }
 
 func (e *env) requireRouter() error {
@@ -49,10 +49,8 @@ func (e *env) requireRouter() error {
 		return err
 	}
 	if !running {
-		return fmt.Errorf("the router is not running; run: go run ./tools/live services up")
+		return fmt.Errorf("the router is stopped; start it with go run ./tools/live services up")
 	}
-	if _, err := os.Stat(e.path("router", "public.key")); err != nil {
-		return fmt.Errorf("router key missing in %s", e.path("router"))
-	}
-	return nil
+	_, err = e.routerKey()
+	return err
 }

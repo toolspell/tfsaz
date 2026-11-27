@@ -14,7 +14,7 @@ Collections work at both `/DefaultCollection` and `/tfs/DefaultCollection`. REST
 
 `go run ./tools/live services up` starts it with the rest of the test bed.
 
-| Variable | Default | Meaning |
+| Variable | Compose default | Meaning |
 | --- | --- | --- |
 | `MOCK_PAT` | `mock-pat` | The only PAT the mock accepts. Its permissions are not checked. |
 | `MOCK_LLM_ADDR` | `:80` | Address of the plain-HTTP text generator. |
@@ -23,7 +23,7 @@ On every start the mock generates a fresh CA and TLS leaf for `devops.mock.test`
 
 State lives in memory and in bare repositories inside the container. A restart starts from the seed with new keys and an empty journal. See the [request journal commands](../../docs/operations/live-tests.md#request-journal).
 
-For a native run, build the mock from this directory. Set `MOCK_HTTP_ADDR`, `MOCK_HTTPS_ADDR`, `MOCK_HTTPS_ALT_ADDR`, `MOCK_LLM_ADDR`, `MOCK_SSH_ADDR` and `MOCK_ADMIN_ADDR` to loopback addresses with free ports. Set `MOCK_SSH_PORT` to the SSH port advertised in clone URLs, `MOCK_DATA` to a temporary data directory and `MOCK_KEYS_DIR` to an existing temporary directory for the keys and CA. Set `MOCK_PAT` to the value clients will use. Stop the process and remove the temporary directories when done.
+For a native run, build the mock from this directory. Set `MOCK_HTTP_ADDR`, `MOCK_HTTPS_ADDR`, `MOCK_HTTPS_ALT_ADDR`, `MOCK_LLM_ADDR`, `MOCK_SSH_ADDR` and `MOCK_ADMIN_ADDR` to loopback addresses with free ports. Set `MOCK_SSH_PORT` to the SSH port advertised in clone URLs, `MOCK_DATA` to a temporary data directory and `MOCK_KEYS_DIR` to an existing temporary directory for the keys and CA. A native run requires `MOCK_PAT`. Set it to the value clients will use. Stop the process and remove the temporary directories when done.
 
 ## Seed
 

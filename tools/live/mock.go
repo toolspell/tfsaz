@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,16 +13,11 @@ import (
 )
 
 const mockRequestsURL = "http://127.0.0.1:19090/requests"
+const mockJournalHint = "check with go run ./tools/live services status"
 
-func (e *env) mock(args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return errUsage
-	}
-	switch args[0] {
+func (e *env) mock(action, vm string, asJSON bool, out io.Writer) error {
+	switch action {
 	case "ca":
-		if len(args) != 1 {
-			return errUsage
-		}
 		path := filepath.Join(e.bed, "devops-server-mock", "keys", "ca.pem")
 		if _, err := os.Stat(path); err != nil {
 			return fmt.Errorf("mock CA unavailable; run go run ./tools/live services up: %w", err)
@@ -31,24 +25,15 @@ func (e *env) mock(args []string, out io.Writer) error {
 		_, err := fmt.Fprintln(out, path)
 		return err
 	case "requests":
-		flags := flag.NewFlagSet("mock requests", flag.ContinueOnError)
-		vm := flags.String("vm", "", "filter by clone name")
-		asJSON := flags.Bool("json", false, "print JSON")
-		if flags.Parse(args[1:]) != nil || flags.NArg() != 0 {
-			return errUsage
-		}
-		return e.mockRequests(mockRequestsURL, *vm, *asJSON, out)
+		return e.mockRequests(mockRequestsURL, vm, asJSON, out)
 	case "reset":
-		if len(args) != 1 {
-			return errUsage
-		}
 		resp, err := requestMockJournal(http.MethodDelete, mockRequestsURL, http.StatusNoContent)
 		if err != nil {
 			return err
 		}
 		return resp.Body.Close()
 	}
-	return errUsage
+	return fmt.Errorf("unknown mock action %q", action)
 }
 
 func (e *env) mockRequests(endpoint, vm string, asJSON bool, out io.Writer) error {
@@ -77,7 +62,7 @@ func (e *env) mockRequests(endpoint, vm string, asJSON bool, out io.Writer) erro
 		Status                                                                   int
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
-		return fmt.Errorf("read mock journal: %w", err)
+		return fmt.Errorf("decode mock journal GET response; %s: %w", mockJournalHint, err)
 	}
 	for _, row := range rows {
 		target := row.Scheme + "://" + row.Host + row.Path
@@ -101,15 +86,15 @@ func requestMockJournal(method, endpoint string, wantStatus int) (*http.Response
 	}
 	req, err := http.NewRequest(method, endpoint, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build mock journal %s request: %w", method, err)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("mock journal: %w", err)
+		return nil, fmt.Errorf("mock journal %s; %s: %w", method, mockJournalHint, err)
 	}
 	if resp.StatusCode != wantStatus {
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("mock journal: %s", resp.Status)
+		return nil, fmt.Errorf("mock journal %s returned HTTP %d; %s", method, resp.StatusCode, mockJournalHint)
 	}
 	return resp, nil
 }

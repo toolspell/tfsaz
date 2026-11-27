@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -57,19 +58,28 @@ func (e *env) verify(osName string) (err error) {
 	if pat == "" {
 		pat = "mock-pat"
 	}
-	checks := []struct{ name, command string }{
-		{"the VM resolves devops.mock.test to the mock", o.guest.resolves},
-		{"the mock's REST API answers through the router", fmt.Sprintf(o.guest.rest, pat)},
-		{"traffic to the internet goes through the tunnel", o.guest.tunneled},
-		{"the VM reaches the internet", o.guest.internet},
+	type check struct {
+		name, command string
+		sensitive     bool
+	}
+	checks := []check{
+		{"the VM resolves devops.mock.test to the mock", o.guest.resolves, false},
+		{"the mock's REST API answers through the router", fmt.Sprintf(o.guest.rest, pat), true},
+		{"traffic to the internet goes through the tunnel", o.guest.tunneled, false},
+		{"the VM reaches the internet", o.guest.internet, false},
 	}
 	if o.guest.session != "" {
-		checks = append(checks, struct{ name, command string }{"the test user is logged in to the GUI", o.guest.session})
+		checks = append(checks, check{"the test user is logged in to the GUI", o.guest.session, false})
 	}
 	failed := 0
 	login := info.login()
 	for _, c := range checks {
-		_, err := login.run(nil, c.command)
+		var err error
+		if c.sensitive {
+			err = login.runSensitive(context.Background(), c.command, "verify mock REST API (check MOCK_PAT and services status)")
+		} else {
+			_, err = login.run(nil, c.command)
+		}
 		failed += report(c.name, err)
 	}
 	failed += report("the test bed reaches the VM",

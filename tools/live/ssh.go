@@ -50,11 +50,22 @@ func (t sshTarget) run(stdin io.Reader, command string) (string, error) {
 }
 
 func (t sshTarget) runContext(ctx context.Context, stdin io.Reader, command string) (string, error) {
-	remote := command
+	return t.runRemote(ctx, stdin, t.remoteCommand(command), command)
+}
+
+func (t sshTarget) remoteCommand(command string) string {
 	if t.powershell {
-		remote = encodePowerShell(command)
+		return encodePowerShell(command)
 	}
-	return t.runRemote(ctx, stdin, remote, command)
+	return command
+}
+
+func (t sshTarget) runSensitive(ctx context.Context, command, label string) error {
+	// Guest error output can echo credentials from the command.
+	if err := exec.CommandContext(ctx, "ssh", t.args(t.remoteCommand(command))...).Run(); err != nil {
+		return fmt.Errorf("ssh %s %q: %w", t.host, label, err)
+	}
+	return nil
 }
 
 // runRemote runs remote as the login shell's command line, unchanged;
