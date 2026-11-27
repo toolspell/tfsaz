@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -247,7 +248,11 @@ func (e *env) updateBase(o osDef) error {
 // that keeps running is left running: a stop without a shutdown can lose
 // writes, and every clone copies the base.
 func (e *env) shutdownBase(o osDef, login sshTarget) error {
-	_, _ = login.run(nil, "sudo systemctl poweroff")
+	// A guest that shuts down may never end the session; the wait below
+	// tells whether it stopped.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, _ = login.runContext(ctx, nil, "sudo systemctl poweroff")
 	if err := e.tart().waitStopped(o.base(), 2*time.Minute); err != nil {
 		return fmt.Errorf("%w; check it, then stop it with TART_HOME=%s tart stop %s", err, e.tart().home, o.base())
 	}
