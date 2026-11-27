@@ -222,18 +222,10 @@ func (e *env) vmT3Start(name string, port int) error {
 	if _, err := login.runRemote(ctx, nil, remote, "vm t3 start"); err != nil {
 		return err
 	}
-	url := fmt.Sprintf("http://127.0.0.1:%d", port)
-	wait, stop := context.WithTimeout(context.Background(), time.Minute)
-	defer stop()
-	for {
-		if _, err = login.runContext(wait, nil, fmt.Sprintf(o.guest.serves, url+"/json/version", t3UserAgent)); err == nil {
-			fmt.Println(url)
-			return nil
-		}
-		select {
-		case <-wait.Done():
-			return fmt.Errorf("port %d in %s did not answer as T3's debugging port within a minute; a T3 that already ran without the port keeps running, so quit it first, or pick another -port when another app uses it: %w", port, name, err)
-		case <-time.After(2 * time.Second):
-		}
+	endpoint, err := waitCDP(o, login, port, t3UserAgent)
+	if err != nil {
+		return fmt.Errorf("port %d in %s did not answer as T3's debugging port within a minute; a T3 that already ran without the port keeps running, so quit it first, or pick another -port when another app uses it: %w", port, name, err)
 	}
+	fmt.Println(endpoint)
+	return nil
 }

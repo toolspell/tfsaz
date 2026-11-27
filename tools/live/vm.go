@@ -112,6 +112,8 @@ func (e *env) vm(action string, call liveInvocation) error {
 		return e.vmT3Install(args[0])
 	case "t3 start":
 		return e.vmT3Start(args[0], call.port)
+	case "browser start":
+		return e.vmBrowserStart(args[0], args[1], call.port, call.browserURL)
 	case "stop":
 		return e.vmStop(args[0], call.force)
 	case "start":

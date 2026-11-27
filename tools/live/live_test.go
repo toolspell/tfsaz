@@ -876,6 +876,85 @@ func TestShellQuote(t *testing.T) {
 	}
 }
 
+func TestParseBrowserStart(t *testing.T) {
+	const ubuntu = "tfsaz-live-first-ubuntu-test"
+	const windows = "tfsaz-live-first-windows-test"
+	const macos = "tfsaz-live-first-macos-test"
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		port    int
+		url     string
+		wantErr string
+	}{
+		{name: "default port", args: []string{"start", ubuntu, "chrome"}, port: 9222},
+		{name: "port and URL", args: []string{"start", windows, "edge", "-port", "65535", "about:blank"}, port: 65535, url: "about:blank"},
+		{name: "URL only", args: []string{"start", macos, "chrome", "https://example.invalid"}, port: 9222, url: "https://example.invalid"},
+		{name: "missing browser", args: []string{"start", ubuntu}, wantErr: "missing BROWSER"},
+		{name: "wrong action", args: []string{"stop", ubuntu, "chrome"}, wantErr: "unknown action"},
+		{name: "two URLs", args: []string{"start", ubuntu, "chrome", "about:blank", "https://example.invalid"}, wantErr: "unexpected operand"},
+		{name: "unknown flag", args: []string{"start", ubuntu, "chrome", "-unknown"}, wantErr: "flag provided but not defined"},
+		{name: "zero port", args: []string{"start", ubuntu, "chrome", "-port", "0"}, wantErr: "invalid port"},
+		{name: "large port", args: []string{"start", ubuntu, "chrome", "-port", "65536"}, wantErr: "invalid port"},
+		{name: "Safari", args: []string{"start", macos, "safari"}, wantErr: "unsupported browser"},
+		{name: "Firefox", args: []string{"start", ubuntu, "firefox"}, wantErr: "unsupported browser"},
+		{name: "unknown browser", args: []string{"start", windows, "unknown"}, wantErr: "unsupported browser"},
+		{name: "Edge on Ubuntu", args: []string{"start", ubuntu, "edge"}, wantErr: "only Windows clones come with Edge"},
+		{name: "invalid clone", args: []string{"start", "tfsaz-ubuntu-base", "chrome"}, wantErr: "invalid clone name"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			help, args, _, err := resolveHelp(append([]string{"vm", "browser"}, tc.args...))
+			call := liveInvocation{commandHelp: help}
+			if err == nil {
+				err = call.readArgs(args, call.flagSet())
+			}
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("error = %v, want %q", err, tc.wantErr)
+				}
+				if tc.wantErr == "unsupported browser" && !strings.Contains(err.Error(), "mock requests") {
+					t.Fatalf("error omits the journal command: %v", err)
+				}
+				return
+			}
+			if err != nil || len(call.args) != 2 || call.args[0] != tc.args[1] || call.args[1] != tc.args[2] || call.port != tc.port || call.browserURL != tc.url {
+				t.Errorf("got %q, %d, %q, %v, want %q, %d, %q, nil", call.args, call.port, call.browserURL, err, tc.args[1:3], tc.port, tc.url)
+			}
+		})
+	}
+}
+
+func TestBrowserStartCommand(t *testing.T) {
+	const url = "https://example.invalid/?q=it's%20open&other=1"
+	for _, tc := range []struct {
+		os, browser, executable, profile, urlArg, detach string
+	}{
+		{"ubuntu", "chrome", "nohup google-chrome", `--user-data-dir="${TMPDIR:-/tmp}/tfsaz-live-chrome-9333"`, ` -- 'https://example.invalid/?q=it'\''s%20open&other=1'`, " </dev/null >/dev/null 2>&1 &"},
+		{"macos", "chrome", "open -na 'Google Chrome' --args", `--user-data-dir="${temp%/}/tfsaz-live-chrome-9333"`, ` -- 'https://example.invalid/?q=it'\''s%20open&other=1'`, ""},
+		{"windows", "chrome", `"$env:ProgramFiles\Google\Chrome\Application\chrome.exe"`, `"--user-data-dir=$env:TEMP\tfsaz-live-chrome-9333"`, "", "$null = [Diagnostics.Process]::Start($start)"},
+		{"windows", "edge", `"${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"`, `"--user-data-dir=$env:TEMP\tfsaz-live-edge-9333"`, "", "$null = [Diagnostics.Process]::Start($start)"},
+	} {
+		t.Run(tc.os+"/"+tc.browser, func(t *testing.T) {
+			command := browserStartCommand(tc.os, tc.browser, 9333, url)
+			for _, want := range []string{tc.executable, tc.profile, "--remote-debugging-port=9333", "--no-first-run", "--no-default-browser-check"} {
+				if !strings.Contains(command, want) {
+					t.Errorf("command is missing %q: %s", want, command)
+				}
+			}
+			urlArg := tc.urlArg
+			if tc.os == "windows" {
+				urlArg = "[Convert]::FromBase64String('" + base64.StdEncoding.EncodeToString([]byte(url)) + "')"
+			}
+			if !strings.Contains(command, urlArg) || !strings.HasSuffix(command, tc.detach) {
+				t.Errorf("command should pass %q and end in %q: %s", urlArg, tc.detach, command)
+			}
+			if command := browserStartCommand(tc.os, tc.browser, 9333, ""); strings.Contains(command, urlArg) || strings.Contains(command, " -- ") || strings.Contains(command, "Add('--')") {
+				t.Errorf("command without URL has a trailing argument: %s", command)
+			}
+		})
+	}
+}
+
 func TestT3Installer(t *testing.T) {
 	for _, tc := range []struct{ os, tag, manifest, file, name string }{
 		{"macos", "v0.1.13-nightly.20261125.5258", "nightly-mac.yml", "T3-Code-0.1.13-nightly.20261125.5258-arm64.zip", "T3 Code (Nightly)"},

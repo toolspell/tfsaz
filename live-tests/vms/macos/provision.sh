@@ -20,6 +20,16 @@ NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ho
 eval "$(/opt/homebrew/bin/brew shellenv)"
 echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >>~/.zprofile
 brew install wireguard-tools
+brew install --cask google-chrome
+chrome='/Applications/Google Chrome.app'
+# Strict verification rejects Finder metadata and resource forks in the cask's app.
+xattr -rd com.apple.FinderInfo "$chrome"
+xattr -rd com.apple.ResourceFork "$chrome"
+codesign --verify --deep --strict -R='anchor apple generic and certificate leaf[subject.OU] = "EQHXZ8M8AV"' "$chrome"
+signature=$(codesign -dv "$chrome" 2>&1)
+grep -qx 'TeamIdentifier=EQHXZ8M8AV' <<<"$signature"
+# Homebrew's quarantine prompts on first launch, even in this VM.
+xattr -rd com.apple.quarantine "$chrome"
 
 # The tunnel: wg-quick on every boot once the tool has written wg0.conf.
 # It waits for the default route, which the tunnel's endpoint needs.

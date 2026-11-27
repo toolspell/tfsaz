@@ -40,6 +40,17 @@ $install = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$msi`" 
 if ($install.ExitCode -ne 0) { throw "msiexec failed: $($install.ExitCode)" }
 Remove-Item $msi
 
+$msi = Join-Path $env:TEMP 'google-chrome.msi'
+Invoke-WebRequest -UseBasicParsing -OutFile $msi `
+    -Uri 'https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise_arm64.msi'
+$signature = Get-AuthenticodeSignature $msi
+if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|,\s*)O=Google LLC(?:,|$)') {
+    throw "Chrome MSI is not signed by Google LLC: $($signature.Status)"
+}
+$install = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$msi`" /qn /norestart"
+if ($install.ExitCode -ne 0) { throw "Chrome installation failed: $($install.ExitCode)" }
+Remove-Item $msi
+
 # The tool keeps the tunnel's key and config here; only administrators and
 # SYSTEM may read them.
 $state = 'C:\ProgramData\tfsaz-live'

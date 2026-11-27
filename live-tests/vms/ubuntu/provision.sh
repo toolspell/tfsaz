@@ -3,6 +3,12 @@
 # desktop session as on a developer's machine. Packer runs it with sudo.
 set -eu
 
+# The first boot can start apt-daily before Packer takes the APT lists lock.
+systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
+while systemctl show -p ActiveState --value apt-daily.service apt-daily-upgrade.service | grep -Eq '^(activating|active|deactivating)$'; do
+    sleep 5
+done
+
 # The desktop: live tests run T3, browsers and link handlers as a user
 # would. It goes onto the booted system, where snapd runs; in the
 # installer's chroot, the snaps it brings, such as Firefox, never finish.
@@ -17,6 +23,24 @@ systemctl disable systemd-networkd-wait-online.service
 apt-get -y -o DPkg::Lock::Timeout=600 purge gnome-initial-setup
 # Test tooling: secret-tool reads and writes Secret Service entries.
 apt-get -y -o DPkg::Lock::Timeout=600 install libsecret-tools
+
+apt-get -y -o DPkg::Lock::Timeout=600 install gpg
+chrome_key=$(mktemp)
+trap 'rm -f "$chrome_key"' EXIT
+curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o "$chrome_key"
+keys=$(gpg --batch --show-keys --with-colons "$chrome_key")
+fingerprint=$(printf '%s\n' "$keys" | awk -F: '$1 == "pub" { primary=1 } $1 == "fpr" && primary { print $10; primary=0 }')
+if [ "$fingerprint" != EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796 ]; then
+    echo 'Unexpected Google Linux package signing key' >&2
+    exit 1
+fi
+install -d -m 755 /etc/apt/keyrings
+install -m 644 "$chrome_key" /etc/apt/keyrings/google-chrome.asc
+# Keep the scoped repository when Chrome's package tries to add its own.
+printf 'repo_add_once="false"\nrepo_reenable_on_distupgrade="false"\n' >/etc/default/google-chrome
+printf 'deb [signed-by=/etc/apt/keyrings/google-chrome.asc] https://dl.google.com/linux/chrome/deb/ stable main\n' >/etc/apt/sources.list.d/google-chrome.list
+apt-get update
+apt-get -y -o DPkg::Lock::Timeout=600 install google-chrome-stable
 
 # Log tester in to GNOME at boot.
 cat >/etc/gdm3/custom.conf <<'EOF'
