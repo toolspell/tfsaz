@@ -120,26 +120,37 @@ func journalPath(u *url.URL, redact func(string) string) string {
 func journalQuery(query string, redact func(string) string) string {
 	pairs := strings.Split(query, "&")
 	for i, pair := range pairs {
-		name, _, _ := strings.Cut(pair, "=")
-		decoded, _ := url.QueryUnescape(name)
-		switch strings.ToLower(decoded) {
+		rawName, rawValue, hasValue := strings.Cut(pair, "=")
+		name, secretName := redactPart(rawName, redact)
+		value, secretValue := redactPart(rawValue, redact)
+		switch decoded, _ := url.QueryUnescape(rawName); strings.ToLower(decoded) {
 		case "authorization", "access_token", "api_key", "client_secret", "password", "pat", "sig", "token":
-			pairs[i] = name + "=[redacted]"
-		default:
-			// A value with an encoded secret, such as %61 for a, matches
-			// only when decoded.
-			if value, err := url.QueryUnescape(pair); err == nil && redact(value) != value {
-				shown := name
-				if decoded, err := url.QueryUnescape(name); err == nil && redact(decoded) != decoded {
-					shown = redact(decoded)
-				}
-				pairs[i] = shown + "=[redacted]"
-			} else {
-				pairs[i] = redact(pair)
-			}
+			secretValue = true
+		}
+		if secretValue {
+			value = "[redacted]"
+		}
+		if secretName {
+			name = "[redacted]"
+		}
+		pairs[i] = name
+		if hasValue {
+			pairs[i] += "=" + value
 		}
 	}
 	return strings.Join(pairs, "&")
+}
+
+// redactPart reports whether a query name or value holds a secret, raw or
+// decoded, such as %61 for a, and returns it otherwise unchanged.
+func redactPart(raw string, redact func(string) string) (string, bool) {
+	if redact(raw) != raw {
+		return raw, true
+	}
+	if decoded, err := url.QueryUnescape(raw); err == nil && redact(decoded) != decoded {
+		return raw, true
+	}
+	return raw, false
 }
 
 type journalResponse struct {

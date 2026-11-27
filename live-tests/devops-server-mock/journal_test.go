@@ -12,7 +12,7 @@ import (
 func TestRequestJournal(t *testing.T) {
 	s := &server{cfg: config{pat: "seed-value"}, collections: []*collection{{Name: "DefaultCollection"}}}
 	const path = "/tfs/DefaultCollection/_apis"
-	r := httptest.NewRequest(http.MethodOptions, "https://devops.mock.test:8443"+path+"?allHostTypes=true&%50assword=query-value&other=attempt-value&encoded=%61ttempt-value&attempt-value=visible", nil)
+	r := httptest.NewRequest(http.MethodOptions, "https://devops.mock.test:8443"+path+"?allHostTypes=true&%50assword=query-value&other=attempt-value&encoded=%61ttempt-value&attempt-value=visible&%61ttempt-value=%ZZ", nil)
 	r.RemoteAddr = "172.30.53.129:12345"
 	r.Header.Set("X-Forwarded-For", "172.30.53.130")
 	r.Header.Set("User-Agent", "journal-test seed-value")
@@ -54,9 +54,17 @@ func TestRequestJournal(t *testing.T) {
 	got := rows[0]
 	if got.Time.IsZero() || got.ClientIP != "172.30.53.129" || got.Method != "OPTIONS" ||
 		got.Scheme != "https" || got.Host != "devops.mock.test:8443" || got.Path != path ||
-		got.Query != "allHostTypes=true&%50assword=[redacted]&other=[redacted]&encoded=[redacted]&[redacted]=[redacted]" ||
+		got.Query != "allHostTypes=true&%50assword=[redacted]&other=[redacted]&encoded=[redacted]&[redacted]=visible&[redacted]=%ZZ" ||
 		got.Status != http.StatusUnauthorized || got.UserAgent != "journal-test [redacted]" || got.AuthScheme != "Basic" {
 		t.Errorf("unexpected journal entry: %+v", got)
+	}
+	r4 := httptest.NewRequest(http.MethodGet, "http://devops.mock.test:8080/?password=visible", nil)
+	r4.RemoteAddr = "172.30.53.132:34567"
+	r4.SetBasicAuth("tester", "password")
+	s.ServeHTTP(httptest.NewRecorder(), r4)
+	var named []requestEntry
+	if err := json.Unmarshal(get("?ip=172.30.53.132").Body.Bytes(), &named); err != nil || len(named) != 1 || named[0].Query != "[redacted]=[redacted]" {
+		t.Errorf("a password used as a query name stays in the journal: %+v, %v", named, err)
 	}
 	var encoded []requestEntry
 	if err := json.Unmarshal(get("?ip=172.30.53.131").Body.Bytes(), &encoded); err != nil || len(encoded) != 1 || encoded[0].Path != "/[redacted]" {
