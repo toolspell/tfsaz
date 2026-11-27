@@ -57,7 +57,7 @@ Alternatively, create `tfsaz/config.json` under your OS user configuration direc
 
 ### Files beside the configuration
 
-TFSaz keeps its other state next to the configuration file, named after it. One file or directory per line:
+These files and directories sit next to the configuration file, named after it. Two more live in `~/.tfsaz`, outside the configuration directory, so they survive deleting it: `keyring-entries.json` ([leftover keyring entries](#find-and-remove-leftover-keyring-entries)) and `route-recovery` ([browser routing](browser-routing.md#refresh-or-remove)).
 
 | Name | What it holds | Written by |
 | --- | --- | --- |
