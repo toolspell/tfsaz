@@ -3,7 +3,6 @@ package harness
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net"
 	"path/filepath"
 	"strconv"
@@ -97,6 +96,19 @@ func (v *VM) StartT3(t *testing.T) string {
 	return "http://" + v.forward(t, guestPort)
 }
 
+func (v *VM) BrowserStart(t *testing.T, browser string, port int, url string) string {
+	t.Helper()
+	guestPort := strconv.Itoa(port)
+	args := []string{"vm", "browser", "start", v.Name, browser, "-port", guestPort}
+	if url != "" {
+		args = append(args, url)
+	}
+	if _, err := v.harness.suite.run(v.harness.ctx, 3*time.Minute, args...); err != nil {
+		t.Fatal(err)
+	}
+	return "http://" + v.forward(t, guestPort)
+}
+
 func (v *VM) forward(t *testing.T, guestPort string) string {
 	t.Helper()
 	// SSH needs a port number, so release the OS-assigned port before handing it over.
@@ -183,6 +195,6 @@ func (h *Harness) Requests(t *testing.T, vm *VM) []Request {
 func (h *Harness) ResetJournal(t *testing.T) {
 	t.Helper()
 	if _, err := h.suite.run(h.ctx, 15*time.Second, "mock", "reset"); err != nil {
-		t.Fatal(fmt.Errorf("reset the shared request journal: %w", err))
+		t.Fatalf("reset the request journal for instance %s: %v", h.instance, err)
 	}
 }

@@ -120,6 +120,7 @@ func TestLiveUsageErrors(t *testing.T) {
 		{"services", "services <action>", "missing action"},
 		{"services bogus", "services <action>", "unknown action"},
 		{"services up extra", "services up", "unexpected operand"},
+		{"services status -json extra", "services status [-json]", "unexpected operand"},
 		{"mock bogus", "mock <action>", "unknown action"},
 		{"mock ca extra", "mock ca", "unexpected operand"},
 		{"mock requests -vm", "mock requests", "flag needs an argument"},

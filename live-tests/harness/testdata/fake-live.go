@@ -12,30 +12,34 @@ import (
 )
 
 func main() {
+	const clonePrefix = "tfsaz-live-bedtest-ubuntu-"
+	const clone = clonePrefix + "test"
 	args := os.Args[1:]
 	switch {
 	case slices.Equal(args, []string{"services", "status", "-json"}):
 		dir, err := os.Getwd()
 		if err == nil {
 			err = json.NewEncoder(os.Stdout).Encode(map[string]any{
-				"running": []string{"router", "dns", "devops-server-mock"}, "stateHome": dir,
+				"instance": "bedtest", "running": []string{"router", "dns", "devops-server-mock"}, "stateHome": dir,
+				"ports": map[string]int{"http": 8083, "https": 8446, "ssh": 2225, "journal": 19093, "wireguard": 51823},
 			})
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-	case slices.Equal(args, []string{"vm", "up", "ubuntu"}):
-		fmt.Println(`{"name":"tfsaz-ubuntu-test","os":"ubuntu","bedAddress":"192.0.2.17","ignored":"extra field"}`)
-	case slices.Equal(args, []string{"mock", "requests", "-vm", "tfsaz-ubuntu-test", "-json"}):
-		fmt.Println(`[{"time":"2026-11-27T10:00:00Z","clientIP":"192.0.2.17","method":"GET","path":"/","status":200}]`)
+	case len(args) == 5 && slices.Equal(args[:4], []string{"vm", "up", "ubuntu", "-name"}):
+		fmt.Printf("{\"name\":%q,\"os\":\"ubuntu\",\"bedAddress\":\"172.30.56.129\",\"ignored\":\"extra field\"}\n", clonePrefix+args[4])
+	case len(args) == 3 && slices.Equal(args[:2], []string{"vm", "down"}) && strings.HasPrefix(args[2], clonePrefix):
+	case slices.Equal(args, []string{"mock", "requests", "-vm", clone, "-json"}):
+		fmt.Println(`[{"time":"2026-11-27T10:00:00Z","clientIP":"172.30.56.129","method":"GET","path":"/","status":200}]`)
 	case slices.Equal(args, []string{"mock", "reset"}):
 	case slices.Equal(args, []string{"bad-json"}):
 		fmt.Println("unexpected text")
 	case slices.Equal(args, []string{"failed", "--", "guest script"}):
 		fmt.Fprintln(os.Stderr, "tool error")
 		os.Exit(3)
-	case len(args) >= 3 && slices.Equal(args[:3], []string{"vm", "run", "tfsaz-ubuntu-test"}):
+	case len(args) >= 3 && slices.Equal(args[:3], []string{"vm", "run", clone}):
 		script := "printf '%s\\n' 'hello world'; exit 7"
 		if slices.Equal(args[3:], []string{"-json", "-timeout", "2m0s", "--", script}) {
 			fmt.Println(`{"exitCode":7,"stdout":"hello world\n","stderr":"guest warning\n","timedOut":false,"seconds":0.25}`)
@@ -46,8 +50,13 @@ func main() {
 			return
 		}
 		badArgs(args)
-	case len(args) == 4 && slices.Equal(args[:3], []string{"vm", "forward", "tfsaz-ubuntu-test"}):
-		port, _, _ := strings.Cut(args[3], ":")
+	case slices.Equal(args, []string{"vm", "browser", "start", clone, "chrome", "-port", "9333", "about:blank"}):
+		fmt.Println("http://127.0.0.1:9333")
+	case len(args) == 4 && slices.Equal(args[:3], []string{"vm", "forward", clone}):
+		port, guestPort, _ := strings.Cut(args[3], ":")
+		if guestPort != "9333" {
+			badArgs(args)
+		}
 		if runtime.GOOS == "windows" {
 			listen(port)
 			return

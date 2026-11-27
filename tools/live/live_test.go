@@ -1066,14 +1066,39 @@ func TestDownload(t *testing.T) {
 func freeHostPorts(bedPorts) error { return nil }
 
 func TestServicesStatusJSON(t *testing.T) {
-	for _, tc := range []struct{ name, ps, want string }{
-		{"none running", "", `{"running":[],"stateHome":"/state"}`},
-		{"some running", "dns\nrouter\n", `{"running":["dns","router"],"stateHome":"/state"}`},
+	network := slotNetwork(3)
+	for _, tc := range []struct {
+		name, ps, want string
+		network        *bedNetwork
+	}{
+		{"no slot", "", `{"instance":"bedtest","running":[],"stateHome":"/state"}`, nil},
+		{"none running", "", `{"instance":"bedtest","subnet":"172.30.56.0/24","ports":{"http":8083,"https":8446,"ssh":2225,"journal":19093,"wireguard":51823},"running":[],"stateHome":"/state"}`, &network},
+		{"some running", "dns\nrouter\n", `{"instance":"bedtest","subnet":"172.30.56.0/24","ports":{"http":8083,"https":8446,"ssh":2225,"journal":19093,"wireguard":51823},"running":["dns","router"],"stateHome":"/state"}`, &network},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			e := &env{instance: "bedtest", home: "/state", bed: "/bed", network: tc.network}
+			oldOutput := output
+			t.Cleanup(func() { output = oldOutput })
+			var called bool
+			output = func(env []string, name string, args ...string) (string, error) {
+				called = true
+				want := []string{"compose", "-p", "tfsaz-live-bedtest", "-f", filepath.Join(e.bed, "compose.yaml"), "ps", "--status", "running", "--services"}
+				if name != "docker" || !slices.Equal(args, want) {
+					t.Fatalf("command = %s %q, want docker %q", name, args, want)
+				}
+				for _, entry := range []string{"TFSAZ_LIVE_PROJECT=tfsaz-live-bedtest", "TFSAZ_LIVE_JOURNAL_PORT=19093"} {
+					if !slices.Contains(env, entry) {
+						t.Errorf("Compose environment misses %q", entry)
+					}
+				}
+				return tc.ps, nil
+			}
 			var buf bytes.Buffer
-			if err := writeServicesStatus(&buf, tc.ps, "/state"); err != nil {
+			if err := e.servicesStatusJSON(&buf); err != nil {
 				t.Fatal(err)
+			}
+			if called != (tc.network != nil) {
+				t.Errorf("called Docker = %t, has slot = %t", called, tc.network != nil)
 			}
 			if got := strings.TrimSpace(buf.String()); got != tc.want {
 				t.Fatalf("got %s, want %s", got, tc.want)

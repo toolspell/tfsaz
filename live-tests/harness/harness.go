@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -22,6 +23,8 @@ type suite struct {
 	tool
 	ctx   context.Context
 	slots map[string]semaphore
+	// The live tool holds the instance lock during clone lifecycle commands.
+	cloneMu sync.Mutex
 }
 
 var active *suite
@@ -97,9 +100,19 @@ func Platforms(t *testing.T) []string {
 	return slices.Clone(liveSuite(t).platforms)
 }
 
+type HostPorts struct {
+	HTTP      int `json:"http"`
+	HTTPS     int `json:"https"`
+	SSH       int `json:"ssh"`
+	Journal   int `json:"journal"`
+	WireGuard int `json:"wireguard"`
+}
+
 type Harness struct {
 	suite       *suite
 	ctx         context.Context
+	instance    string
+	Ports       HostPorts
 	ArtifactDir string
 }
 
@@ -117,15 +130,23 @@ func (s *suite) start(t *testing.T) *Harness {
 		cancel()
 	})
 	var status struct {
-		Running   []string `json:"running"`
-		StateHome string   `json:"stateHome"`
+		Instance  string     `json:"instance"`
+		Ports     *HostPorts `json:"ports"`
+		Running   []string   `json:"running"`
+		StateHome string     `json:"stateHome"`
 	}
 	if err := s.json(ctx, 30*time.Second, &status, "services", "status", "-json"); err != nil {
-		t.Fatalf("check live services: %v\nStart them with go run ./tools/live services up", err)
+		t.Fatalf("check live services: %v\nStart them with go run ./tools/live up", err)
+	}
+	if status.Ports == nil {
+		t.Fatalf("live instance %s has no slot. Run go run ./tools/live up", status.Instance)
+	}
+	if status.Instance == "" || len(status.Instance) > 16 || strings.Trim(status.Instance, "abcdefghijklmnopqrstuvwxyz0123456789") != "" {
+		t.Fatalf("live services status returned an invalid instance ID: %q", status.Instance)
 	}
 	for _, name := range []string{"devops-server-mock", "dns", "router"} {
 		if !slices.Contains(status.Running, name) {
-			t.Fatalf("live service %s is down. Run go run ./tools/live services up", name)
+			t.Fatalf("live service %s is down in instance %s. Run go run ./tools/live up", name, status.Instance)
 		}
 	}
 	root := s.artifacts
@@ -133,7 +154,7 @@ func (s *suite) start(t *testing.T) *Harness {
 		if !filepath.IsAbs(status.StateHome) {
 			t.Fatalf("live services status returned an invalid state home: %q", status.StateHome)
 		}
-		root = filepath.Join(status.StateHome, "artifacts")
+		root = filepath.Join(status.StateHome, "artifacts", status.Instance)
 	}
 	dir, err := artifactDir(root, t.Name())
 	if err != nil {
@@ -145,7 +166,7 @@ func (s *suite) start(t *testing.T) *Harness {
 			_ = os.Remove(dir)
 		}
 	})
-	return &Harness{suite: s, ctx: ctx, ArtifactDir: dir}
+	return &Harness{suite: s, ctx: ctx, instance: status.Instance, Ports: *status.Ports, ArtifactDir: dir}
 }
 
 func artifactDir(root, testName string) (string, error) {
@@ -181,13 +202,15 @@ func (h *Harness) Clone(t *testing.T, osName string) *VM {
 	var entropy [5]byte
 	_, _ = rand.Read(entropy[:])
 	suffix := hex.EncodeToString(entropy[:])
-	name := "tfsaz-" + osName + "-" + suffix
+	name := "tfsaz-live-" + h.instance + "-" + osName + "-" + suffix
 	var created bool
 	t.Cleanup(func() { h.cleanClone(t, name, created) })
 	t.Logf("live clone: %s", name)
 
 	vm := &VM{harness: h}
+	s.cloneMu.Lock()
 	err := s.json(h.ctx, 8*time.Minute, vm, "vm", "up", osName, "-name", suffix)
+	s.cloneMu.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,6 +236,8 @@ func (h *Harness) cleanClone(t *testing.T, name string, created bool) {
 			t.Logf("save request journal: %v", err)
 		}
 	}
+	h.suite.cloneMu.Lock()
+	defer h.suite.cloneMu.Unlock()
 	if h.suite.keep && created {
 		t.Logf("keeping clone %s. Remove it with go run ./tools/live vm down %s", name, name)
 		if _, err := h.suite.run(ctx, 3*time.Minute, "vm", "stop", name); err != nil {

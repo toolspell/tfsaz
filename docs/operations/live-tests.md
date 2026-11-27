@@ -49,7 +49,7 @@ go run ./tools/live services up       # services only
 go run ./tools/live services down     # stop services and keep the slot for existing clones
 go run ./tools/live clean             # delete this instance's clones; keep services and slot
 go run ./tools/live prune             # remove instances whose worktree paths are missing
-go run ./tools/live services status [-json]      # this instance's services
+go run ./tools/live services status [-json]      # this instance's running services and host ports
 go run ./tools/live status
 ```
 
@@ -75,12 +75,12 @@ Before upgrading an older bed, run its `clean` and `services down` from the old 
 
 Add a test alongside [the smoke cases](../../live-tests/harness/smoke_test.go) in `live-tests/harness`. Its `TestMain` builds `tools/live` once. Iterate over `harness.Platforms(t)` and call `t.Parallel()` in each OS subtest. Use `harness.Start(t)` in the subtest, then `h.Clone(t, osName)` to start a fresh VM. Tests in another package can call `harness.RunTests(m)` from their `TestMain`.
 
-Use `vm.Run` for guest scripts and `vm.RunGUI` for scripts that need the desktop session. Check the returned exit code and output. Use `vm.Push` and `vm.Pull` to transfer files, `vm.Screenshot` to save a PNG, and `vm.InstallT3` then `vm.StartT3` to get a host CDP URL. Use `h.Requests(t, vm)` to inspect that clone's traffic. `h.ResetJournal(t)` clears every clone's entries, so use it only with exclusive access to the test bed.
+Use `vm.Run` for guest scripts and `vm.RunGUI` for scripts that need the desktop session. Check the returned exit code and output. Use `vm.Push` and `vm.Pull` to transfer files and `vm.Screenshot` to save a PNG. Use `vm.InstallT3` and `vm.StartT3` for a host URL to T3's debugging port, or `vm.BrowserStart(t, "chrome", 9333, "about:blank")` for Chrome. Read published service ports from `h.Ports`, which comes from `services status -json`. Use `h.Requests(t, vm)` to inspect that clone's traffic. `h.ResetJournal(t)` clears all entries for this instance, so use it with exclusive access to the instance.
 
 With the base VM already built, run from the repository root.
 
 ```sh
-go run ./tools/live services up
+go run ./tools/live up
 TFSAZ_LIVE=1 TFSAZ_LIVE_OS=ubuntu go test -count=1 -run TestSmoke ./live-tests/harness
 ```
 
@@ -89,10 +89,12 @@ TFSAZ_LIVE=1 TFSAZ_LIVE_OS=ubuntu go test -count=1 -run TestSmoke ./live-tests/h
 | `TFSAZ_LIVE=1` | Enables VM tests. They skip when `CI` or `GITHUB_ACTIONS` is set, even if empty. |
 | `TFSAZ_LIVE_OS` | Comma-separated guests to run. The default is `ubuntu,macos,windows`. A guest left out is skipped. |
 | `TFSAZ_LIVE_MAX_UBUNTU`, `TFSAZ_LIVE_MAX_MACOS`, `TFSAZ_LIVE_MAX_WINDOWS` | Concurrent clones per guest OS in one test process. Defaults are 2, 2 and 1. macOS cannot exceed 2. |
-| `TFSAZ_LIVE_ARTIFACTS` | Directory for per-test artifacts, relative to the repository root or absolute. Defaults to `artifacts/` under the tool's [state home](#state-outside-the-repository). |
+| `TFSAZ_LIVE_ARTIFACTS` | Directory for per-test artifacts, relative to the repository root or absolute. Defaults to `artifacts/ID/` under the tool's [state home](#state-outside-the-repository). |
 | `TFSAZ_LIVE_KEEP=1` | Stops and keeps every clone, failed ones too, after saving the failure artifacts. Cleanup logs its name and the command to remove it. |
 
-Use `go test -v` to see artifact paths and retained clone names on success. Cleanup stops CDP forwards, attempts to save a screenshot and request journal on failure, and deletes each clone by default. Use Go's `-timeout` to give longer runs and their cleanup time to finish. Ctrl-C or SIGTERM stops the running `live` commands and runs the cleanups, but a run killed harder (SIGKILL, or Go's `-timeout` panic) can leave clones and `vm forward` processes behind. Remove them with `go run ./tools/live clean`. A passing test removes its empty artifact directory.
+Run the harness and cleanup in the same worktree with the same `TFSAZ_LIVE_HOME` and `TFSAZ_LIVE_INSTANCE` settings as `up`. Use `go test -v` to see artifact paths and retained clone names on success. The harness stops CDP forwards, attempts to save a screenshot and request journal on failure, and deletes each clone by default. A passing test removes its empty artifact directory.
+
+Use Go's `-timeout` to give longer runs and their cleanup time to finish. Ctrl-C or SIGTERM stops active `live` commands and runs the cleanups. After a hard kill, stop any remaining `vm forward` processes. Run `go run ./tools/live down` to remove the instance and release its slot, or `services down` if you are keeping stopped clones.
 
 ## For agents
 
@@ -264,7 +266,7 @@ Each instance uses a Compose project named `tfsaz-live-ID` and a slot from 0 to 
 | `.129` through `.254` | VM tunnel addresses | |
 | `.10:19090` | Mock journal. The router blocks access from VMs. | Loopback `19090+N` |
 
-Read the actual host ports from `up` JSON or `services status`. Guest service ports stay the same in every slot.
+Read the actual host ports from `up` JSON or `services status`. The `services status -json` output includes the instance ID, running service names and state home. It also includes the subnet and host ports when a slot is reserved. Guest service ports stay the same in every slot.
 
 On Windows the tunnel routes `0.0.0.0/1` and `128.0.0.0/1` instead of `0.0.0.0/0`, which would turn on WireGuard for Windows' kill switch and cut off SSH from the host. Without the kill switch Windows would also ask QEMU's DNS server, so the tool sets the router's resolver on the network card too. The router answers ARP for the VM addresses, so containers reach a VM like any other host in the subnet. Traffic from a VM to anywhere else leaves through Docker's NAT, so VMs have internet access for now. The router's resolver sends `mock.test` names to the sinkhole and everything else to Docker's resolver. Its key and peer list survive a restart; VMs reconnect within seconds.
 

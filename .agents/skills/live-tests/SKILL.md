@@ -22,7 +22,7 @@ Run only the relevant cases. Read [Live tests](../../../docs/operations/live-tes
 
 ## Run a case
 
-For automated cases, use the [Go live-test harness](../../../docs/operations/live-tests.md#write-a-live-test).
+For automated cases, use the [Go live-test harness](../../../docs/operations/live-tests.md#write-a-live-test). Run `up` to start this worktree's services and `down` after the suite to release the slot. The harness manages the test clones and reads this instance's ports and journal through the tool.
 
 From the repository root, prefix each command below with `go run ./tools/live`. On a host with the base already built:
 

@@ -27,21 +27,22 @@ func TestTool(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build fake live: %v: %s", err, out)
 	}
-	s := &suite{tool: tool{root: dir, binary: bin}, ctx: t.Context()}
-	h := &Harness{suite: s, ctx: t.Context(), ArtifactDir: dir}
-	vm := &VM{Name: "tfsaz-ubuntu-test", harness: h}
+	s := &suite{tool: tool{root: dir, binary: bin}, ctx: t.Context(), slots: map[string]semaphore{"ubuntu": make(semaphore, 1)}}
+	h := s.start(t)
+	vm := &VM{Name: "tfsaz-live-bedtest-ubuntu-test", harness: h}
 
-	t.Run("artifact directory uses tool state home", func(t *testing.T) {
-		h := s.start(t)
-		if got, want := filepath.Dir(h.ArtifactDir), filepath.Join(dir, "artifacts"); got != want {
+	t.Run("instance ports and artifacts", func(t *testing.T) {
+		if got, want := filepath.Dir(h.ArtifactDir), filepath.Join(dir, "artifacts", "bedtest"); got != want {
 			t.Fatalf("artifact root = %q (want %q)", got, want)
+		}
+		if h.instance != "bedtest" || h.Ports.Journal != 19093 || h.Ports.HTTPS != 8446 {
+			t.Fatalf("instance = %q, ports = %+v", h.instance, h.Ports)
 		}
 	})
 	t.Run("clone info", func(t *testing.T) {
-		var info VM
-		err := s.json(t.Context(), 5*time.Second, &info, "vm", "up", "ubuntu")
-		if err != nil || info.Name != vm.Name || info.OS != "ubuntu" || info.BedAddress != "192.0.2.17" {
-			t.Fatalf("clone info = %+v, %v", info, err)
+		info := h.Clone(t, "ubuntu")
+		if !strings.HasPrefix(info.Name, "tfsaz-live-bedtest-ubuntu-") || info.OS != "ubuntu" || info.BedAddress != "172.30.56.129" {
+			t.Fatalf("clone info = %+v", info)
 		}
 	})
 	t.Run("guest exit and streams", func(t *testing.T) {
@@ -59,7 +60,7 @@ func TestTool(t *testing.T) {
 	})
 	t.Run("request journal", func(t *testing.T) {
 		rows := h.Requests(t, vm)
-		if len(rows) != 1 || rows[0].Time.IsZero() || rows[0].ClientIP != "192.0.2.17" ||
+		if len(rows) != 1 || rows[0].Time.IsZero() || rows[0].ClientIP != "172.30.56.129" ||
 			rows[0].Method != "GET" || rows[0].Path != "/" || rows[0].Status != 200 {
 			t.Fatalf("request journal = %+v", rows)
 		}
@@ -80,7 +81,9 @@ func TestTool(t *testing.T) {
 	})
 	t.Run("forward cleanup", func(t *testing.T) {
 		var addr string
-		if !t.Run("forward", func(t *testing.T) { addr = vm.forward(t, "9222") }) {
+		if !t.Run("browser", func(t *testing.T) {
+			addr = strings.TrimPrefix(vm.BrowserStart(t, "chrome", 9333, "about:blank"), "http://")
+		}) {
 			return
 		}
 		conn, err := net.DialTimeout("tcp4", addr, time.Second)
