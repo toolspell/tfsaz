@@ -130,7 +130,7 @@ func checkPreserveSetupAccess(ctx context.Context, c setupCheckout, r setupRecor
 	case strings.Contains(message, "certificate") || strings.Contains(message, "ssl") || strings.Contains(message, "tls"):
 		return errors.New("HTTPS repository check could not verify TLS; check the Git trust configuration")
 	case strings.Contains(message, "authentication") || strings.Contains(message, "terminal prompts disabled") ||
-		strings.Contains(message, "401") || strings.Contains(message, "403"):
+		strings.Contains(message, "returned error: 401") || strings.Contains(message, "returned error: 403"):
 		return errors.New("HTTPS repository authentication failed; check your Git credential helper and repository read access")
 	default:
 		return errors.New("HTTPS repository read failed; check network access, Git credentials and repository read permission")
