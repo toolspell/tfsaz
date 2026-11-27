@@ -49,7 +49,9 @@ var ubuntuGuest = guest{
 		"PostUp = resolvectl dns %i " + routerAddress.String() + "; resolvectl domain %i '~.'\n",
 	wgUp:     "sudo sh -c 'umask 077 && cat >/etc/wireguard/wg0.conf' && sudo systemctl enable --now wg-quick@wg0",
 	resolves: "getent hosts devops.mock.test | grep -q '^172.30.53.10 '",
-	session:  "pgrep -u \"$USER\" -x gnome-shell >/dev/null",
+	// Mutter creates the Wayland socket once it accepts clients, after
+	// gnome-shell starts.
+	session: "pgrep -u \"$USER\" -x gnome-shell >/dev/null && test -S \"/run/user/$(id -u)/wayland-0\"",
 	// SSH and the desktop share the user's D-Bus and runtime directory; only
 	// the display is missing.
 	gui:      "WAYLAND_DISPLAY=wayland-0 DISPLAY=:0 XDG_SESSION_TYPE=wayland sh -c %s",

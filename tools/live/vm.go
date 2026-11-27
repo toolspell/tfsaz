@@ -293,14 +293,19 @@ func waitSession(o osDef, login sshTarget) error {
 	if o.guest.session == "" {
 		return nil
 	}
-	var last error
-	for range 40 {
-		if _, last = login.run(nil, o.guest.session); last == nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	for {
+		_, err := login.runContext(ctx, nil, o.guest.session)
+		if err == nil {
 			return nil
 		}
-		time.Sleep(3 * time.Second)
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("the test user's desktop session did not start within 2 minutes: %w", err)
+		case <-time.After(3 * time.Second):
+		}
 	}
-	return fmt.Errorf("the test user's desktop session did not start within 2 minutes: %w", last)
 }
 
 // reachesMock waits until the clone reaches the mock by name through the router.
