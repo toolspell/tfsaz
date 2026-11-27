@@ -55,6 +55,19 @@ Alternatively, create `tfsaz/config.json` under your OS user configuration direc
 - Every authenticated request uses the profile's `collectionUrl`. Redirects fail closed.
 - TLS uses system trust plus the optional PEM CA file, whose path can be relative to the configuration file.
 
+### Files beside the configuration
+
+These files and directories sit next to the configuration file, named after it. Two more live in `~/.tfsaz`, whatever the configuration path: `keyring-entries.json` ([leftover keyring entries](#find-and-remove-leftover-keyring-entries)) and `route-recovery` ([browser routing](browser-routing.md#refresh-or-remove)).
+
+| Name | What it holds | Written by |
+| --- | --- | --- |
+| `<config>.browser-route` | The browser-routing certificate, its private key and the installation identity | `route setup` |
+| `<config>.cache` | The resource catalog of each collection, as the server sent it; no credentials | Commands that resolve a REST route through the catalog; `profile remove` deletes a collection's entry |
+| `<config>.lock` | Serializes concurrent configuration edits | Commands that change the configuration or the keyring |
+| `<config>.repo-setups.json` | The managed checkouts | `repo setup` |
+| `<config>.repo-setups.json.lock` | Serializes concurrent checkout setup and restore | Commands that change the managed checkouts |
+| `<config>.run` | Temporary Git helper directories of a running `route run` | `route run` |
+
 ## Store, replace or remove a PAT
 
 Interactive `init` already stores the PAT. For a hand-written profile, a profile created with `--no-login`, or a replacement PAT, run login as the OS user that runs T3. This example uses the organization in the JSON above.
