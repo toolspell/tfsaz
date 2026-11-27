@@ -18,6 +18,10 @@ func hostRoutes() ([]existingNetwork, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseRouteMessages(messages)
+}
+
+func parseRouteMessages(messages []route.Message) ([]existingNetwork, error) {
 	var routes []existingNetwork
 	for _, msg := range messages {
 		m, ok := msg.(*route.RouteMessage)
@@ -41,7 +45,7 @@ func hostRoutes() ([]existingNetwork, error) {
 			}
 			continue
 		}
-		if bits != 0 {
+		if bits >= 8 {
 			p := netip.PrefixFrom(netip.AddrFrom4(dst.IP), bits).Masked()
 			routes = append(routes, existingNetwork{prefix: p, source: "host route"})
 		}

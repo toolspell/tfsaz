@@ -51,24 +51,16 @@ func acquireLock(path string, shared bool) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	return takeLock(flock.New(path), shared)
-}
-
-func (e *env) lockInstance(readOnly bool) (func(), error) {
-	path := e.instancePath("instance.lock")
-	if !readOnly {
-		return acquireLock(path, false)
-	}
-	unlock, err := takeLock(flock.New(path, flock.SetFlag(os.O_RDONLY)), true)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	return unlock, err
-}
-
-func takeLock(lock *flock.Flock, shared bool) (func(), error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	return takeLock(ctx, flock.New(path), shared)
+}
+
+func (e *env) lockInstance() (func(), error) {
+	return acquireLock(e.path("instance-locks", e.instance+".lock"), false)
+}
+
+func takeLock(ctx context.Context, lock *flock.Flock, shared bool) (func(), error) {
 	take := lock.TryLockContext
 	if shared {
 		take = lock.TryRLockContext
@@ -172,9 +164,9 @@ func (e *env) loadNetwork() error {
 
 const upSuffix = "up"
 
-func (e *env) reserveNetwork(networks []existingNetwork) error {
+func (e *env) reserveNetwork(networks []existingNetwork, probe func(bedPorts) error) error {
 	return e.withSlots(func(slots slotRegistry) error {
-		slot, err := selectSlot(slots, e.instance, networks)
+		slot, err := selectSlot(slots, e.instance, networks, probe)
 		if err != nil {
 			return err
 		}

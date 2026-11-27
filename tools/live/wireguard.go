@@ -108,14 +108,28 @@ func (e *env) registerPeer(name, key string) (netip.Addr, error) {
 // removePeer drops a peer. With the router down, deleting its file is
 // enough, since the router loads the files on start.
 func (e *env) removePeer(name string) error {
-	running, err := e.serviceRunning("router")
-	if err != nil {
+	file := e.instancePath("router", "peers", name)
+	if _, err := os.Lstat(file); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return err
 	}
-	if running {
+	running, err := e.serviceRunning("router")
+	if err == nil && running {
 		return e.compose("exec", "-T", "router", "peer", "remove", name)
 	}
-	err = os.Remove(e.instancePath("router", "peers", name))
+	if err := removePeerFile(file); err != nil {
+		return err
+	}
+	if err != nil {
+		step("removed the saved peer for %s; the router was not updated: %v", name, err)
+	}
+	return nil
+}
+
+func removePeerFile(file string) error {
+	err := os.Remove(file)
 	if os.IsNotExist(err) {
 		return nil
 	}

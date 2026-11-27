@@ -37,6 +37,20 @@ func (e *env) base(action, osName string, force bool) error {
 	return e.changeBase(o, action, force)
 }
 
+func baseCloneError(o osDef, clones []string) error {
+	var commands []string
+	for _, name := range clones {
+		if _, legacy := legacyCloneOS(name); legacy {
+			commands = append(commands, "go run ./tools/live vm down "+name)
+		}
+	}
+	hint := "remove instance clones in their owning worktrees"
+	if len(commands) != 0 {
+		hint += "; remove legacy clones with " + strings.Join(commands, " or ")
+	}
+	return fmt.Errorf("%s has clones: %s; %s", o.base(), strings.Join(clones, ", "), hint)
+}
+
 func (e *env) changeBase(o osDef, action string, force bool) error {
 	v := e.vms(o)
 	clones, err := v.clones(o)
@@ -44,7 +58,7 @@ func (e *env) changeBase(o osDef, action string, force bool) error {
 		return err
 	}
 	if len(clones) > 0 {
-		return fmt.Errorf("%s has clones: %s; remove them in the owning worktrees first (vm down NAME or down)", o.base(), strings.Join(clones, ", "))
+		return baseCloneError(o, clones)
 	}
 	if action == "build" || action == "update" {
 		unlock, err := e.lockMacOSBoot(o)

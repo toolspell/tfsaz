@@ -119,9 +119,18 @@ func (o osDef) isClone(name string) bool {
 	if _, cloneOS, ok := parseCloneName(name); ok {
 		return cloneOS.name == o.name
 	}
-	// Legacy clones still depend on the shared bases until they are removed.
-	suffix, ok := strings.CutPrefix(name, prefix+o.name+"-")
-	return ok && validSuffix(suffix)
+	legacy, ok := legacyCloneOS(name)
+	return ok && legacy.name == o.name
+}
+
+func legacyCloneOS(name string) (osDef, bool) {
+	rest, ok := strings.CutPrefix(name, prefix)
+	if !ok {
+		return osDef{}, false
+	}
+	osName, suffix, _ := strings.Cut(rest, "-")
+	o, ok := guestOS(osName)
+	return o, ok && validSuffix(suffix)
 }
 
 func (e *env) osOfVM(name string) (osDef, bool) {
@@ -131,7 +140,7 @@ func (e *env) osOfVM(name string) (osDef, bool) {
 
 // cmd runs a command with output passed through, for long steps whose
 // progress the caller should see.
-func cmd(dir string, extraEnv []string, name string, args ...string) error {
+var cmd = func(dir string, extraEnv []string, name string, args ...string) error {
 	c := exec.Command(name, args...)
 	c.Dir = dir
 	c.Env = append(os.Environ(), extraEnv...)
@@ -140,7 +149,7 @@ func cmd(dir string, extraEnv []string, name string, args ...string) error {
 }
 
 // output runs a command and returns its trimmed stdout; errors carry stderr.
-func output(extraEnv []string, name string, args ...string) (string, error) {
+var output = func(extraEnv []string, name string, args ...string) (string, error) {
 	c := exec.Command(name, args...)
 	c.Env = append(os.Environ(), extraEnv...)
 	var stdout, stderr bytes.Buffer

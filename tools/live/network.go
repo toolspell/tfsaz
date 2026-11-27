@@ -72,7 +72,7 @@ type existingNetwork struct {
 	interfaceName string
 }
 
-func selectSlot(slots slotRegistry, instance string, networks []existingNetwork) (int, error) {
+func selectSlot(slots slotRegistry, instance string, networks []existingNetwork, probe func(bedPorts) error) (int, error) {
 	project := "tfsaz-live-" + instance
 	held, reserved := slots[instance]
 	for _, n := range networks {
@@ -84,6 +84,9 @@ func selectSlot(slots slotRegistry, instance string, networks []existingNetwork)
 		subnet := slotNetwork(held.Slot).subnet
 		if conflict := overlappingNetwork(subnet, project, networks); conflict != "" {
 			return 0, fmt.Errorf("instance %s subnet %s overlaps %s; resolve the conflict or run down to release its slot", instance, subnet, conflict)
+		}
+		if err := probe(slotNetwork(held.Slot).ports); err != nil {
+			return 0, fmt.Errorf("instance %s: %w", instance, err)
 		}
 		return held.Slot, nil
 	}
@@ -101,12 +104,41 @@ func selectSlot(slots slotRegistry, instance string, networks []existingNetwork)
 			conflicts = append(conflicts, fmt.Sprintf("%s overlaps %s", subnet, conflict))
 			continue
 		}
+		if err := probe(slotNetwork(slot).ports); err != nil {
+			conflicts = append(conflicts, err.Error())
+			continue
+		}
 		return slot, nil
 	}
+	const hint = "run down in an unused worktree or go run ./tools/live prune to free orphaned slots"
 	if len(conflicts) == 0 {
-		return 0, fmt.Errorf("all %d live slots are reserved; run down in an unused worktree", slotCount)
+		return 0, fmt.Errorf("all %d live slots are reserved; %s", slotCount, hint)
 	}
-	return 0, fmt.Errorf("no free live subnet in 172.30.53.0/24 through 172.30.68.0/24; %s", strings.Join(conflicts, "; "))
+	return 0, fmt.Errorf("no free live slot (subnets 172.30.53.0/24 through 172.30.68.0/24); %s; %s", strings.Join(conflicts, "; "), hint)
+}
+
+func probeHostPorts(ports bedPorts, mockRunning, routerRunning bool) error {
+	if !mockRunning {
+		for _, port := range []int{ports.HTTP, ports.HTTPS, ports.SSH, ports.Journal} {
+			listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+			if err != nil {
+				return busyPort("TCP", port, err)
+			}
+			_ = listener.Close()
+		}
+	}
+	if !routerRunning {
+		listener, err := net.ListenPacket("udp", net.JoinHostPort("", strconv.Itoa(ports.WireGuard)))
+		if err != nil {
+			return busyPort("UDP", ports.WireGuard, err)
+		}
+		_ = listener.Close()
+	}
+	return nil
+}
+
+func busyPort(protocol string, port int, err error) error {
+	return fmt.Errorf("cannot bind host %s port %d; check with lsof -nP -i :%d: %w", protocol, port, port, err)
 }
 
 func overlappingNetwork(subnet netip.Prefix, project string, networks []existingNetwork) string {
@@ -171,6 +203,10 @@ func dockerNetworks() ([]existingNetwork, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseDockerNetworks(out)
+}
+
+func parseDockerNetworks(out string) ([]existingNetwork, error) {
 	var inspected []struct {
 		ID, Name, Driver string
 		Labels, Options  map[string]string

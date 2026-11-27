@@ -57,6 +57,7 @@ func TestCIGuard(t *testing.T) {
 				{"up", true},
 				{"up ubuntu macos windows", true},
 				{"down", true},
+				{"prune", true},
 				{"status", false},
 				{"doctor", false},
 				{"doctor -install=false -yes=false", false},
@@ -259,7 +260,7 @@ func TestLiveSlots(t *testing.T) {
 		{"reuse reservation", &env{home: home, root: first.root, instance: first.instance}, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.env.reserveNetwork(conflict); err != nil || *tc.env.network != slotNetwork(tc.want) {
+			if err := tc.env.reserveNetwork(conflict, freeHostPorts); err != nil || *tc.env.network != slotNetwork(tc.want) {
 				t.Fatalf("reservation = %v, %v; want slot %d", tc.env.network, err, tc.want)
 			}
 		})
@@ -276,7 +277,7 @@ func TestLiveSlots(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := second.reserveNetwork(conflict); err != nil || *second.network != slotNetwork(1) {
+		if err := second.reserveNetwork(conflict, freeHostPorts); err != nil || *second.network != slotNetwork(1) {
 			t.Fatalf("reservation = %v, %v; want slot 1", second.network, err)
 		}
 	})
@@ -345,10 +346,10 @@ func TestLiveSlotConflict(t *testing.T) {
 	}{
 		{"existing project without reservation", "outside this reservation", nil, []existingNetwork{own}},
 		{"reserved slot now overlaps a route", "host route", slots, []existingNetwork{own, route}},
-		{"all slots overlap a route", "no free live subnet", nil, []existingNetwork{route}},
+		{"all slots overlap a route", "no free live slot", nil, []existingNetwork{route}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := selectSlot(tc.slots, "first", tc.networks); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, err := selectSlot(tc.slots, "first", tc.networks, freeHostPorts); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("selectSlot = %v; want %q", err, tc.want)
 			}
 		})
@@ -858,3 +859,5 @@ func TestDownload(t *testing.T) {
 		})
 	}
 }
+
+func freeHostPorts(bedPorts) error { return nil }

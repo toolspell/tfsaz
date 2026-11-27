@@ -46,7 +46,8 @@ go run ./tools/live vm start NAME     # boot it again; prints its details as JSO
 go run ./tools/live vm down NAME
 go run ./tools/live services up       # services only
 go run ./tools/live services down     # stop services and keep the slot for existing clones
-go run ./tools/live clean             # alias for down
+go run ./tools/live clean             # delete this instance's clones; keep services and slot
+go run ./tools/live prune             # remove instances whose worktree paths are missing
 go run ./tools/live status
 ```
 
@@ -62,9 +63,11 @@ Run the live suite outside GitHub CI and `ci-local`. When `CI` or `GITHUB_ACTION
 
 Run `up ubuntu macos windows` after building the shared bases. It starts this worktree's services and boots the requested guests in parallel. Its JSON includes the instance ID, subnet, host ports and each guest's `vm.json`. Repeat `up` with the same OS arguments to reuse those clones, including restarting stopped ones. With no OS arguments, `up` starts services only. Use `vm up OS` to make an additional clone.
 
-The instance ID is 12 hex digits derived from the absolute worktree path. To override it, set `TFSAZ_LIVE_INSTANCE` to 1 to 16 lowercase letters or digits and keep it set for that instance's commands. Use one shared `TFSAZ_LIVE_HOME` and the same local Docker engine for all worktrees on the host. A file lock protects the slot registry. The slot is kept across `services down` and freed by `down` or `clean`.
+The instance ID is 12 hex digits derived from the absolute worktree path. To override it, set `TFSAZ_LIVE_INSTANCE` to 1 to 16 lowercase letters or digits and keep it set for that instance's commands. Use one shared `TFSAZ_LIVE_HOME` and the same local Docker engine for all worktrees on the host. A file lock protects the slot registry. `clean` deletes this instance's clones and their router peers. Both `clean` and `services down` keep the slot. `down` deletes the clones, removes the services and locally built images, and releases the slot. `services down` also removes locally built images.
 
-Before upgrading an older bed, run its `clean` and `services down` from the old checkout. Keep the bases and caches. Remove the old `live-tests/.state` symlink if it is still there.
+Use `status` to find orphaned slots and `prune` to remove their clones, router state and Docker projects and release their slots. A slot is orphaned when its worktree path is missing. If Docker is stopped, `prune` frees the slot and removes local state and clones, and reports which Docker project remains. Follow [Remove everything](#remove-everything) after starting Docker. `prune` is disabled in CI.
+
+Before upgrading an older bed, run its `clean` and `services down` from the old checkout. Keep the bases and caches. Remove the old `live-tests/.state` symlink if it is still there. For any remaining legacy clone, get its name from `vm list` and delete it with `vm down NAME`.
 
 ## For agents
 
@@ -113,7 +116,7 @@ The tool stores state outside the worktree in `~/.tfsaz-live` (or the absolute p
 | `slots.json`, `*.lock` | Shared slot registry and locks for allocating slots, changing bases and starting macOS VMs |
 | `instances/ID/runs/NAME/` | Clone SSH key, known_hosts, `vm.json` and VM log. `tart.log` holds the VNC address with password (mode 600). |
 | `instances/ID/router/`, `instances/ID/mock-keys/`, `instances/ID/Corefile` | Instance WireGuard keys and peers, mock CA and SSH keys, generated sinkhole config |
-| `instances/ID/instance.lock`, `qemu/start.lock` | Locks for instance lifecycle changes and QEMU starts |
+| `instance-locks/ID.lock`, `qemu/start.lock` | Locks for instance lifecycle changes and QEMU starts |
 
 A base build downloads only what the cache lacks: an ISO matching `iso.json` (`curl` resumes an interrupted download), or the macOS image pinned in `image.json` (Tart pulls it once). The Windows ISO is the exception: the tool only checks it. The Windows build also downloads the virtio-win ISO once (about 880 MB) and, inside the VM, OpenSSH Server and WireGuard. `setup` recreates the state directory when needed. See [Remove everything](#remove-everything) for cleanup.
 
@@ -211,7 +214,7 @@ T3 checks its update feed and offers a newer release. Do not accept it: tests ru
 
 The VMs use Tart's NAT for SSH from the host (Windows uses QEMU's user-mode NAT with SSH forwarded from a loopback port) and a WireGuard tunnel to the router for everything else.
 
-Each instance uses a Compose project named `tfsaz-live-ID` and a slot from 0 to 15. Slot N uses `172.30.(53+N).0/24`. The tool checks Docker networks, specific host routes and interface addresses before starting services. It skips overlapping slots during allocation and refuses to start a reserved slot that now overlaps. If Docker reports a host port in use, free the port and retry `up`.
+Each instance uses a Compose project named `tfsaz-live-ID` and a slot from 0 to 15. Slot N uses `172.30.(53+N).0/24`. The tool checks Docker networks, host routes with prefix lengths of 8 or more, and interface addresses before starting services. During allocation it skips slots with overlapping subnets or busy host ports. For a reserved slot, the tool reports the conflict and, for a busy port, prints an `lsof` command to identify its owner. Free the port and retry `up`.
 
 | Address in the subnet | Service | Host port |
 | --- | --- | --- |
@@ -287,10 +290,11 @@ Use the same `TFSAZ_LIVE_HOME` as for setup. Set `state_dir="${TFSAZ_LIVE_HOME:-
 
 | Change on the host | Undo |
 | --- | --- |
-| Per-instance clones, Docker containers and network, router and mock keys | `go run ./tools/live down` in each worktree, with its instance override if set |
-| Images built by Compose | After `down`, run `docker image rm tfsaz-live-ID-router tfsaz-live-ID-devops-server-mock`, using the instance ID |
+| Per-instance clones, Docker containers, network and built images, router and mock keys | `go run ./tools/live down` in each worktree, with its instance override if set. Use `go run ./tools/live prune` for deleted worktrees. |
 | Shared bases, caches and locks | Once all instances are down, run `rm -rf -- "$state_dir"` |
 | Tart, softnet, Packer and QEMU from Homebrew | `brew uninstall tart softnet packer qemu` |
 | Trusted formulas `openai/tools/tart`, `openai/tools/softnet` and `hashicorp/tap/packer` (Homebrew trusts the last one itself when installing it) | `brew untrust --formula openai/tools/tart openai/tools/softnet hashicorp/tap/packer` |
 | Taps `openai/tools` and `hashicorp/tap` | `brew untap openai/tools hashicorp/tap` |
 | Shorter DHCP leases, if you applied the advice | `sudo defaults delete /Library/Preferences/SystemConfiguration/com.apple.InternetSharing.default.plist bootpd` |
+
+If `prune` reports a project it could not reach, start Docker and set `project` to the exact project it reported. List its containers with `docker container ls -aq --filter "label=com.docker.compose.project=$project"` and remove the returned IDs with `docker container rm -f ID...`. List its networks with `docker network ls -q --filter "label=com.docker.compose.project=$project"` and remove the returned IDs with `docker network rm ID...`. Remove the built images with `docker image rm "$project-router" "$project-devops-server-mock"`.

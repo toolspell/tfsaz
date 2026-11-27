@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -456,27 +457,32 @@ func (e *env) startVM(name string) (vmInfo, error) {
 // vmDown removes a clone, its router peer and its run directory; parts
 // that are already gone are skipped.
 func (e *env) vmDown(name string) error {
-	o, ok := e.osOfVM(name)
-	if !ok {
+	o, own := e.osOfVM(name)
+	legacyOS, legacy := legacyCloneOS(name)
+	if !own && !legacy {
 		return fmt.Errorf("%s is not a clone of instance %s (use vm list)", name, e.instance)
+	}
+	dir := e.runDir(name)
+	if legacy {
+		o = legacyOS
+		dir = e.path("runs", name)
 	}
 	step("removing %s", name)
 	// Keep the peer and the run directory with the clone's key while the VM
 	// still exists, so it stays reachable and vm down can be retried.
 	if err := e.vms(o).remove(name); err != nil {
-		return fmt.Errorf("%w; kept %s and the router peer", err, e.runDir(name))
+		return fmt.Errorf("%w; kept %s and the router peer", err, dir)
 	}
-	return errors.Join(e.removePeer(name), os.RemoveAll(e.runDir(name)))
+	if legacy {
+		return errors.Join(removePeerFile(e.path("router", "peers", name)), os.RemoveAll(dir))
+	}
+	return errors.Join(e.removePeer(name), os.RemoveAll(dir))
 }
 
 // cloneNames lists clone names known to a provider, the run directories or
 // the router.
-func (e *env) cloneNames() ([]string, error) {
+func (e *env) cloneNames(vms []vmEntry) ([]string, error) {
 	seen := make(map[string]bool)
-	vms, err := e.allVMs()
-	if err != nil {
-		return nil, err
-	}
 	for _, vm := range vms {
 		seen[vm.Name] = true
 	}
@@ -508,32 +514,54 @@ func (e *env) ownClones(seen map[string]bool) []string {
 	return names
 }
 
-func (e *env) vmList(asJSON bool) error {
-	names, err := e.cloneNames()
-	if err != nil {
-		return err
-	}
+type cloneRow struct {
+	vmInfo
+	State  string `json:"state"`
+	Legacy bool   `json:"legacy,omitempty"`
+}
+
+func (e *env) cloneRows() ([]cloneRow, error) {
 	vms, err := e.allVMs()
 	if err != nil {
-		return err
+		return nil, err
+	}
+	names, err := e.cloneNames(vms)
+	if err != nil {
+		return nil, err
 	}
 	state := make(map[string]string)
+	legacy := make(map[string]osDef)
 	for _, vm := range vms {
 		state[vm.Name] = vm.State
+		if o, ok := legacyCloneOS(vm.Name); ok {
+			legacy[vm.Name] = o
+			names = append(names, vm.Name)
+		}
 	}
-	type row struct {
-		vmInfo
-		State string `json:"state"`
-	}
-	rows := []row{}
+	sort.Strings(names)
+	rows := []cloneRow{}
 	for _, n := range names {
-		info, _ := e.loadVM(n)
+		var info vmInfo
+		o, old := legacy[n]
+		if old {
+			info.OS = o.name
+		} else {
+			info, _ = e.loadVM(n)
+		}
 		info.Name = n
 		s := state[n]
 		if s == "" {
 			s = "missing"
 		}
-		rows = append(rows, row{info, s})
+		rows = append(rows, cloneRow{info, s, old})
+	}
+	return rows, nil
+}
+
+func (e *env) vmList(asJSON bool) error {
+	rows, err := e.cloneRows()
+	if err != nil {
+		return err
 	}
 	if asJSON {
 		data, err := json.MarshalIndent(rows, "", "  ")
@@ -547,16 +575,21 @@ func (e *env) vmList(asJSON bool) error {
 		if r.Port != 0 {
 			address = net.JoinHostPort(r.IP, strconv.Itoa(r.Port))
 		}
-		fmt.Printf("%-24s %-8s %-21s %s\n", r.Name, r.State, address, r.BedAddress)
+		name := r.Name
+		if r.Legacy {
+			name += " (legacy)"
+		}
+		fmt.Printf("%-24s %-8s %-21s %s\n", name, r.State, address, r.BedAddress)
 	}
 	return nil
 }
 
 func (e *env) removeClones() error {
-	if requireMac() != nil {
-		return nil
+	vms, err := e.allVMs()
+	if err != nil {
+		return err
 	}
-	names, err := e.cloneNames()
+	names, err := e.cloneNames(vms)
 	if err != nil {
 		return err
 	}
@@ -567,7 +600,24 @@ func (e *env) removeClones() error {
 	return errors.Join(errs...)
 }
 
-func (e *env) status() error {
+func (e *env) status(out io.Writer) error {
+	slots, err := e.readSlots()
+	if err != nil {
+		return err
+	}
+	orphans, err := e.orphanedSlots(slots)
+	if err != nil {
+		return err
+	}
+	for _, id := range orphans {
+		if _, err := fmt.Fprintf(out, "orphaned instance %s (slot %d, missing worktree %s); run go run ./tools/live prune\n",
+			id, slots[id].Slot, slots[id].Root); err != nil {
+			return err
+		}
+	}
+	if err := e.loadNetwork(); err != nil {
+		return err
+	}
 	if err := requireMac(); err != nil {
 		return err
 	}

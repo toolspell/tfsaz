@@ -10,8 +10,10 @@ import (
 	"strings"
 )
 
+type routeRow struct{ Dst, Dev string }
+
 func hostRoutes() ([]existingNetwork, error) {
-	var table []struct{ Dst, Dev string }
+	var table []routeRow
 	switch runtime.GOOS {
 	case "linux":
 		out, err := output(nil, "ip", "-j", "-4", "route", "show", "table", "all")
@@ -28,14 +30,18 @@ func hostRoutes() ([]existingNetwork, error) {
 			return nil, err
 		}
 		for _, dst := range strings.Fields(out) {
-			table = append(table, struct{ Dst, Dev string }{Dst: dst})
+			table = append(table, routeRow{Dst: dst})
 		}
 	default:
 		return nil, fmt.Errorf("live Docker networking is not supported on %s", runtime.GOOS)
 	}
+	return parseHostRoutes(table)
+}
+
+func parseHostRoutes(table []routeRow) ([]existingNetwork, error) {
 	var routes []existingNetwork
 	for _, row := range table {
-		if row.Dst == "default" || row.Dst == "0.0.0.0/0" {
+		if row.Dst == "default" {
 			continue
 		}
 		if !strings.Contains(row.Dst, "/") {
@@ -45,7 +51,9 @@ func hostRoutes() ([]existingNetwork, error) {
 		if err != nil {
 			return nil, err
 		}
-		routes = append(routes, existingNetwork{prefix: p.Masked(), source: "host route", interfaceName: row.Dev})
+		if p.Bits() >= 8 {
+			routes = append(routes, existingNetwork{prefix: p.Masked(), source: "host route", interfaceName: row.Dev})
+		}
 	}
 	return routes, nil
 }

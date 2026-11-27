@@ -19,13 +19,14 @@ type commandHelp struct {
 var liveCommands = []commandHelp{
 	{"", "", "<command>", "Build and run the TFSaz live-test bed."},
 	{"up", "", "[OS...]", "Start this instance and print its subnet, host ports and clones as JSON. With OS arguments, boot or reuse one clone per OS in parallel. OS is ubuntu, macos or windows."},
-	{"down", "", "", "Delete this instance's clones, stop its services and release its slot."},
+	{"down", "", "", "Delete this instance's clones, remove its services and locally built images, and release its slot."},
+	{"prune", "", "", "Remove instances whose worktree paths are missing and release their slots."},
 	{"setup", "OS", "", "Install missing host tools, start services, build the base if missing, then run verify. OS is ubuntu, macos or windows."},
 	{"verify", "OS", "", "Boot a throwaway clone, check the mock, router and internet access, then remove the clone. OS is ubuntu, macos or windows."},
 	{"doctor", "", "[-install] [-yes]", "Check host tools and offer to install missing ones with Homebrew."},
 	{"services", "", "<action>", "Manage the mock, DNS sinkhole and VM router in Docker."},
 	{"services up", "", "", "Start this instance's testbed services and wait for the router and mock."},
-	{"services down", "", "", "Stop and remove this instance's testbed services, keeping its slot and keys."},
+	{"services down", "", "", "Stop and remove this instance's testbed services, including their locally built images, keeping its slot and keys."},
 	{"services status", "", "", "Show this instance's service status, subnet and published ports."},
 	{"mock", "", "<action>", "Inspect the Azure DevOps Server mock."},
 	{"mock ca", "", "", "Print the path to this instance's mock CA certificate."},
@@ -49,10 +50,10 @@ var liveCommands = []commandHelp{
 	{"vm t3 start", "NAME", "[-port P]", "Start T3 Code in the desktop session. Wait up to a minute for its debugging port to answer, then print the URL in the clone."},
 	{"vm stop", "NAME", "[-force]", "Shut down a clone and keep it for later."},
 	{"vm start", "NAME", "", "Boot a stopped clone and print its updated details as JSON."},
-	{"vm down", "NAME", "", "Stop and delete a clone and its router peer."},
-	{"vm list", "", "[-json]", "List this instance's clones and their status."},
-	{"clean", "", "", "Alias for down."},
-	{"status", "", "", "Show shared base VMs and this instance's services and clones."},
+	{"vm down", "NAME", "", "Stop and delete a clone and its router peer. Accepts legacy clone names."},
+	{"vm list", "", "[-json]", "List this instance's clones and shared legacy clones with their status."},
+	{"clean", "", "", "Delete this instance's clones and router peers, leaving its services and slot in place."},
+	{"status", "", "", "Show shared base VMs, this instance's services and clones, and orphaned slots."},
 }
 
 func (h commandHelp) synopsis() string {
@@ -185,7 +186,9 @@ func (c *liveInvocation) validate(operands []string) error {
 				return fmt.Errorf("base update supports ubuntu and macos; rebuild %s with base build %s -force", o.name, o.name)
 			}
 		case "NAME":
-			if _, _, ok := parseCloneName(c.args[0]); !ok {
+			_, _, modern := parseCloneName(c.args[0])
+			_, legacy := legacyCloneOS(c.args[0])
+			if !modern && (c.path != "vm down" || !legacy) {
 				return fmt.Errorf("invalid clone name %q; use tfsaz-live-ID-OS-SUFFIX from vm list", c.args[0])
 			}
 		}

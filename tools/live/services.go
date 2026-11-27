@@ -19,6 +19,13 @@ func (e *env) compose(args ...string) error {
 	return cmd(e.bed, e.network.composeEnv(e.project(), e.instancePath()), "docker", e.composeArgs(args)...)
 }
 
+func (e *env) composeDown() error {
+	if err := e.compose("down", "--remove-orphans", "--rmi", "local"); err != nil {
+		return fmt.Errorf("stop %s: %w; check the Compose output and retry", e.project(), err)
+	}
+	return nil
+}
+
 func (e *env) serviceRunning(service string) (bool, error) {
 	if e.network == nil {
 		return false, nil
@@ -53,7 +60,17 @@ func (e *env) services(action string) error {
 		if err != nil {
 			return err
 		}
-		if err := e.reserveNetwork(networks); err != nil {
+		mockRunning, err := e.serviceRunning("devops-server-mock")
+		if err != nil {
+			return err
+		}
+		routerRunning, err := e.serviceRunning("router")
+		if err != nil {
+			return err
+		}
+		if err := e.reserveNetwork(networks, func(ports bedPorts) error {
+			return probeHostPorts(ports, mockRunning, routerRunning)
+		}); err != nil {
 			return err
 		}
 		if err := e.prepareBed(); err != nil {
@@ -68,8 +85,8 @@ func (e *env) services(action string) error {
 		if e.network == nil {
 			return nil
 		}
-		if err := e.compose("down", "--remove-orphans"); err != nil {
-			return fmt.Errorf("stop %s: %w; check the Compose output and retry", e.project(), err)
+		if err := e.composeDown(); err != nil {
+			return err
 		}
 		networks, err := output(nil, "docker", "network", "ls", "--filter", "label=com.docker.compose.project="+e.project(),
 			"--filter", "label=com.docker.compose.network=bed", "--quiet")
