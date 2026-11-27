@@ -160,13 +160,14 @@ func hasSHA512(path, want string) (bool, error) {
 // app's port on the same number lacks.
 const t3UserAgent = "T3Code"
 
-// t3Name is the product name of a T3 Code release: the app's name on macOS
-// and its executable's on Windows.
+// t3Name is the product name of a T3 Code release, the app's name on macOS
+// and its executable's on Windows: nightlies are built as T3 Code (Nightly),
+// releases with package.json's productName, T3 Code (Beta).
 func t3Name(tag string) string {
 	if strings.Contains(tag, "nightly") {
 		return "T3 Code (Nightly)"
 	}
-	return "T3 Code"
+	return "T3 Code (Beta)"
 }
 
 // vmT3 runs vm t3 install and vm t3 start.
