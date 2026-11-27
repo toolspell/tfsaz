@@ -9,6 +9,9 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -103,6 +106,81 @@ func ciChecks() bool {
 	}
 	steps = append(steps, step{name: "repo checks", run: cmd("go", "test", "-count=1", "-run", repoChecksRun, ".")})
 	return runSteps("ci-checks", steps)
+}
+
+// ciTest is a native test matrix entry: every test with the race detector, or
+// with shard i/n the i-th of n parts of the top-level tests. The parts take the
+// sorted names in turn, so each test runs in exactly one part and the slow Git
+// tests spread out.
+func ciTest(shard string) bool {
+	index, total, err := parseShard(shard)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ci-test:", err)
+		return false
+	}
+	args := []string{"test", "-race", "-count=1"}
+	if total > 1 {
+		// -race here too, so the listing builds the binaries the run reuses.
+		list := exec.Command("go", "test", "-race", "-list", ".", "./...")
+		list.Stderr = os.Stderr
+		out, err := list.Output()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ci-test: listing the tests:", err)
+			return false
+		}
+		names := listedTests(string(out))
+		part := shardTests(names, index, total)
+		fmt.Fprintf(os.Stderr, "ci-test: shard %d/%d runs %d of %d tests\n", index, total, len(part), len(names))
+		if len(part) == 0 {
+			return true
+		}
+		args = append(args, "-run", "^("+strings.Join(part, "|")+")$")
+	}
+	c := exec.Command("go", append(args, "./...")...)
+	c.Stdout, c.Stderr = os.Stdout, os.Stderr
+	if err := c.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "ci-test:", err)
+		return false
+	}
+	return true
+}
+
+func parseShard(shard string) (int, int, error) {
+	i, n, ok := strings.Cut(shard, "/")
+	index, err1 := strconv.Atoi(i)
+	total, err2 := strconv.Atoi(n)
+	if !ok || err1 != nil || err2 != nil || total < 1 || index < 1 || index > total {
+		return 0, 0, fmt.Errorf("shard %q is not i/n with 1 <= i <= n", shard)
+	}
+	return index, total, nil
+}
+
+// go test -list prints the matching tests, examples, fuzz tests and benchmarks
+// of each package, then the package's status line. -run selects all but the
+// benchmarks.
+var listedName = regexp.MustCompile(`^(Test|Example|Fuzz)[\p{L}\p{Nd}_]*$`)
+
+func listedTests(out string) []string {
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		if name := strings.TrimSpace(line); listedName.MatchString(name) && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
+// shardTests picks the index-th of total parts of names, which must be sorted.
+// A name shared by several packages lands in one part and runs in each of them.
+func shardTests(names []string, index, total int) []string {
+	var part []string
+	for i, name := range names {
+		if i%total == index-1 {
+			part = append(part, name)
+		}
+	}
+	return part
 }
 
 // actImage is a community image for the ubuntu-24.04 runner label; multi-arch,

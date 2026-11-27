@@ -110,8 +110,14 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 | --- | --- | --- |
 | Changes | ubuntu-24.04 | `go run ./tools/dev ci-changes`: whether the test matrix must run ([path filter](#path-filter)). |
 | Checks | ubuntu-24.04 | `go run ./tools/dev ci-checks`: the whole-tree checks of `ready` without the tests, plus the [repo checks](#repo-checks). |
-| test | macOS, Windows, Ubuntu | `go test -race -count=1 ./...` with the Go version in `go.mod`, the oldest supported. Skipped when only non-code files changed. |
+| test | macOS, Windows (three runners), Ubuntu | `go run ./tools/dev ci-test`: `go test -race -count=1 ./...` with the Go version in `go.mod`, the oldest supported. Skipped when only non-code files changed. Windows splits the tests into [shards](#test-shards). |
 | Check | ubuntu-24.04 | Roll-up: passes when every job passed, or `test` was skipped because Changes found no code change. Fails on anything else. |
+
+### Test shards
+
+The tests of a package run one after another, and Windows runs the Git-heavy setup and preserve tests about five times slower than Ubuntu: about 157 s for `internal/az`, against 78 s on macOS and 28 s on Ubuntu. Windows therefore runs on three runners, `ci-test -shard 1/3` to `3/3`. Each lists the top-level tests of every package with `go test -race -list`, sorts the names and takes every third one, so each test runs in exactly one shard. A new test needs no entry anywhere.
+
+Three shards keep the Windows runners at about macOS's duration. More would shorten nothing, and a CI run already uses up to seven runners at once against the free plan's 20.
 
 ### Gates and reports
 

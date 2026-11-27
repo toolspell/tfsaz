@@ -72,10 +72,18 @@ jobs:
   test:
     needs: changes
     if: needs.changes.outputs.tests == 'true'
+    name: test (${{ matrix.os }}, ${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        # The tests run one after another, and Windows runs the Git-heavy ones about five times
+        # slower than Ubuntu, so its tests are split across three runners.
+        include:
+          - {os: macos-latest, shard: 1/1}
+          - {os: ubuntu-latest, shard: 1/1}
+          - {os: windows-latest, shard: 1/3}
+          - {os: windows-latest, shard: 2/3}
+          - {os: windows-latest, shard: 3/3}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
@@ -87,7 +95,7 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
-      - run: go test -race -count=1 ./...
+      - run: go run ./tools/dev ci-test -shard ${{ matrix.shard }}
 
   check:
     name: Check
