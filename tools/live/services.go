@@ -39,19 +39,23 @@ func (e *env) serviceRunning(service string) (bool, error) {
 }
 
 func (e *env) servicesStatusJSON(w io.Writer) error {
-	var running []string
+	var running string
 	if e.network != nil {
 		out, err := output(e.network.composeEnv(e.project(), e.instancePath()), "docker", e.composeArgs(
 			[]string{"ps", "--status", "running", "--services"})...)
 		if err != nil {
 			return err
 		}
-		running = strings.Fields(out)
+		running = out
 	}
+	return writeServicesStatus(w, running, e.home)
+}
+
+func writeServicesStatus(w io.Writer, psOutput, home string) error {
 	return json.NewEncoder(w).Encode(struct {
 		Running   []string `json:"running"`
 		StateHome string   `json:"stateHome"`
-	}{running, e.home})
+	}{append([]string{}, strings.Fields(psOutput)...), home})
 }
 
 func (e *env) prepareBed() error {

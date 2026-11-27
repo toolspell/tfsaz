@@ -87,12 +87,12 @@ TFSAZ_LIVE=1 TFSAZ_LIVE_OS=ubuntu go test -count=1 -run TestSmoke ./live-tests/h
 | Variable | Effect |
 | --- | --- |
 | `TFSAZ_LIVE=1` | Enables VM tests. They skip when `CI` or `GITHUB_ACTIONS` is set, even if empty. |
-| `TFSAZ_LIVE_OS` | Comma-separated guests to run. The default is `ubuntu,macos,windows`. |
+| `TFSAZ_LIVE_OS` | Comma-separated guests to run. The default is `ubuntu,macos,windows`. A guest left out is skipped. |
 | `TFSAZ_LIVE_MAX_UBUNTU`, `TFSAZ_LIVE_MAX_MACOS`, `TFSAZ_LIVE_MAX_WINDOWS` | Concurrent clones per guest OS in one test process. Defaults are 2, 2 and 1. macOS cannot exceed 2. |
 | `TFSAZ_LIVE_ARTIFACTS` | Directory for per-test artifacts, relative to the repository root or absolute. Defaults to `artifacts/` under the tool's [state home](#state-outside-the-repository). |
-| `TFSAZ_LIVE_KEEP=1` | Stops and keeps each successful clone for inspection. Cleanup logs its name and the command to remove it. |
+| `TFSAZ_LIVE_KEEP=1` | Stops and keeps every clone, failed ones too, after saving the failure artifacts. Cleanup logs its name and the command to remove it. |
 
-Use `go test -v` to see artifact paths and retained clone names on success. Cleanup stops CDP forwards, attempts to save a screenshot and request journal on failure, and deletes each clone by default. Use Go's `-timeout` to give longer runs and their cleanup time to finish.
+Use `go test -v` to see artifact paths and retained clone names on success. Cleanup stops CDP forwards, attempts to save a screenshot and request journal on failure, and deletes each clone by default. Use Go's `-timeout` to give longer runs and their cleanup time to finish. Ctrl-C or SIGTERM stops the running `live` commands and runs the cleanups, but a run killed harder (SIGKILL, or Go's `-timeout` panic) can leave clones and `vm forward` processes behind. Remove them with `go run ./tools/live clean`. A passing test removes its empty artifact directory.
 
 ## For agents
 

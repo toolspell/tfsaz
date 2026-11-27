@@ -27,8 +27,8 @@ func TestTool(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build fake live: %v: %s", err, out)
 	}
-	s := &suite{tool: tool{root: dir, binary: bin}}
-	h := &Harness{suite: s, ArtifactDir: dir}
+	s := &suite{tool: tool{root: dir, binary: bin}, ctx: t.Context()}
+	h := &Harness{suite: s, ctx: t.Context(), ArtifactDir: dir}
 	vm := &VM{Name: "tfsaz-ubuntu-test", harness: h}
 
 	t.Run("artifact directory uses tool state home", func(t *testing.T) {

@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -18,6 +20,7 @@ import (
 type suite struct {
 	config
 	tool
+	ctx   context.Context
 	slots map[string]semaphore
 }
 
@@ -27,8 +30,14 @@ var setupErr error
 // RunTests is called by TestMain to build live once for the test process.
 func RunTests(m *testing.M) int {
 	if skipReason(os.LookupEnv) == "" {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		go func() {
+			<-ctx.Done()
+			stop()
+		}()
 		var dir string
-		active, dir, setupErr = prepareSuite()
+		active, dir, setupErr = prepareSuite(ctx)
 		if dir != "" {
 			defer func() { _ = os.RemoveAll(dir) }()
 		}
@@ -36,11 +45,11 @@ func RunTests(m *testing.M) int {
 	return m.Run()
 }
 
-func prepareSuite() (*suite, string, error) {
+func prepareSuite(ctx context.Context) (*suite, string, error) {
 	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
 		return nil, "", fmt.Errorf("live VMs require an Apple Silicon Mac (this is %s/%s)", runtime.GOOS, runtime.GOARCH)
 	}
-	gitCtx, cancelGit := context.WithTimeout(context.Background(), 15*time.Second)
+	gitCtx, cancelGit := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelGit()
 	out, err := exec.CommandContext(gitCtx, "git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
@@ -56,13 +65,13 @@ func prepareSuite() (*suite, string, error) {
 		return nil, "", err
 	}
 	l := tool{root: root, binary: filepath.Join(dir, "live")}
-	buildCtx, cancelBuild := context.WithTimeout(context.Background(), 3*time.Minute)
+	buildCtx, cancelBuild := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancelBuild()
 	build := tool{root: root, binary: "go"}.command(buildCtx, "build", "-o", l.binary, "./tools/live")
 	if out, err := build.CombinedOutput(); err != nil {
 		return nil, dir, fmt.Errorf("build tools/live: %w: %s", err, out)
 	}
-	s := &suite{config: cfg, tool: l, slots: make(map[string]semaphore)}
+	s := &suite{config: cfg, tool: l, ctx: ctx, slots: make(map[string]semaphore)}
 	for _, osName := range cfg.platforms {
 		s.slots[osName] = make(semaphore, cfg.limits[osName])
 	}
@@ -90,6 +99,7 @@ func Platforms(t *testing.T) []string {
 
 type Harness struct {
 	suite       *suite
+	ctx         context.Context
 	ArtifactDir string
 }
 
@@ -100,11 +110,17 @@ func Start(t *testing.T) *Harness {
 
 func (s *suite) start(t *testing.T) *Harness {
 	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	stop := context.AfterFunc(s.ctx, cancel)
+	t.Cleanup(func() {
+		stop()
+		cancel()
+	})
 	var status struct {
 		Running   []string `json:"running"`
 		StateHome string   `json:"stateHome"`
 	}
-	if err := s.json(t.Context(), 30*time.Second, &status, "services", "status", "-json"); err != nil {
+	if err := s.json(ctx, 30*time.Second, &status, "services", "status", "-json"); err != nil {
 		t.Fatalf("check live services: %v\nStart them with go run ./tools/live services up", err)
 	}
 	for _, name := range []string{"devops-server-mock", "dns", "router"} {
@@ -124,7 +140,12 @@ func (s *suite) start(t *testing.T) *Harness {
 		t.Fatal(err)
 	}
 	t.Logf("live artifacts: %s", dir)
-	return &Harness{suite: s, ArtifactDir: dir}
+	t.Cleanup(func() {
+		if !t.Failed() {
+			_ = os.Remove(dir)
+		}
+	})
+	return &Harness{suite: s, ctx: ctx, ArtifactDir: dir}
 }
 
 func artifactDir(root, testName string) (string, error) {
@@ -152,9 +173,7 @@ func (h *Harness) Clone(t *testing.T, osName string) *VM {
 		}
 		t.Skipf("%s is excluded by %s", osName, osEnv)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
-	defer cancel()
-	if err := slot.acquire(ctx); err != nil {
+	if err := slot.acquire(h.ctx); err != nil {
 		t.Fatalf("wait for %s clone slot: %v", osName, err)
 	}
 	t.Cleanup(slot.release)
@@ -168,7 +187,7 @@ func (h *Harness) Clone(t *testing.T, osName string) *VM {
 	t.Logf("live clone: %s", name)
 
 	vm := &VM{harness: h}
-	err := s.json(t.Context(), 8*time.Minute, vm, "vm", "up", osName, "-name", suffix)
+	err := s.json(h.ctx, 8*time.Minute, vm, "vm", "up", osName, "-name", suffix)
 	if err != nil {
 		t.Fatal(err)
 	}

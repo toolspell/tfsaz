@@ -1064,3 +1064,20 @@ func TestDownload(t *testing.T) {
 }
 
 func freeHostPorts(bedPorts) error { return nil }
+
+func TestServicesStatusJSON(t *testing.T) {
+	for _, tc := range []struct{ name, ps, want string }{
+		{"none running", "", `{"running":[],"stateHome":"/state"}`},
+		{"some running", "dns\nrouter\n", `{"running":["dns","router"],"stateHome":"/state"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := writeServicesStatus(&buf, tc.ps, "/state"); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.TrimSpace(buf.String()); got != tc.want {
+				t.Fatalf("got %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
