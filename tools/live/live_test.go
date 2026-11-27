@@ -420,9 +420,15 @@ func TestDownload(t *testing.T) {
 			for range tc.runs {
 				go func() { errs <- download(path, tc.url, tc.want) }()
 			}
+			deadline := time.After(30 * time.Second)
 			for range tc.runs {
-				if err := <-errs; (err == nil) != tc.ok {
-					t.Errorf("download: %v, want success %v", err, tc.ok)
+				select {
+				case err := <-errs:
+					if (err == nil) != tc.ok {
+						t.Errorf("download: %v, want success %v", err, tc.ok)
+					}
+				case <-deadline:
+					t.Fatal("download did not finish within 30 s")
 				}
 			}
 			entries, err := os.ReadDir(dir)
