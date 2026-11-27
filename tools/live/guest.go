@@ -96,7 +96,7 @@ var macosGuest = guest{
 	gui:       `sudo launchctl asuser "$(id -u)" sudo -u "$(id -un)" sh -c %s`,
 	tempDir:   "/tmp/",
 	t3Install: "ditto -x -k %[1]s /Applications && rm -f %[1]s",
-	t3Start:   "open -a '%[1]s' --args --remote-debugging-port=%[2]d",
+	t3Start:   "open -a '/Applications/%[1]s.app' --args --remote-debugging-port=%[2]d",
 	update:    "eval \"$(/opt/homebrew/bin/brew shellenv)\" && brew update && brew upgrade",
 	poweroff:  "sudo shutdown -h now",
 }
