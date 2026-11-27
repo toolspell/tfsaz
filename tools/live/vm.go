@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -81,13 +80,17 @@ func (e *env) vm(args []string) error {
 			command = args[3:]
 		}
 		return info.login().attach(command)
-	case "down", "stop", "start":
+	case "stop":
+		force := flags.Bool("force", false, "stop without a shutdown; can lose unwritten changes")
+		if len(args) < 2 || flags.Parse(args[2:]) != nil || flags.NArg() != 0 {
+			return errUsage
+		}
+		return e.vmStop(args[1], *force)
+	case "down", "start":
 		if len(args) != 2 {
 			return errUsage
 		}
 		switch args[0] {
-		case "stop":
-			return e.vmStop(args[1])
 		case "start":
 			return e.vmStart(args[1])
 		}
@@ -201,18 +204,6 @@ func (e *env) joinRouter(name string, login sshTarget) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	peers, err := e.peers()
-	if err != nil {
-		return "", err
-	}
-	used := make(map[netip.Addr]bool)
-	for _, a := range peers {
-		used[a] = true
-	}
-	address, err := freeAddress(used)
-	if err != nil {
-		return "", err
-	}
 	// The router is published on the host, which is the clone's gateway.
 	gateway, err := login.run(nil, "ip -4 route show default | awk '{print $3; exit}'")
 	if err != nil || gateway == "" {
@@ -222,8 +213,8 @@ func (e *env) joinRouter(name string, login sshTarget) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	step("joining %s to the router as %s", name, address)
-	if err := e.addPeer(name, public, address); err != nil {
+	address, err := e.registerPeer(name, public)
+	if err != nil {
 		return "", err
 	}
 	config := strings.NewReader(wgConfig(address, routerKey, gateway))
@@ -248,17 +239,20 @@ func reachesMock(login sshTarget) error {
 
 // vmStop shuts a clone down but keeps it, its key and its router peer, for
 // a clone that its case may still need.
-func (e *env) vmStop(name string) error {
+func (e *env) vmStop(name string, force bool) error {
 	info, err := e.loadVM(name)
 	if err != nil {
 		return err
 	}
 	step("stopping %s", name)
+	t := e.tart()
+	if force {
+		return t.stop(name)
+	}
 	// tart stop ends a Linux guest without a shutdown after its timeout, and
 	// writes still in the guest's cache are lost; shut down from inside.
-	t := e.tart()
 	if _, err := info.login().run(nil, "sudo systemctl poweroff"); err != nil && !strings.Contains(err.Error(), "closed by remote host") {
-		return t.stop(name)
+		return fmt.Errorf("%w; %s keeps running. vm stop %s -force stops it without a shutdown and can lose its unwritten changes", err, name, name)
 	}
 	return t.waitStopped(name, 2*time.Minute)
 }
@@ -281,18 +275,20 @@ func (e *env) vmStart(name string) error {
 	if info.IP, err = t.ip(name, 3*time.Minute); err != nil {
 		return err
 	}
-	login := info.login()
-	if err := login.wait(3 * time.Minute); err != nil {
-		return err
-	}
-	if err := reachesMock(login); err != nil {
-		return err
-	}
+	// Save the new address first, so vm stop and vm ssh use it even if a
+	// check below fails.
 	data, err := json.MarshalIndent(info, "", "  ")
 	if err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(e.runDir(name), "vm.json"), data, 0o600); err != nil {
+		return err
+	}
+	login := info.login()
+	if err := login.wait(3 * time.Minute); err != nil {
+		return err
+	}
+	if err := reachesMock(login); err != nil {
 		return err
 	}
 	fmt.Println(string(data))

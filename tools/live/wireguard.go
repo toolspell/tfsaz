@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -82,8 +84,33 @@ func (e *env) routerKey() (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-func (e *env) addPeer(name, key string, address netip.Addr) error {
-	return e.compose("exec", "-T", "router", "peer", "add", name, key, address.String())
+// registerPeer adds the VM to the router at the first free address. The
+// router refuses an address another peer took meanwhile; then the next one
+// is tried.
+func (e *env) registerPeer(name, key string) (netip.Addr, error) {
+	for range 5 {
+		peers, err := e.peers()
+		if err != nil {
+			return netip.Addr{}, err
+		}
+		used := make(map[netip.Addr]bool)
+		for peer, a := range peers {
+			if peer != name {
+				used[a] = true
+			}
+		}
+		address, err := freeAddress(used)
+		if err != nil {
+			return address, err
+		}
+		step("joining %s to the router as %s", name, address)
+		err = e.compose("exec", "-T", "router", "peer", "add", name, key, address.String())
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 3 {
+			return address, err
+		}
+	}
+	return netip.Addr{}, fmt.Errorf("no free router address for %s after 5 tries", name)
 }
 
 // removePeer drops a peer. With the router down, deleting its file is

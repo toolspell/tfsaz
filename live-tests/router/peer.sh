@@ -1,6 +1,6 @@
 #!/bin/sh
 # Manage VM peers of the router:
-#   peer add NAME PUBLIC_KEY ADDRESS
+#   peer add NAME PUBLIC_KEY ADDRESS  (exit 3: another peer has ADDRESS)
 #   peer remove NAME
 #   peer load        (re-apply every saved peer, used on start)
 #   peer list
@@ -21,6 +21,16 @@ apply() {
 case "${1:-}" in
 add)
 	[ $# -eq 4 ] || { echo "usage: peer add NAME PUBLIC_KEY ADDRESS" >&2; exit 2; }
+	# One add at a time, so two VMs never get the same address.
+	exec 9>"$dir/.lock"
+	flock 9
+	for file in "$dir"/*; do
+		[ -f "$file" ] && [ "$(basename "$file")" != "$2" ] || continue
+		if read -r _ other <"$file" && [ "$other" = "$4" ]; then
+			echo "peer: $4 is in use by $(basename "$file")" >&2
+			exit 3
+		fi
+	done
 	apply "$3" "$4"
 	# A record appears only complete; a failed write leaves none.
 	if ! { printf '%s %s\n' "$3" "$4" >"$dir/.$2" && mv "$dir/.$2" "$dir/$2"; }; then

@@ -92,7 +92,7 @@ All three refuse while clones of the base exist. The base has one user, `tester`
 
 ## Clones
 
-`vm up ubuntu` clones the base (an APFS copy, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in under 10 seconds. It prints `vm.json`: name, NAT address, address in the test bed, SSH key. `vm stop NAME` shuts a clone down and keeps it with its key and router peer; `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
+`vm up ubuntu` clones the base (an APFS copy, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in under 10 seconds. It prints `vm.json`: name, NAT address, address in the test bed, SSH key. `vm stop NAME` shuts a clone down from inside and keeps it with its key and router peer; when it cannot reach the clone it leaves it running, and `-force` stops it without a shutdown, which can lose unwritten changes. `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
 
 ## Network
 
