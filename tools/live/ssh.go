@@ -69,7 +69,8 @@ func (t sshTarget) runSensitive(ctx context.Context, command, label string) erro
 }
 
 // runRemote runs remote as the login shell's command line, unchanged;
-// label names it in errors.
+// label and the guest's stderr appear in errors, so a command that carries
+// a secret goes through runSensitive instead.
 func (t sshTarget) runRemote(ctx context.Context, stdin io.Reader, remote, label string) (string, error) {
 	c := exec.CommandContext(ctx, "ssh", t.args(remote)...)
 	c.Stdin = stdin
