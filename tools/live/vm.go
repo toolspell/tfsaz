@@ -99,6 +99,16 @@ func (e *env) vm(args []string) error {
 			command = args[3:]
 		}
 		return info.login().attach(command)
+	case "run":
+		return e.vmRun(args[1:])
+	case "push", "pull":
+		return e.vmCopy(args[1:], args[0] == "push")
+	case "forward":
+		return e.vmForward(args[1:])
+	case "screenshot":
+		return e.vmScreenshot(args[1:])
+	case "vnc":
+		return e.vmVNC(args[1:])
 	case "stop":
 		force := flags.Bool("force", false, "stop without a shutdown; can lose unwritten changes")
 		if len(args) < 2 || flags.Parse(args[2:]) != nil || flags.NArg() != 0 {

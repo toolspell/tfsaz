@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -135,7 +138,11 @@ func (q qemu) start(name, logFile string) error {
 		"-drive", "if=pflash,format=raw,file="+filepath.Join(dir, "efivars.fd"),
 		"-drive", "if=none,id=disk,format=qcow2,discard=unmap,file="+filepath.Join(dir, "disk.qcow2"),
 		"-device", "nvme,drive=disk,serial=disk0",
-		"-device", "qemu-xhci", "-device", "usb-kbd", "-device", "usb-tablet", "-device", "ramfb",
+		"-device", "qemu-xhci", "-device", "usb-kbd", "-device", "usb-tablet",
+		"-device", "ramfb",
+		// QEMU's own VNC server, for agents and people; its password comes
+		// over QMP once QEMU runs.
+		"-vnc", "127.0.0.1:0,to=99,password=on",
 		"-device", "virtio-net-pci,netdev=net0",
 		// Without IPv6 the NAT offers no second DNS server past the router.
 		"-netdev", fmt.Sprintf("user,id=net0,ipv6=off,hostfwd=tcp:127.0.0.1:%d-:22", port),
@@ -157,10 +164,44 @@ func (q qemu) start(name, logFile string) error {
 		case <-time.After(200 * time.Millisecond):
 		}
 		if q.pid(name) != 0 {
-			return nil
+			return q.setVNC(name)
 		}
 	}
 	return fmt.Errorf("qemu-system-aarch64 did not start %s within 10s; see %s", name, logFile)
+}
+
+// setVNC gives QEMU's VNC server a new password and saves its address for
+// vm vnc. VNC passwords have at most 8 characters.
+func (q qemu) setVNC(name string) error {
+	s, err := dialQMP(filepath.Join(q.dir(name), "qmp.sock"))
+	if err != nil {
+		return err
+	}
+	defer s.close()
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	password := hex.EncodeToString(b)
+	if _, err := s.execute("set_password", map[string]string{"protocol": "vnc", "password": password}); err != nil {
+		return err
+	}
+	data, err := s.execute("query-vnc", nil)
+	if err != nil {
+		return err
+	}
+	var vnc struct{ Host, Service string }
+	if err := json.Unmarshal(data, &vnc); err != nil {
+		return err
+	}
+	address := "vnc://:" + password + "@" + net.JoinHostPort(vnc.Host, vnc.Service)
+	return os.WriteFile(filepath.Join(q.dir(name), "vnc"), []byte(address+"\n"), 0o600)
+}
+
+func (q qemu) vnc(name, _ string) (string, error) {
+	if q.pid(name) == 0 {
+		return "", fmt.Errorf("%s does not run", name)
+	}
+	data, err := os.ReadFile(filepath.Join(q.dir(name), "vnc"))
+	return strings.TrimSpace(string(data)), err
 }
 
 func (q qemu) address(name string, _ time.Duration) (string, int, error) {
@@ -202,6 +243,10 @@ func (q qemu) remove(name string) error {
 		return err
 	}
 	return os.RemoveAll(q.dir(name))
+}
+
+func (q qemu) screenshot(name, _, file string) error {
+	return qmpScreendump(filepath.Join(q.dir(name), "qmp.sock"), file)
 }
 
 func (q qemu) rename(from, to string) error {

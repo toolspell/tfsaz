@@ -24,14 +24,20 @@ type sshTarget struct {
 	powershell                  bool // the tool's commands are PowerShell 7, not sh
 }
 
-func (t sshTarget) args(command ...string) []string {
-	args := []string{
+// options are the ssh and scp options of the login, without the port,
+// which the two take with different flags.
+func (t sshTarget) options() []string {
+	return []string{
 		"-i", t.key, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
 		"-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=" + t.knownHosts,
 		"-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR",
 		// A guest that restarts or shuts down may never close the session.
 		"-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3",
 	}
+}
+
+func (t sshTarget) args(command ...string) []string {
+	args := t.options()
 	if t.port != 0 {
 		args = append(args, "-p", strconv.Itoa(t.port))
 	}
@@ -103,16 +109,24 @@ func newSSHKey(path, comment string) error {
 	return err
 }
 
-// encodePowerShell wraps a PowerShell script so that no shell on the way
-// changes its quotes: Windows' OpenSSH hands the command line to its default
-// shell, which splits and strips double quotes. Without -OutputFormat Text,
-// an encoded command writes its errors as CLIXML.
+// encodePowerShell wraps one of the tool's PowerShell scripts so that no
+// shell on the way changes its quotes: Windows' OpenSSH hands the command
+// line to its default shell, which splits and strips double quotes. The
+// tool's scripts stop at the first error.
 func encodePowerShell(script string) string {
-	script = "$ProgressPreference = 'SilentlyContinue'; $ErrorActionPreference = 'Stop'\n" + script
+	return encodeUserPowerShell("$ErrorActionPreference = 'Stop'\n" + script)
+}
+
+// encodeUserPowerShell wraps a script of vm run with PowerShell's default
+// error handling. Without -OutputFormat Text, an encoded command writes its
+// errors as CLIXML. The SSH shell, itself PowerShell 7, reports only
+// success or failure of a command unless told to pass on its exit code.
+func encodeUserPowerShell(script string) string {
+	script = "$ProgressPreference = 'SilentlyContinue'\n" + script
 	units := utf16.Encode([]rune(script))
 	raw := make([]byte, 2*len(units))
 	for i, u := range units {
 		binary.LittleEndian.PutUint16(raw[2*i:], u)
 	}
-	return "pwsh -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand " + base64.StdEncoding.EncodeToString(raw)
+	return "pwsh -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand " + base64.StdEncoding.EncodeToString(raw) + "; exit $LASTEXITCODE"
 }

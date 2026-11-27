@@ -24,7 +24,16 @@ type provider interface {
 	stop(name string) error // without a shutdown
 	remove(name string) error
 	rename(from, to string) error
+	// screenshot saves a PNG of the screen from the host, so it needs no
+	// permission in the guest; logFile is the log of the VM's start.
+	screenshot(name, logFile, file string) error
+	// vnc returns the vnc:// address with password of the VM's screen.
+	vnc(name, logFile string) (string, error)
 }
+
+// display is the screen size of every clone, so apps have room and
+// screenshots show them as on a usual monitor.
+const displayWidth, displayHeight = 1920, 1080
 
 // vms adds what every provider needs on top of the interface.
 type vms struct{ provider }

@@ -4,13 +4,21 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
+	"image"
+	"image/color"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf16"
 )
 
@@ -160,7 +168,8 @@ func TestMockRequestsVMFilter(t *testing.T) {
 func TestEncodePowerShell(t *testing.T) {
 	command := encodePowerShell(`Write-Output "ä 'b'"`)
 	b64, ok := strings.CutPrefix(command, "pwsh -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand ")
-	if !ok {
+	b64, exit := strings.CutSuffix(b64, "; exit $LASTEXITCODE")
+	if !ok || !exit {
 		t.Fatalf("command = %q", command)
 	}
 	raw, err := base64.StdEncoding.DecodeString(b64)
@@ -173,5 +182,154 @@ func TestEncodePowerShell(t *testing.T) {
 	}
 	if got := string(utf16.Decode(units)); !strings.HasSuffix(got, "\nWrite-Output \"ä 'b'\"") {
 		t.Errorf("script = %q", got)
+	}
+}
+
+func TestVNCFrame(t *testing.T) {
+	// A real socket: net.Pipe's unbuffered writes would deadlock the
+	// handshake, where both sides write before they read.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = l.Close() }()
+	done := make(chan error, 1)
+	go func() {
+		server, err := l.Accept()
+		if err != nil {
+			done <- err
+			return
+		}
+		defer func() { _ = server.Close() }()
+		_ = server.SetDeadline(time.Now().Add(10 * time.Second))
+		done <- fakeVNCServer(server)
+	}()
+	client, err := net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	_ = client.SetDeadline(time.Now().Add(10 * time.Second))
+	img, err := vncFrame(client, client, "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got := img.Bounds().Size(); got != image.Pt(2, 1) {
+		t.Fatalf("size = %v, want the size the server announced after its placeholder", got)
+	}
+	for x, want := range []color.RGBA{{3, 2, 1, 255}, {6, 5, 4, 255}} {
+		if got := img.RGBAAt(x, 0); got != want {
+			t.Errorf("pixel %d = %v, want %v", x, got, want)
+		}
+	}
+}
+
+// fakeVNCServer speaks the server side of RFB 3.8 with VNC authentication.
+// It answers the first request with a new size only, as Apple's server
+// does, and the second with raw pixels.
+func fakeVNCServer(conn net.Conn) error {
+	read := func(n int) ([]byte, error) {
+		b := make([]byte, n)
+		_, err := io.ReadFull(conn, b)
+		return b, err
+	}
+	challenge := []byte("0123456789abcdef")
+	desktopSize := encodingDesktopSize
+	if _, err := conn.Write(append([]byte("RFB 003.008\n"), 1, 2)); err != nil {
+		return err
+	}
+	if _, err := read(12 + 1); err != nil {
+		return err
+	}
+	if _, err := conn.Write(challenge); err != nil {
+		return err
+	}
+	response, err := read(16)
+	if err != nil {
+		return err
+	}
+	if want, _ := vncAuth("secret", challenge); !bytes.Equal(response, want) {
+		return fmt.Errorf("wrong VNC response")
+	}
+	// SecurityResult OK, then ServerInit: a 1280x720 placeholder, a pixel
+	// format the client replaces, and an empty name.
+	init := []byte{0, 0, 0, 0, 0x05, 0x00, 0x02, 0xd0}
+	init = append(init, make([]byte, 16)...)
+	init = append(init, 0, 0, 0, 0)
+	if _, err := conn.Write(init); err != nil {
+		return err
+	}
+	if _, err := read(1 + 20 + 4); err != nil {
+		return err
+	}
+	encodings, err := read(4 * 4)
+	if err != nil {
+		return err
+	}
+	if !bytes.Contains(encodings, binary.BigEndian.AppendUint32(nil, uint32(desktopSize))) {
+		return fmt.Errorf("the client offers no desktop-size encoding, which stops Apple's VNC server")
+	}
+	if _, err := read(10); err != nil {
+		return err
+	}
+	resize := []byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 1}
+	resize = binary.BigEndian.AppendUint32(resize, uint32(desktopSize))
+	if _, err := conn.Write(resize); err != nil {
+		return err
+	}
+	if _, err := read(10); err != nil {
+		return err
+	}
+	pixels := []byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 0, 1, 2, 3, 0, 4, 5, 6, 0}
+	_, err = conn.Write(pixels)
+	return err
+}
+
+func TestTartVNC(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "tart.log")
+	content := "VNC server is running at vnc://:old@127.0.0.1:5000\nguest has stopped the virtual machine\n" +
+		"VNC server is running at vnc://:new-pw@127.0.0.1:5001\n"
+	if err := os.WriteFile(log, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	address, password, err := tartVNC(log)
+	if err != nil || address != "127.0.0.1:5001" || password != "new-pw" {
+		t.Fatalf("tartVNC = %q, %q, %v; want the last start's address", address, password, err)
+	}
+}
+
+func TestSplitCommand(t *testing.T) {
+	for _, tc := range []struct {
+		args    []string
+		name    string
+		flags   []string
+		command []string
+		ok      bool
+	}{
+		{[]string{"vm1", "--", "echo", "hi"}, "vm1", []string{}, []string{"echo", "hi"}, true},
+		{[]string{"vm1", "-json", "-gui", "--", "id"}, "vm1", []string{"-json", "-gui"}, []string{"id"}, true},
+		{[]string{"vm1", "echo"}, "", nil, nil, false},
+		{[]string{"vm1", "--"}, "", nil, nil, false},
+		{[]string{"--", "echo"}, "", nil, nil, false},
+	} {
+		name, flags, command, ok := splitCommand(tc.args)
+		if name != tc.name || ok != tc.ok || !slices.Equal(flags, tc.flags) || !slices.Equal(command, tc.command) {
+			t.Errorf("splitCommand(%q) = %q, %q, %q, %v", tc.args, name, flags, command, ok)
+		}
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh unavailable")
+	}
+	for _, s := range []string{`plain`, `it's`, `"double" and 'single'`, `$HOME; rm -rf /`} {
+		out, err := exec.Command("sh", "-c", "printf %s "+shellQuote(s)).Output()
+		if err != nil || string(out) != s {
+			t.Errorf("sh got %q, %v; want %q", out, err, s)
+		}
 	}
 }

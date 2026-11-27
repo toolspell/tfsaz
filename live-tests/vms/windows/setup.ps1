@@ -8,13 +8,15 @@ Start-Transcript -Path C:\Windows\Temp\tfsaz-setup.log
 
 # Windows has no inbox driver for QEMU's virtio network card; the virtio-win
 # ISO on another drive has it.
-$inf = Get-PSDrive -PSProvider FileSystem |
-    ForEach-Object { Join-Path $_.Root 'NetKVM\w11\ARM64\netkvm.inf' } |
-    Where-Object { Test-Path $_ } |
-    Select-Object -First 1
-if (-not $inf) { throw 'no drive has NetKVM\w11\ARM64\netkvm.inf' }
-pnputil.exe /add-driver $inf /install
-if ($LASTEXITCODE -notin 0, 3010) { throw "pnputil failed: $LASTEXITCODE" }
+foreach ($driver in 'NetKVM\w11\ARM64\netkvm.inf') {
+    $inf = Get-PSDrive -PSProvider FileSystem |
+        ForEach-Object { Join-Path $_.Root $driver } |
+        Where-Object { Test-Path $_ } |
+        Select-Object -First 1
+    if (-not $inf) { throw "no drive has $driver" }
+    pnputil.exe /add-driver $inf /install
+    if ($LASTEXITCODE -notin 0, 3010) { throw "pnputil failed for ${driver}: $LASTEXITCODE" }
+}
 
 # OpenSSH Server comes from Windows Update, so retry until the network is up.
 $name = (Get-WindowsCapability -Online -Name 'OpenSSH.Server*').Name
