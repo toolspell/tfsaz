@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -397,10 +398,11 @@ func TestDownload(t *testing.T) {
 	if err := os.WriteFile(src, []byte("installer"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	url := "file://" + filepath.ToSlash(src)
-	if !strings.HasPrefix(url, "file:///") {
-		url = "file:///" + filepath.ToSlash(src)
+	srcPath := filepath.ToSlash(src)
+	if !strings.HasPrefix(srcPath, "/") {
+		srcPath = "/" + srcPath
 	}
+	url := (&neturl.URL{Scheme: "file", Path: srcPath}).String()
 	sum := sha512.Sum512([]byte("installer"))
 	good := base64.StdEncoding.EncodeToString(sum[:])
 	for _, tc := range []struct {
