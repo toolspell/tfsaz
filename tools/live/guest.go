@@ -52,9 +52,10 @@ var ubuntuGuest = guest{
 	// gnome-shell runs before its compositor accepts clients; connect to
 	// its Wayland socket to see that it does.
 	session: "pgrep -u \"$USER\" -x gnome-shell >/dev/null && python3 -c 'import os, socket; socket.socket(socket.AF_UNIX).connect(\"/run/user/%d/wayland-0\" % os.getuid())'",
-	// SSH and the desktop share the user's D-Bus and runtime directory; only
-	// the display is missing.
-	gui:      "WAYLAND_DISPLAY=wayland-0 DISPLAY=:0 XDG_SESSION_TYPE=wayland sh -c %s",
+	// GNOME hands its session's environment to the user's systemd manager.
+	// An SSH session lacks the display, the desktop's name and the snap
+	// directory in XDG_DATA_DIRS, without which links open in no browser.
+	gui:      `bash -c 'set -a; eval "$(systemctl --user show-environment)"; set +a; exec sh -c "$1"' tfsaz %s`,
 	reaches:  "timeout 5 bash -c '</dev/tcp/devops.mock.test/8080'",
 	tunneled: "ip route get 1.1.1.1 | grep -q ' dev wg0 '",
 	update:   "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update && apt-get -y -o DPkg::Lock::Timeout=600 full-upgrade && apt-get -y autoremove'",
