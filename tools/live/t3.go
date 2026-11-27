@@ -233,7 +233,11 @@ func (e *env) vmT3Start(name string, port int) error {
 	}
 	login := info.login()
 	step("starting T3 Code in %s", name)
-	if _, err := login.runRemote(context.Background(), nil, remote, "vm t3 start"); err != nil {
+	// Windows enforces the -gui timeout in the guest; the host only catches
+	// a guest that stops answering.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute+30*time.Second)
+	defer cancel()
+	if _, err := login.runRemote(ctx, nil, remote, "vm t3 start"); err != nil {
 		return err
 	}
 	url := fmt.Sprintf("http://127.0.0.1:%d", port)
