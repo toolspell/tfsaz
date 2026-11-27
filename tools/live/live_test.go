@@ -2,6 +2,8 @@ package main
 
 import (
 	"net/netip"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -73,5 +75,25 @@ func TestWGConfig(t *testing.T) {
 		if !strings.Contains(config, want) {
 			t.Errorf("config misses %q:\n%s", want, config)
 		}
+	}
+}
+
+func TestPeersSkipsStagingFiles(t *testing.T) {
+	e := &env{home: t.TempDir()}
+	dir := e.path("router", "peers")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, record := range map[string]string{
+		"tfsaz-ubuntu-a":  "KEY 172.30.53.129\n",
+		".tfsaz-ubuntu-b": "KEY 172.30.53.130\n", // peer.sh renames it into place
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(record), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	peers, err := e.peers()
+	if err != nil || len(peers) != 1 || peers["tfsaz-ubuntu-a"].String() != "172.30.53.129" {
+		t.Fatalf("peers = %v, %v; want only tfsaz-ubuntu-a", peers, err)
 	}
 }

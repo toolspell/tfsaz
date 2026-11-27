@@ -27,6 +27,8 @@ go run ./tools/live verify ubuntu     # boot a throwaway clone and check the bed
 go run ./tools/live vm up ubuntu      # clone, boot and connect a VM; prints its details as JSON
 go run ./tools/live vm ssh NAME -- uname -a
 go run ./tools/live vm list -json
+go run ./tools/live vm stop NAME      # shut it down, keep it for later
+go run ./tools/live vm start NAME     # boot it again; prints its details as JSON
 go run ./tools/live vm down NAME
 go run ./tools/live clean             # delete every clone
 go run ./tools/live status
@@ -43,7 +45,8 @@ go run ./tools/live status
 - When a base command refuses because clones exist, remove the clones; do not work around it. Leave the base VM and `~/.tfsaz-live/cache` in place between tasks.
 - Never commit anything from `live-tests/.state` or copy keys into the repository.
 - Ask the maintainer before the `sudo` step `doctor` advises.
-- Delete a clone with `vm down NAME` as soon as its case is done and you will not need it again, not only at the end. Nothing keeps running when nothing needs it: run `clean` and `services down` before you hand back; the base VM stays stopped.
+- Keep a clone while its case or PR may still need it, for example for review fixes or a rerun. Stop it with `vm stop NAME` while you do not use it and start it again with `vm start NAME`. Delete it with `vm down NAME` only once you are sure nothing needs it any more.
+- Nothing runs when nothing needs it: before you hand back, stop the clones you keep, delete the others, and run `services down`. The base VM stays stopped.
 - Record dated live results in [`docs/verification/`](../verification/).
 - Prefer the tools already in use (Tart, Packer, `curl`, `wg`, cloud-init, CoreDNS) over new code.
 
@@ -89,7 +92,7 @@ All three refuse while clones of the base exist. The base has one user, `tester`
 
 ## Clones
 
-`vm up ubuntu` clones the base (an APFS copy, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in under 10 seconds. It prints `vm.json`: name, NAT address, address in the test bed, SSH key. `vm down NAME` and `clean` stop and delete clones and remove their router peers.
+`vm up ubuntu` clones the base (an APFS copy, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in under 10 seconds. It prints `vm.json`: name, NAT address, address in the test bed, SSH key. `vm stop NAME` shuts a clone down and keeps it with its key and router peer; `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
 
 ## Network
 

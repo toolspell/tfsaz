@@ -52,7 +52,14 @@ func (e *env) peers() (map[string]netip.Addr, error) {
 	}
 	peers := make(map[string]netip.Addr)
 	for _, entry := range entries {
+		// peer.sh stages a record as .NAME and renames it into place.
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
 		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if os.IsNotExist(err) {
+			continue // removed since the listing
+		}
 		if err != nil {
 			return nil, err
 		}

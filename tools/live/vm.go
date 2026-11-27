@@ -81,9 +81,15 @@ func (e *env) vm(args []string) error {
 			command = args[3:]
 		}
 		return info.login().attach(command)
-	case "down":
+	case "down", "stop", "start":
 		if len(args) != 2 {
 			return errUsage
+		}
+		switch args[0] {
+		case "stop":
+			return e.vmStop(args[1])
+		case "start":
+			return e.vmStart(args[1])
 		}
 		return e.vmDown(args[1])
 	case "list":
@@ -176,6 +182,10 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 	if info.BedAddress, err = e.joinRouter(name, login); err != nil {
 		return info, err
 	}
+	// Flush the setup to the clone's disk, so a later stop cannot lose it.
+	if _, err := login.run(nil, "sync"); err != nil {
+		return info, err
+	}
 	info.SSH = "go run ./tools/live vm ssh " + name + " -- CMD"
 	data, err := json.MarshalIndent(info, "", "  ")
 	if err != nil {
@@ -220,15 +230,73 @@ func (e *env) joinRouter(name string, login sshTarget) (string, error) {
 	if _, err := login.run(config, "sudo sh -c 'umask 077 && cat >/etc/wireguard/wg0.conf' && sudo systemctl enable --now wg-quick@wg0"); err != nil {
 		return "", err
 	}
+	return address.String(), reachesMock(login)
+}
+
+// reachesMock waits until the clone reaches the mock by name through the router.
+func reachesMock(login sshTarget) error {
 	check := "getent hosts devops.mock.test && timeout 5 bash -c '</dev/tcp/devops.mock.test/8080'"
 	var last error
-	for range 10 {
+	for range 15 {
 		if _, last = login.run(nil, check); last == nil {
-			return address.String(), nil
+			return nil
 		}
 		time.Sleep(time.Second)
 	}
-	return "", fmt.Errorf("the clone does not reach the mock through the router: %w", last)
+	return fmt.Errorf("the clone does not reach the mock through the router: %w", last)
+}
+
+// vmStop shuts a clone down but keeps it, its key and its router peer, for
+// a clone that its case may still need.
+func (e *env) vmStop(name string) error {
+	info, err := e.loadVM(name)
+	if err != nil {
+		return err
+	}
+	step("stopping %s", name)
+	// tart stop ends a Linux guest without a shutdown after its timeout, and
+	// writes still in the guest's cache are lost; shut down from inside.
+	t := e.tart()
+	if _, err := info.login().run(nil, "sudo systemctl poweroff"); err != nil && !strings.Contains(err.Error(), "closed by remote host") {
+		return t.stop(name)
+	}
+	return t.waitStopped(name, 2*time.Minute)
+}
+
+// vmStart boots a stopped clone again. Its NAT address can change; its
+// tunnel comes back on its own.
+func (e *env) vmStart(name string) error {
+	info, err := e.loadVM(name)
+	if err != nil {
+		return err
+	}
+	if err := e.requireRouter(); err != nil {
+		return err
+	}
+	t := e.tart()
+	step("starting %s", name)
+	if err := t.start(name, filepath.Join(e.runDir(name), "tart.log")); err != nil {
+		return err
+	}
+	if info.IP, err = t.ip(name, 3*time.Minute); err != nil {
+		return err
+	}
+	login := info.login()
+	if err := login.wait(3 * time.Minute); err != nil {
+		return err
+	}
+	if err := reachesMock(login); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(info, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(e.runDir(name), "vm.json"), data, 0o600); err != nil {
+		return err
+	}
+	fmt.Println(string(data))
+	return nil
 }
 
 // vmDown removes a clone, its router peer and its run directory; parts

@@ -11,6 +11,7 @@
 //	go run ./tools/live base rm OS                 delete the base VM
 //	go run ./tools/live vm up OS [-name SUFFIX]    clone the base, boot it, join the router; prints JSON
 //	go run ./tools/live vm ssh NAME [-- CMD...]    open a shell or run a command in a clone
+//	go run ./tools/live vm stop|start NAME         shut a clone down and keep it, or boot it again
 //	go run ./tools/live vm down NAME               stop and delete a clone
 //	go run ./tools/live vm list [-json]
 //	go run ./tools/live clean                      delete every clone and its router peer
@@ -37,6 +38,8 @@ const usage = `usage: go run ./tools/live <command>
   base rm OS                      delete the base VM
   vm up OS [-name SUFFIX]         clone the base, boot it, join the router; prints JSON
   vm ssh NAME [-- CMD...]         open a shell or run a command in a clone
+  vm stop NAME                    shut a clone down but keep it for later
+  vm start NAME                   boot a stopped clone again; prints JSON
   vm down NAME                    stop and delete a clone
   vm list [-json]                 list clones
   clean                           delete every clone and its router peer
