@@ -169,7 +169,9 @@ function Write-Streams {
 	}
 }
 [IO.File]::WriteAllText((Join-Path $dir 'user.ps1'), [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('%[2]s')))
-$action = New-ScheduledTaskAction -Execute $pwsh -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -File ""$dir\run.ps1"""
+# A console without a window: -WindowStyle Hidden still flashes one, and
+# Windows Terminal, the default console, keeps it open minimized.
+$action = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless ""$pwsh"" -NoProfile -NonInteractive -File ""$dir\run.ps1"""
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Force | Out-Null
 try {

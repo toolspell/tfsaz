@@ -19,6 +19,16 @@ foreach ($driver in 'NetKVM\w11\ARM64\netkvm.inf', 'viogpudo\w11\ARM64\viogpudo.
     if ($LASTEXITCODE -notin 0, 3010) { throw "pnputil failed for ${driver}: $LASTEXITCODE" }
 }
 
+# Windows keeps ramfb, at 800x600, as its main display beside the GPU, so
+# windows open on a screen nobody sees. Show only the GPU's display; Windows
+# remembers that for this pair of displays.
+for ($try = 1; -not (Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like '*VirtIO*' -and $_.Status -eq 'OK' }); $try++) {
+    if ($try -ge 30) { throw 'the VirtIO GPU did not start' }
+    Start-Sleep -Seconds 2
+}
+Start-Sleep -Seconds 5
+DisplaySwitch.exe /internal
+
 # OpenSSH Server comes from Windows Update, so retry until the network is up.
 $name = (Get-WindowsCapability -Online -Name 'OpenSSH.Server*').Name
 for ($try = 1; (Get-WindowsCapability -Online -Name $name).State -ne 'Installed'; $try++) {
