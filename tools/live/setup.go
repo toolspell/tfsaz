@@ -23,7 +23,7 @@ func (e *env) setup(osName string) error {
 	if err := e.services("up"); err != nil {
 		return err
 	}
-	exists, err := e.tart().exists(o.base())
+	exists, err := e.vms(o).exists(o.base())
 	if err != nil {
 		return err
 	}
@@ -59,10 +59,9 @@ func (e *env) verify(osName string) (err error) {
 	}
 	checks := []struct{ name, command string }{
 		{"the VM resolves devops.mock.test to the mock", o.guest.resolves},
-		{"the mock's REST API answers through the router",
-			fmt.Sprintf(`test "$(curl -s -u :%s -o /dev/null -w '%%{http_code}' 'http://devops.mock.test:8080/DefaultCollection/_apis/connectionData?api-version=5.0-preview.1')" = 200`, pat)},
+		{"the mock's REST API answers through the router", fmt.Sprintf(o.guest.rest, pat)},
 		{"traffic to the internet goes through the tunnel", o.guest.tunneled},
-		{"the VM reaches the internet", "curl -s -o /dev/null --max-time 15 https://github.com"},
+		{"the VM reaches the internet", o.guest.internet},
 	}
 	if o.guest.session != "" {
 		checks = append(checks, struct{ name, command string }{"the test user is logged in to the GUI", o.guest.session})

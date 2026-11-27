@@ -1,6 +1,6 @@
 # Live tests
 
-Live tests check what TFSaz changes on a client machine: routing, trust, keyring, services, link handlers, browsers and T3. They run in disposable VMs that reach a mock of Azure DevOps Server instead of the shared testbed. The files are in [`live-tests/`](../../live-tests/), the tool in [`tools/live`](../../tools/live/). Ubuntu and macOS guests work; Windows (QEMU) is planned.
+Live tests check what TFSaz changes on a client machine: routing, trust, keyring, services, link handlers, browsers and T3. They run in disposable VMs that reach a mock of Azure DevOps Server instead of the shared testbed. The files are in [`live-tests/`](../../live-tests/), the tool in [`tools/live`](../../tools/live/). Ubuntu, macOS and Windows guests work.
 
 ## Set up a Mac
 
@@ -9,6 +9,7 @@ The host must be an Apple Silicon Mac with Homebrew, Go and Git. From the reposi
 ```sh
 go run ./tools/live setup ubuntu
 go run ./tools/live setup macos
+go run ./tools/live setup windows
 ```
 
 `setup OS` installs what is missing, starts the test bed, builds the OS's base VM if it does not exist, and ends with `verify`. It skips steps that are done, so it is safe to rerun. The first Ubuntu run takes about 10 minutes plus the 3 GB ISO download; the first macOS run takes about 25 minutes to pull the 29 GB image and 3 minutes for the rest.
@@ -17,13 +18,15 @@ go run ./tools/live setup macos
 | --- | --- | --- |
 | Tart (with softnet) and Packer | `doctor -install`, through Homebrew | none |
 | Docker | `doctor -install` installs OrbStack | start OrbStack once and accept its setup |
+| QEMU, for Windows | `doctor -install`, through Homebrew | none |
+| Windows 11 ARM64 ISO | not the tool: Microsoft's download links expire | download it once from [Microsoft](https://www.microsoft.com/software-download/windows11arm64) (English, United States) into `~/.tfsaz-live/cache/iso/`; `setup windows` names the file it expects |
 | Homebrew, Go, Git | not the tool | install them first |
 | Shorter DHCP leases for VMs | `doctor` only advises it | optional, needs `sudo` ([why](#host-requirements)) |
 
 ## Commands
 
 ```sh
-go run ./tools/live setup OS          # everything above, then verify; OS is ubuntu or macos
+go run ./tools/live setup OS          # everything above, then verify; OS is ubuntu, macos or windows
 go run ./tools/live verify OS         # boot a throwaway clone and check the bed
 go run ./tools/live vm up OS          # clone, boot and connect a VM; prints its details as JSON
 go run ./tools/live vm ssh NAME -- uname -a
@@ -37,12 +40,13 @@ go run ./tools/live status
 
 `go run ./tools/live help` lists all commands. None prompts unless it runs in a terminal; `setup` and `doctor -install` install without asking. `vm ssh` passes on the remote exit code, but `go run` turns any nonzero code into 1 and prints `exit status N`. For the exact code, build the tool once with `go build -o bin/live ./tools/live` and run `bin/live`.
 
-`verify` checks from a new clone that `devops.mock.test` resolves to the mock, that the mock's REST API answers through the router, that internet traffic goes through the tunnel and works, that the router reaches the VM, and on macOS that the test user is logged in to the GUI. It prints one line per check, deletes the clone and fails if any check failed.
+`verify` checks from a new clone that `devops.mock.test` resolves to the mock, that the mock's REST API answers through the router, that internet traffic goes through the tunnel and works, that the router reaches the VM, and on macOS and Windows that the test user is logged in to the GUI. It prints one line per check, deletes the clone and fails if any check failed.
 
 ## For agents
 
 - Target the mock. Use the shared Azure DevOps Server testbed only when the maintainer asks ([AGENTS.md](../../AGENTS.md#ways-to-hurt-yourself)).
-- Run `base build` and `setup` in the background and watch their output. Do not wait past Packer's 25-minute SSH timeout; [Troubleshooting](#troubleshooting) has the known causes.
+- Run `base build` and `setup` in the background and watch their output. Do not wait past Packer's SSH timeout (25 minutes, 60 for Windows); [Troubleshooting](#troubleshooting) has the known causes.
+- When the Windows ISO is missing, ask the maintainer to download it; do not fetch it from another source.
 - When a base command refuses because clones exist, remove the clones; do not work around it. Leave the base VM and `~/.tfsaz-live/cache` in place between tasks.
 - Never commit anything from `live-tests/.state` or copy keys into the repository.
 - Ask the maintainer before the `sudo` step `doctor` advises.
@@ -62,9 +66,10 @@ go run ./tools/live status
 | `live-tests/router/` | The WireGuard router that connects VMs |
 | `live-tests/vms/ubuntu/` | The Ubuntu base VM: ISO pin, autoinstall config, Packer template, base preparation |
 | `live-tests/vms/macos/` | The macOS base VM: image pin, Packer template, provisioning, base preparation |
+| `live-tests/vms/windows/` | The Windows base VM: ISO pins, answer file, first-logon script, Packer template, provisioning, base preparation |
 | `tools/live/` | The tool |
 
-A new guest OS gets a `live-tests/vms/<os>/` directory, an entry in the tool's OS list in `tools/live/env.go`, its guest commands in `tools/live/guest.go`, and its build inputs in `buildInputs` in `tools/live/base.go`; until then the tool refuses it with "not set up yet".
+A new guest OS gets a `live-tests/vms/<os>/` directory, an entry in the tool's OS list in `tools/live/env.go`, its guest commands in `tools/live/guest.go`, and its build inputs in `buildInputs` in `tools/live/base.go`. A new hypervisor implements the `provider` interface in `tools/live/provider.go`, as Tart (`tart.go`) and QEMU (`qemu.go`) do.
 
 ## State outside the repository
 
@@ -73,13 +78,14 @@ The tool keeps everything large or secret in `~/.tfsaz-live` (or `$TFSAZ_LIVE_HO
 | Path | Contents |
 | --- | --- |
 | `tart/` | Tart's home for these VMs only (`TART_HOME`), so they never mix with other Tart VMs; its `cache/` holds the pulled macOS image |
-| `cache/iso/` | Downloaded installer ISOs, checked against the SHA-256 in `vms/<os>/iso.json` |
+| `qemu/` | QEMU's VMs, one directory each: `disk.qcow2` (a clone's is an overlay on the base's), UEFI variables, and while it runs its PID, SSH port and QMP socket |
+| `cache/iso/` | Installer ISOs, checked against the SHA-256 in `vms/<os>/iso.json` (and `virtio.json` for Windows) |
 | `packer/` | Packer plugins and cache |
-| `keys/<os>-base/` | The key of the last base build |
-| `runs/<name>/` | Per clone: its own SSH key, known_hosts, Tart log, `vm.json` |
+| `keys/<os>-base/` | The key of the last base build; for Windows also the password of `tester` |
+| `runs/<name>/` | Per clone: its own SSH key, known_hosts, Tart or QEMU log, `vm.json` |
 | `router/` | The router's WireGuard key and one file per connected VM |
 
-Only `base build` downloads, and only what the cache lacks: an ISO matching `iso.json` (`curl` resumes an interrupted download), or the macOS image pinned in `image.json` (Tart pulls it once). Deleting the directory removes everything; `setup` recreates it.
+Only `base build` downloads, and only what the cache lacks: an ISO matching `iso.json` (`curl` resumes an interrupted download), or the macOS image pinned in `image.json` (Tart pulls it once). The Windows ISO is the exception: the tool only checks it. The Windows build also downloads the virtio-win ISO once (about 880 MB) and, inside the VM, OpenSSH Server and WireGuard. Deleting the directory removes everything; `setup` recreates it.
 
 ## Base VMs
 
@@ -95,23 +101,29 @@ The base has one user, `tester`, with passwordless sudo, no password and no othe
 
 The guest needs a host with at least its macOS version, and macOS runs at most two macOS VMs at a time; the tool checks both. A newer macOS comes with a new pin in `image.json` and `base build macos -force`.
 
+### Windows
+
+`base build windows` checks Microsoft's Windows 11 ARM64 ISO and the virtio-win ISO, writes `Autounattend.xml` with a new password for `tester` and `setup.ps1` with a new build key to a seed ISO, and runs Packer with the QEMU plugin. QEMU runs the VM with Apple's Hypervisor.framework and UEFI firmware from Homebrew's QEMU. The `virt` machine has no IDE or SATA, so the three ISOs are USB drives, and the disk is NVMe, for which Windows has an inbox driver. Setup runs unattended: it skips the TPM, Secure Boot and online account checks, installs Windows 11 Pro with the generic install key (not activated), and logs `tester` in automatically. At first logon, `setup.ps1` installs the virtio network driver (NetKVM) from the virtio-win ISO and OpenSSH Server with the build key as the only login. `provision.ps1` installs WireGuard for Windows (pinned by hash and checked for WireGuard's signature) and turns off automatic updates and sleep. `prepare-base.ps1` deletes the SSH host keys, makes PowerShell the SSH shell and shuts the VM down.
+
+Windows has no update in place: `base update windows` refuses. A newer Windows comes with a new ISO pin in `iso.json` and `base build windows -force`.
+
 ### Commands
 
 | Command | Effect |
 | --- | --- |
 | `base build OS` | First build; `-force` rebuilds from scratch |
-| `base update OS` | Boots the base, upgrades its packages (apt on Ubuntu, Homebrew on macOS), prepares it again |
+| `base update OS` | Boots the base, upgrades its packages (apt on Ubuntu, Homebrew on macOS), prepares it again; not on Windows |
 | `base rm OS` | Deletes the base and its build key |
 
 All three refuse while clones of the base exist.
 
 ## Clones
 
-`vm up OS` clones the base (an APFS copy, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in under 10 seconds for Ubuntu and about 30 for macOS. A macOS clone boots into the logged-in GUI session of `admin`. It prints `vm.json`: name, NAT address, address in the test bed, SSH key. `vm stop NAME` shuts a clone down from inside and keeps it with its key and router peer; when it cannot reach the clone it leaves it running, and `-force` stops it without a shutdown, which can lose unwritten changes. `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
+`vm up OS` clones the base (an APFS copy, or a qcow2 overlay for Windows, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in under 10 seconds for Ubuntu and about 30 for macOS. A macOS clone boots into the logged-in GUI session of `admin`, a Windows clone into the one of `tester`; a Windows clone restarts once for its computer name. It prints `vm.json`: name, NAT address (for Windows `127.0.0.1` and a port), address in the test bed, SSH key. Commands over `vm ssh` run in sh on Ubuntu and macOS and in PowerShell on Windows. `vm stop NAME` shuts a clone down from inside and keeps it with its key and router peer; when it cannot reach the clone it leaves it running, and `-force` stops it without a shutdown, which can lose unwritten changes. `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
 
 ## Network
 
-The VMs use Tart's NAT for SSH from the host, and a WireGuard tunnel to the router for everything else:
+The VMs use Tart's NAT for SSH from the host (Windows: QEMU's user-mode NAT, with SSH forwarded from a loopback port), and a WireGuard tunnel to the router for everything else:
 
 | Address | What |
 | --- | --- |
@@ -120,7 +132,7 @@ The VMs use Tart's NAT for SSH from the host, and a WireGuard tunnel to the rout
 | `172.30.53.53` | DNS sinkhole |
 | `172.30.53.129` and up | VMs, one address each |
 
-The router answers ARP for the VM addresses, so containers reach a VM like any other host in the subnet. Traffic from a VM to anywhere else leaves through Docker's NAT, so VMs have internet access for now. The router's resolver sends `mock.test` names to the sinkhole and everything else to Docker's resolver. Its key and peer list survive a restart; VMs reconnect within seconds.
+On Windows the tunnel routes `0.0.0.0/1` and `128.0.0.0/1` instead of `0.0.0.0/0`, which would turn on WireGuard for Windows' kill switch and cut off SSH from the host. The router answers ARP for the VM addresses, so containers reach a VM like any other host in the subnet. Traffic from a VM to anywhere else leaves through Docker's NAT, so VMs have internet access for now. The router's resolver sends `mock.test` names to the sinkhole and everything else to Docker's resolver. Its key and peer list survive a restart; VMs reconnect within seconds.
 
 ## DNS sinkhole
 
@@ -142,7 +154,7 @@ Test browsers keep their default settings, as users have them. Offline, DNS-over
 
 ## Host requirements
 
-`doctor` checks Tart, Packer, Docker with Compose, `curl`, `hdiutil`, `ssh` and `ssh-keygen`. It installs missing ones with Homebrew and tells apart a tool that is installed but not working, such as a stopped Docker engine. Homebrew refuses formulas from untrusted taps, so the tool trusts exactly `openai/tools/tart` and its dependency `openai/tools/softnet` before installing Tart.
+`doctor` checks Tart, Packer, QEMU, Docker with Compose, `curl`, `hdiutil`, `ssh` and `ssh-keygen`. It installs missing ones with Homebrew and tells apart a tool that is installed but not working, such as a stopped Docker engine. Homebrew refuses formulas from untrusted taps, so the tool trusts exactly `openai/tools/tart` and its dependency `openai/tools/softnet` before installing Tart.
 
 It also advises shortening macOS's DHCP leases for VMs from a day to ten minutes: every clone gets a new MAC address, and the pool of about 250 addresses runs out after that many clones in a day.
 
@@ -151,6 +163,7 @@ It also advises shortening macOS's DHCP leases for VMs from a day to ten minutes
 - A base build prints a VNC address and password; open it to watch the installer or, on macOS, the desktop.
 - The Ubuntu system must ask DHCP with its MAC address (`dhcp-identifier: mac` in the autoinstall and clone network config); otherwise Tart finds no IP and Packer waits until its 25-minute SSH timeout.
 - A clone's Tart output is in `~/.tfsaz-live/runs/NAME/tart.log`. `vm up` deletes a clone that fails to come up.
+- A Windows build or clone shows nothing on the host. To see its screen, send QMP `screendump` to `~/.tfsaz-live/build/windows/qmp.sock` or `~/.tfsaz-live/qemu/NAME/qmp.sock`, for example `{ echo '{"execute":"qmp_capabilities"}'; sleep 1; echo '{"execute":"screendump","arguments":{"filename":"/tmp/screen.png","format":"png"}}'; sleep 2; } | nc -U SOCKET`. A Windows build logs its first logon to `C:\Windows\Temp\tfsaz-setup.log`; a clone's QEMU output is in `~/.tfsaz-live/runs/NAME/qemu.log`.
 - A macOS clone's tunnel logs to `/var/log/tfsaz-live-wg0.log` in the VM; `sudo launchctl kickstart -k system/com.tfsaz.live.wg0` restarts it.
 
 ## Remove everything
@@ -159,7 +172,7 @@ It also advises shortening macOS's DHCP leases for VMs from a day to ten minutes
 | --- | --- |
 | Clones, base VMs, ISOs, keys, router state in `~/.tfsaz-live` | `go run ./tools/live clean`, `go run ./tools/live services down`, then `rm -rf ~/.tfsaz-live live-tests/.state` |
 | Docker images and network `tfsaz-live_bed` | `docker compose -f live-tests/compose.yaml down --rmi local` |
-| Tart, softnet and Packer from Homebrew | `brew uninstall tart softnet packer` |
+| Tart, softnet, Packer and QEMU from Homebrew | `brew uninstall tart softnet packer qemu` |
 | Trusted formulas `openai/tools/tart`, `openai/tools/softnet` and `hashicorp/tap/packer` (Homebrew trusts the last one itself when installing it) | `brew untrust --formula openai/tools/tart openai/tools/softnet hashicorp/tap/packer` |
 | Taps `openai/tools` and `hashicorp/tap` | `brew untap openai/tools hashicorp/tap` |
 | Shorter DHCP leases, if you applied the advice | `sudo defaults delete /Library/Preferences/SystemConfiguration/com.apple.InternetSharing.default.plist bootpd` |

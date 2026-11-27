@@ -1,24 +1,48 @@
 package main
 
-// guest holds the shell commands the tool runs in a VM, per guest OS.
+// guest holds the commands the tool runs in a VM, per guest OS: sh for
+// Ubuntu and macOS, PowerShell for Windows.
 type guest struct {
-	gateway  string // prints the default gateway, which is the host
-	hostname string // sets the hostname; %[1]s is the clone's name
-	wgKey    string // writes the tunnel's private key in the VM and prints its public key
-	wgLines  string // extra [Interface] lines: private key file and DNS
-	wgUp     string // reads wg0.conf on stdin and brings the tunnel up now and after a reboot
-	resolves string // succeeds when devops.mock.test resolves to the mock
-	reaches  string // succeeds when the mock's port 8080 answers
-	tunneled string // succeeds when internet traffic goes through the tunnel
-	session  string // succeeds when the test user has a GUI session; empty when the OS has none
-	update   string // upgrades the packages of the base
-	poweroff string
+	powershell bool
+	authorize  string // reads a public key on stdin and makes it the only login key
+	hostname   string // sets the hostname; %[1]s is the clone's name
+	restart    string // restarts the VM; empty when the hostname applies without one
+	gateway    string // prints the default gateway, which is the host
+	wgKey      string // writes the tunnel's private key in the VM and prints its public key
+	wgLines    string // extra [Interface] lines: private key and DNS
+	allowedIPs string // what the tunnel routes: all of IPv4
+	wgUp       string // reads wg0.conf on stdin and brings the tunnel up now and after a reboot
+	resolves   string // succeeds when devops.mock.test resolves to the mock
+	reaches    string // succeeds when the mock's port 8080 answers
+	rest       string // succeeds when the mock's REST API accepts the PAT %[1]s
+	tunneled   string // succeeds when internet traffic goes through the tunnel
+	internet   string // succeeds when the VM reaches the internet
+	session    string // succeeds when the test user has a GUI session; empty when the OS has none
+	sync       string // flushes the disk cache
+	update     string // upgrades the packages of the base; empty when a rebuild is the update
+	poweroff   string
+}
+
+const connectionData = "http://devops.mock.test:8080/DefaultCollection/_apis/connectionData?api-version=5.0-preview.1"
+
+// posix holds the commands Ubuntu and macOS share.
+var posix = guest{
+	authorize:  "umask 077 && cat >~/.ssh/authorized_keys",
+	allowedIPs: "0.0.0.0/0",
+	rest:       `test "$(curl -s -u :%[1]s -o /dev/null -w '%%{http_code}' '` + connectionData + `')" = 200`,
+	internet:   "curl -s -o /dev/null --max-time 15 https://github.com",
+	sync:       "sync",
 }
 
 var ubuntuGuest = guest{
-	gateway:  "ip -4 route show default | awk '{print $3; exit}'",
-	hostname: "sudo hostnamectl set-hostname %[1]s && sudo sed -i 's/^127\\.0\\.1\\.1 .*/127.0.1.1 %[1]s/' /etc/hosts",
-	wgKey:    "sudo sh -c 'umask 077 && wg genkey >/etc/wireguard/private.key && wg pubkey </etc/wireguard/private.key'",
+	authorize:  posix.authorize,
+	allowedIPs: posix.allowedIPs,
+	rest:       posix.rest,
+	internet:   posix.internet,
+	sync:       posix.sync,
+	gateway:    "ip -4 route show default | awk '{print $3; exit}'",
+	hostname:   "sudo hostnamectl set-hostname %[1]s && sudo sed -i 's/^127\\.0\\.1\\.1 .*/127.0.1.1 %[1]s/' /etc/hosts",
+	wgKey:      "sudo sh -c 'umask 077 && wg genkey >/etc/wireguard/private.key && wg pubkey </etc/wireguard/private.key'",
 	wgLines: "PostUp = wg set %i private-key /etc/wireguard/private.key\n" +
 		"PostUp = resolvectl dns %i " + routerAddress.String() + "; resolvectl domain %i '~.'\n",
 	wgUp:     "sudo sh -c 'umask 077 && cat >/etc/wireguard/wg0.conf' && sudo systemctl enable --now wg-quick@wg0",
@@ -32,9 +56,14 @@ var ubuntuGuest = guest{
 // macOS: wireguard-tools come from Homebrew; the base's launchd daemon
 // com.tfsaz.live.wg0 runs wg-quick on boot once wg0.conf exists.
 var macosGuest = guest{
-	gateway:  "route -n get default | awk '/gateway:/{print $2; exit}'",
-	hostname: "sudo scutil --set HostName %[1]s && sudo scutil --set LocalHostName %[1]s && sudo scutil --set ComputerName %[1]s",
-	wgKey:    "sudo sh -c 'umask 077 && /opt/homebrew/bin/wg genkey >/etc/wireguard/private.key && /opt/homebrew/bin/wg pubkey </etc/wireguard/private.key'",
+	authorize:  posix.authorize,
+	allowedIPs: posix.allowedIPs,
+	rest:       posix.rest,
+	internet:   posix.internet,
+	sync:       posix.sync,
+	gateway:    "route -n get default | awk '/gateway:/{print $2; exit}'",
+	hostname:   "sudo scutil --set HostName %[1]s && sudo scutil --set LocalHostName %[1]s && sudo scutil --set ComputerName %[1]s",
+	wgKey:      "sudo sh -c 'umask 077 && /opt/homebrew/bin/wg genkey >/etc/wireguard/private.key && /opt/homebrew/bin/wg pubkey </etc/wireguard/private.key'",
 	wgLines: "PostUp = wg set %i private-key /etc/wireguard/private.key\n" +
 		"DNS = " + routerAddress.String() + "\n",
 	wgUp:     "sudo sh -c 'umask 077 && cat >/etc/wireguard/wg0.conf' && sudo launchctl kickstart -k system/com.tfsaz.live.wg0",
@@ -44,4 +73,33 @@ var macosGuest = guest{
 	session:  "test \"$(stat -f %Su /dev/console)\" = \"$USER\"",
 	update:   "eval \"$(/opt/homebrew/bin/brew shellenv)\" && brew update && brew upgrade",
 	poweroff: "sudo shutdown -h now",
+}
+
+// Windows: the base has WireGuard for Windows and C:\ProgramData\tfsaz-live,
+// writable only by administrators and SYSTEM. Its tunnel service reads the
+// private key from wg0.conf, and AllowedIPs avoids 0.0.0.0/0, which turns on
+// WireGuard's kill switch and cuts off SSH through QEMU's NAT.
+var windowsGuest = guest{
+	powershell: true,
+	authorize:  `[Console]::In.ReadToEnd() | Set-Content -Encoding ascii C:\ProgramData\ssh\administrators_authorized_keys`,
+	hostname:   `Rename-Computer -NewName '%[1]s' -Force -WarningAction SilentlyContinue`,
+	restart:    "Restart-Computer -Force",
+	gateway:    "(Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Sort-Object RouteMetric | Select-Object -First 1).NextHop",
+	wgKey: `$key = & 'C:\Program Files\WireGuard\wg.exe' genkey
+Set-Content -NoNewline -Encoding ascii C:\ProgramData\tfsaz-live\private.key $key
+$key | & 'C:\Program Files\WireGuard\wg.exe' pubkey`,
+	wgLines:    "PrivateKey = __PRIVATE_KEY__\nDNS = " + routerAddress.String() + "\n",
+	allowedIPs: "0.0.0.0/1, 128.0.0.0/1",
+	wgUp: `$key = (Get-Content -Raw C:\ProgramData\tfsaz-live\private.key).Trim()
+[Console]::In.ReadToEnd().Replace('__PRIVATE_KEY__', $key) | Set-Content -Encoding ascii C:\ProgramData\tfsaz-live\wg0.conf
+Start-Process -Wait 'C:\Program Files\WireGuard\wireguard.exe' '/installtunnelservice C:\ProgramData\tfsaz-live\wg0.conf'
+(Get-Service 'WireGuardTunnel$wg0').WaitForStatus('Running', '00:00:30')`,
+	resolves: "if ((Resolve-DnsName -Name devops.mock.test -Type A -DnsOnly).IPAddress -contains '172.30.53.10') { exit 0 }; exit 1",
+	reaches:  "if ((New-Object Net.Sockets.TcpClient).ConnectAsync('devops.mock.test', 8080).Wait(5000)) { exit 0 }; exit 1",
+	rest:     "if ((curl.exe -s -u ':%[1]s' -o NUL -w '%%{http_code}' '" + connectionData + "') -eq '200') { exit 0 }; exit 1",
+	tunneled: "if ((Find-NetRoute -RemoteIPAddress 1.1.1.1).InterfaceAlias -contains 'wg0') { exit 0 }; exit 1",
+	internet: "curl.exe -s -o NUL --max-time 15 https://github.com; exit $LASTEXITCODE",
+	session:  `if ((Get-CimInstance Win32_ComputerSystem).UserName -like "*\$env:USERNAME") { exit 0 }; exit 1`,
+	sync:     "Write-VolumeCache -DriveLetter C",
+	poweroff: "shutdown /s /t 0 /f",
 }

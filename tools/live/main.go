@@ -46,7 +46,7 @@ const usage = `usage: go run ./tools/live <command>
   clean                           delete every clone and its router peer
   status                          services, base VMs and clones
 
-OS: ubuntu or macos (windows is planned). base commands refuse while clones exist.
+OS: ubuntu, macos or windows. base commands refuse while clones exist.
 State lives in $TFSAZ_LIVE_HOME (default ~/.tfsaz-live), linked as live-tests/.state.
 `
 
