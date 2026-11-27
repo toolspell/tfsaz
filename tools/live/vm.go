@@ -276,8 +276,9 @@ func (e *env) vmStart(name string) error {
 	if err := e.requireRouter(); err != nil {
 		return err
 	}
-	if o, _ := osOfVM(name); e.macosSlot(o) != nil {
-		return e.macosSlot(o)
+	o, _ := osOfVM(name)
+	if err := e.macosSlot(o); err != nil {
+		return err
 	}
 	t := e.tart()
 	step("starting %s", name)
@@ -300,7 +301,6 @@ func (e *env) vmStart(name string) error {
 	if err := login.wait(3 * time.Minute); err != nil {
 		return err
 	}
-	o, _ := osOfVM(name)
 	if err := reachesMock(o, login); err != nil {
 		return err
 	}
