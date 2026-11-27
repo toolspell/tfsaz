@@ -81,6 +81,10 @@ func versionLess(a, b string) bool {
 	return false
 }
 
+// doctor checks the host tools and installs missing ones with Homebrew:
+// in a terminal after asking, or right away with install. With checkOnly it
+// installs and creates nothing. It fails while a tool is missing or not
+// working.
 func (e *env) doctor(install, checkOnly bool) error {
 	if err := requireMac(); err != nil {
 		return err
