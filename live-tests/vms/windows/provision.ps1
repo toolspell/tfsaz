@@ -40,6 +40,10 @@ $install = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$msi`" 
 if ($install.ExitCode -ne 0) { throw "msiexec failed: $($install.ExitCode)" }
 Remove-Item $msi
 
+$explorer = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer'
+New-Item -Force $explorer | Out-Null
+Set-ItemProperty $explorer -Name NoNewAppAlert -Value 1 -Type DWord
+
 $msi = Join-Path $env:TEMP 'google-chrome.msi'
 Invoke-WebRequest -UseBasicParsing -OutFile $msi `
     -Uri 'https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise_arm64.msi'

@@ -145,6 +145,7 @@ Safari stays the default browser. Homebrew installs Chrome. Provisioning verifie
 Windows has no update in place: `base update windows` refuses. A newer Windows comes with a new ISO pin in `iso.json` and `base build windows -force`.
 
 Edge stays the default browser. Provisioning verifies Google's Authenticode signature before installing Chrome from its ARM64 enterprise MSI.
+The `NoNewAppAlert` policy suppresses the app picker when a user opens a link after Chrome is installed.
 
 ### Commands
 
