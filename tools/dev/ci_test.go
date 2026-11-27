@@ -32,9 +32,9 @@ func TestTestsNeeded(t *testing.T) {
 }
 
 func TestShardTests(t *testing.T) {
-	out := "TestB\nExampleA\nBenchmarkX\nok  \tgithub.com/toolspell/tfsaz\t0.1s\nTestA\nFuzzC\nTestB\n?   \tgithub.com/toolspell/tfsaz/tools/x\t[no test files]\nok  \tgithub.com/toolspell/tfsaz/internal/az\t0.2s\n"
+	out := "TestB\nExampleA\nBenchmarkX\nTestUTF8_é\nok  \tgithub.com/toolspell/tfsaz\t0.1s\nTestA\nFuzzC\nTestB\n?   \tgithub.com/toolspell/tfsaz/tools/x\t[no test files]\nok  \tgithub.com/toolspell/tfsaz/internal/az\t0.2s\n"
 	names := listedTests(out)
-	if want := []string{"ExampleA", "FuzzC", "TestA", "TestB"}; !slices.Equal(names, want) {
+	if want := []string{"ExampleA", "FuzzC", "TestA", "TestB", "TestUTF8_é"}; !slices.Equal(names, want) {
 		t.Fatalf("listedTests = %q, want %q", names, want)
 	}
 	for total := 1; total <= len(names)+1; total++ {

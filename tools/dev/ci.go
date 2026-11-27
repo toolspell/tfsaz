@@ -121,7 +121,9 @@ func ciTest(shard string) bool {
 	args := []string{"test", "-race", "-count=1"}
 	if total > 1 {
 		// -race here too, so the listing builds the binaries the run reuses.
-		out, err := exec.Command("go", "test", "-race", "-list", ".", "./...").Output()
+		list := exec.Command("go", "test", "-race", "-list", ".", "./...")
+		list.Stderr = os.Stderr
+		out, err := list.Output()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "ci-test: listing the tests:", err)
 			return false
@@ -156,7 +158,7 @@ func parseShard(shard string) (int, int, error) {
 // go test -list prints the matching tests, examples, fuzz tests and benchmarks
 // of each package, then the package's status line. -run selects all but the
 // benchmarks.
-var listedName = regexp.MustCompile(`^(Test|Example|Fuzz)\w*$`)
+var listedName = regexp.MustCompile(`^(Test|Example|Fuzz)[\p{L}\p{Nd}_]*$`)
 
 func listedTests(out string) []string {
 	var names []string
