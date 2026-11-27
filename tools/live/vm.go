@@ -222,27 +222,29 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 	return info, err
 }
 
-// restart reboots the clone and waits until SSH answers again. QEMU keeps
-// its port forward, so the address stays the same.
+// restart reboots the clone and waits until SSH answers from the new boot.
+// QEMU keeps its port forward, so the address stays the same.
 func restart(o osDef, login sshTarget) error {
-	deadline := time.Now().Add(2 * time.Minute)
-	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	// The session may end with the restart; only the probes below tell.
+	before, err := login.runContext(ctx, nil, o.guest.bootID)
+	if err != nil {
+		return err
+	}
+	// The session may end with the restart; only a new boot ID tells.
 	_, _ = login.runContext(ctx, nil, o.guest.restart)
 	for {
 		probe, stop := context.WithTimeout(ctx, 15*time.Second)
-		_, err := login.runContext(probe, nil, "exit 0")
+		after, err := login.runContext(probe, nil, o.guest.bootID)
 		stop()
+		if err == nil && after != before {
+			return nil
+		}
 		if ctx.Err() != nil {
-			return errors.New("the clone did not restart within 2 minutes")
+			return errors.New("the clone did not restart within 5 minutes")
 		}
-		if err != nil {
-			break
-		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
-	return login.wait(5 * time.Minute)
 }
 
 // joinRouter gives the clone a WireGuard tunnel to the router and checks

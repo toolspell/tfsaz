@@ -7,6 +7,7 @@ type guest struct {
 	authorize  string // reads a public key on stdin and makes it the only login key
 	hostname   string // sets the hostname; %[1]s is the clone's name
 	restart    string // restarts the VM; empty when the hostname applies without one
+	bootID     string // prints a value that changes with every boot, to confirm a restart
 	gateway    string // prints the default gateway, which is the host
 	wgKey      string // writes the tunnel's private key in the VM and prints its public key
 	wgLines    string // extra [Interface] lines: private key and DNS
@@ -86,6 +87,7 @@ var windowsGuest = guest{
 	authorize:  `[Console]::In.ReadToEnd() | Set-Content -Encoding ascii C:\ProgramData\ssh\administrators_authorized_keys`,
 	hostname:   `Rename-Computer -NewName '%[1]s' -Force -WarningAction SilentlyContinue`,
 	restart:    "Restart-Computer -Force",
+	bootID:     "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()",
 	gateway:    "(Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Sort-Object RouteMetric | Select-Object -First 1).NextHop",
 	wgKey: `$key = & 'C:\Program Files\WireGuard\wg.exe' genkey
 Set-Content -NoNewline -Encoding ascii C:\ProgramData\tfsaz-live\private.key $key
