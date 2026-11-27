@@ -179,6 +179,41 @@ func TestCloneNames(t *testing.T) {
 	}
 }
 
+func TestCloneResources(t *testing.T) {
+	for _, tc := range []struct {
+		os   string
+		want []string
+	}{
+		{"ubuntu", []string{"--cpu", "2", "--memory", "4096", "--display", "1920x1080px"}},
+		{"macos", []string{"--cpu", "2", "--memory", "6144", "--display", "1920x1080px"}},
+		{"windows", []string{"-smp", "2", "-m", "6G"}},
+	} {
+		t.Run(tc.os, func(t *testing.T) {
+			name := prefix + tc.os + "-resources"
+			o, ok := osOfVM(name)
+			if !ok {
+				t.Fatalf("no guest OS for %s", name)
+			}
+			if o.provider == "tart" {
+				want := append([]string{"set", name}, tc.want...)
+				if got := tartCloneSettings(o, name); !slices.Equal(got, want) {
+					t.Fatalf("Tart settings: got %q, want %q", got, want)
+				}
+				return
+			}
+			args := (qemu{home: t.TempDir()}).commandArgs(name, "efi-code.fd", 2222)
+			i := slices.Index(args, "-smp")
+			if i < 0 || len(args)-i < len(tc.want) || !slices.Equal(args[i:i+len(tc.want)], tc.want) {
+				t.Fatalf("QEMU args %q are missing %q", args, tc.want)
+			}
+			i = slices.Index(args, "virtio-balloon-pci")
+			if i < 1 || args[i-1] != "-device" {
+				t.Fatalf("QEMU args %q are missing the balloon device", args)
+			}
+		})
+	}
+}
+
 func TestWGConfig(t *testing.T) {
 	for _, tc := range []struct {
 		name                 string

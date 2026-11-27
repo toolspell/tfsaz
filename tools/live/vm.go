@@ -168,7 +168,7 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 	}()
 
 	step("cloning %s to %s", o.base(), name)
-	if err := v.clone(o.base(), name); err != nil {
+	if err := v.clone(o, name); err != nil {
 		return info, err
 	}
 	if err := v.start(name, filepath.Join(dir, o.provider+".log")); err != nil {

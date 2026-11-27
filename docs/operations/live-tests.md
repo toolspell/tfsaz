@@ -119,7 +119,7 @@ The guest needs a host with at least its macOS version, and macOS runs at most t
 
 ### Windows
 
-`base build windows` checks Microsoft's Windows 11 ARM64 ISO and the virtio-win ISO, writes `Autounattend.xml` with a new password for `tester` and `setup.ps1` with a new build key to a seed ISO, and runs Packer with the QEMU plugin. QEMU runs the VM with Apple's Hypervisor.framework and UEFI firmware from Homebrew's QEMU. The `virt` machine has no IDE or SATA, so the three ISOs are USB drives, and the disk is NVMe, for which Windows has an inbox driver. The VM has two display adapters: `ramfb`, which Windows' boot manager needs (its linear framebuffer tops out at 1024x768), and a virtio GPU at 1920x1080 for the desktop. Setup runs unattended: it skips the TPM, Secure Boot and online account checks, installs Windows 11 Pro with the generic install key (not activated), and logs `tester` in automatically. At first logon, `setup.ps1` installs the virtio network driver (NetKVM) and the virtio GPU driver (`viogpudo`) from the virtio-win ISO, shows only the GPU's display (Windows would keep `ramfb` at 800x600 as its main display, where new windows open), and installs OpenSSH Server with the build key as the only login. `provision.ps1` installs PowerShell 7 and WireGuard for Windows (each pinned by hash and checked for its publisher's signature) and turns off automatic updates and sleep. `prepare-base.ps1` deletes the SSH host keys, which sshd recreates per clone, makes PowerShell 7 the SSH shell and shuts the VM down. The build takes about 13 minutes and 16 GB.
+`base build windows` checks Microsoft's Windows 11 ARM64 ISO and the virtio-win ISO, writes `Autounattend.xml` with a new password for `tester` and `setup.ps1` with a new build key to a seed ISO, and runs Packer with the QEMU plugin. QEMU runs the VM with Apple's Hypervisor.framework and UEFI firmware from Homebrew's QEMU. The `virt` machine has no IDE or SATA, so the three ISOs are USB drives, and the disk is NVMe, for which Windows has an inbox driver. The VM has two display adapters: `ramfb`, which Windows' boot manager needs (its linear framebuffer tops out at 1024x768), and a virtio GPU at 1920x1080 for the desktop. Setup runs unattended: it skips the TPM, Secure Boot and online account checks, installs Windows 11 Pro with the generic install key (not activated), and logs `tester` in automatically. At first logon, `setup.ps1` installs the ARM64 virtio drivers for networking (NetKVM), graphics (`viogpudo`) and ballooning from the pinned virtio-win ISO. The script verifies the balloon driver's Microsoft-signed catalog and Windows verifies the package during installation. The script then shows only the GPU's display (Windows would keep `ramfb` at 800x600 as its main display, where new windows open), and installs OpenSSH Server with the build key as the only login. `provision.ps1` installs PowerShell 7 and WireGuard for Windows (each pinned by hash and checked for its publisher's signature) and turns off automatic updates and sleep. `prepare-base.ps1` deletes the SSH host keys, which sshd recreates per clone, makes PowerShell 7 the SSH shell and shuts the VM down. The build takes about 13 minutes and 16 GB.
 
 Windows has no update in place: `base update windows` refuses. A newer Windows comes with a new ISO pin in `iso.json` and `base build windows -force`.
 
@@ -140,6 +140,37 @@ All three refuse while clones of the base exist.
 With `vm up OS -name SUFFIX`, the clone is named `tfsaz-OS-SUFFIX`. Use 1 to 20 lowercase letters, digits or dashes, starting with a letter or digit. The suffixes `base` and `build` are reserved. The default is six random hex digits.
 
 Every clone's desktop is 1920x1080. Tart clones get it from `tart set NAME --display 1920x1080px` when `vm up` clones them; GNOME starts at 1280x720 and switches a few seconds after login, so an early screenshot of an Ubuntu clone can be smaller.
+
+### Resources
+
+| Guest | Clone RAM | Clone vCPUs |
+| --- | --- | --- |
+| Ubuntu | 4 GiB | 2 |
+| macOS | 6 GiB | 2 |
+| Windows | 6 GiB | 2 |
+
+The base builders use 4 vCPUs each, with 4 GiB on Ubuntu and 8 GiB on macOS and Windows. `vm up` applies the Tart sizes when it copies the base. To resize a stopped Tart clone, run `TART_HOME="${TFSAZ_LIVE_HOME:-$HOME/.tfsaz-live}/tart" tart set NAME --cpu CORES --memory MIB` with the desired values. Run the same command with the previous values to undo the change. QEMU applies its clone size on every boot.
+
+Host usage includes hypervisor overhead. Tart 2.42.0 uses fixed guest memory. Windows gets a virtio balloon device for explicit QMP requests. The Windows driver lacks free-page reporting, and QEMU on macOS uses advisory `MADV_DONTNEED` for anonymous RAM discard. Plan on touched guest memory staying charged to the host until shutdown.
+
+An existing Windows base can boot a smaller clone. To add the balloon driver, remove Windows clones and run `base build windows -force`. Check the driver from the host:
+
+```sh
+go run ./tools/live vm run NAME -- "Get-CimInstance Win32_SystemDriver -Filter \"Name = 'BALLOON'\" | Select-Object Name,State"
+```
+
+The driver should report `Running`. To remove the device and driver, use the previous source revision, remove your Windows clones and rebuild the base from that revision.
+
+For a before-and-after comparison, boot one fresh clone at a time and use the same T3 release and browser workload. Sample after the desktop settles, during the workload and after quitting both apps. Use the QEMU PID on Windows and the `com.apple.Virtualization.VirtualMachine` PID that appears at Tart boot on macOS and Ubuntu.
+
+```sh
+ps -axo pid,rss,pcpu,comm | grep -E 'Virtualization.VirtualMachine|qemu-system-aarch64'
+ps -p PID -o pid,rss,pcpu,comm
+top -l 10 -s 1 -pid PID -stats pid,command,cpu,mem,rsize
+vm_stat
+```
+
+Compare RSS in KiB, host memory charge (`top`'s `mem`) and CPU after the first `top` sample. Record boot and app launch times to catch slowdowns under the smaller budgets.
 
 ## Commands in a clone
 

@@ -87,7 +87,8 @@ func qemuFirmware() (code, vars string, err error) {
 	return code, vars, nil
 }
 
-func (q qemu) clone(base, name string) (err error) {
+func (q qemu) clone(o osDef, name string) (err error) {
+	base := o.base()
 	dir := q.dir(name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -131,28 +132,8 @@ func (q qemu) start(name, logFile string) error {
 		return err
 	}
 	defer func() { _ = log.Close() }()
-	c := exec.Command("qemu-system-aarch64",
-		"-name", name,
-		"-machine", "virt,gic-version=max,accel=hvf", "-cpu", "host", "-smp", "4", "-m", "8G",
-		"-drive", "if=pflash,format=raw,readonly=on,file="+code,
-		"-drive", "if=pflash,format=raw,file="+filepath.Join(dir, "efivars.fd"),
-		"-drive", "if=none,id=disk,format=qcow2,discard=unmap,file="+filepath.Join(dir, "disk.qcow2"),
-		"-device", "nvme,drive=disk,serial=disk0",
-		"-device", "qemu-xhci", "-device", "usb-kbd", "-device", "usb-tablet",
-		// Windows' boot manager needs ramfb's linear framebuffer, which
-		// tops out at 1024x768; the desktop runs on the virtio GPU.
-		"-device", "ramfb",
-		"-device", fmt.Sprintf("virtio-gpu-pci,id=%s,xres=%d,yres=%d", qemuDisplay, displayWidth, displayHeight),
-		// QEMU's own VNC server shows the desktop to agents and people; its
-		// password comes over QMP once QEMU runs.
-		"-vnc", "127.0.0.1:0,to=99,password=on,display="+qemuDisplay,
-		"-device", "virtio-net-pci,netdev=net0",
-		// Without IPv6 the NAT offers no second DNS server past the router.
-		"-netdev", fmt.Sprintf("user,id=net0,ipv6=off,hostfwd=tcp:127.0.0.1:%d-:22", port),
-		"-qmp", "unix:"+filepath.Join(dir, "qmp.sock")+",server=on,wait=off",
-		"-display", "none", "-pidfile", filepath.Join(dir, "qemu.pid"),
-	)
 	// Not -daemonize, which sends QEMU's later errors to /dev/null.
+	c := exec.Command("qemu-system-aarch64", q.commandArgs(name, code, port)...)
 	c.Stdout, c.Stderr = log, log
 	detach(c)
 	if err := c.Start(); err != nil {
@@ -180,6 +161,32 @@ func (q qemu) start(name, logFile string) error {
 		return errors.Join(vncErr, q.stop(name))
 	}
 	return fmt.Errorf("qemu-system-aarch64 did not start %s within 10s; see %s", name, logFile)
+}
+
+func (q qemu) commandArgs(name, code string, port int) []string {
+	dir := q.dir(name)
+	return []string{
+		"-name", name,
+		"-machine", "virt,gic-version=max,accel=hvf", "-cpu", "host", "-smp", strconv.Itoa(cloneCPUs), "-m", "6G",
+		"-drive", "if=pflash,format=raw,readonly=on,file=" + code,
+		"-drive", "if=pflash,format=raw,file=" + filepath.Join(dir, "efivars.fd"),
+		"-drive", "if=none,id=disk,format=qcow2,discard=unmap,file=" + filepath.Join(dir, "disk.qcow2"),
+		"-device", "nvme,drive=disk,serial=disk0",
+		"-device", "qemu-xhci", "-device", "usb-kbd", "-device", "usb-tablet",
+		// Windows' boot manager needs ramfb's linear framebuffer, which
+		// tops out at 1024x768; the desktop runs on the virtio GPU.
+		"-device", "ramfb",
+		"-device", fmt.Sprintf("virtio-gpu-pci,id=%s,xres=%d,yres=%d", qemuDisplay, displayWidth, displayHeight),
+		// QEMU's own VNC server shows the desktop to agents and people; its
+		// password comes over QMP once QEMU runs.
+		"-vnc", "127.0.0.1:0,to=99,password=on,display=" + qemuDisplay,
+		"-device", "virtio-net-pci,netdev=net0",
+		"-device", "virtio-balloon-pci",
+		// Without IPv6 the NAT offers no second DNS server past the router.
+		"-netdev", fmt.Sprintf("user,id=net0,ipv6=off,hostfwd=tcp:127.0.0.1:%d-:22", port),
+		"-qmp", "unix:" + filepath.Join(dir, "qmp.sock") + ",server=on,wait=off",
+		"-display", "none", "-pidfile", filepath.Join(dir, "qemu.pid"),
+	}
 }
 
 // setVNC gives QEMU's VNC server a new password and saves its address for
