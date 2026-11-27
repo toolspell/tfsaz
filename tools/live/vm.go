@@ -304,24 +304,19 @@ func (e *env) startVMProcess(o osDef, name string) error {
 		return err
 	}
 	v := e.vms(o)
+	logFile := filepath.Join(e.runDir(name), o.provider+".log")
 	step("starting %s", name)
-	if err := v.start(name, filepath.Join(e.runDir(name), o.provider+".log")); err != nil {
+	if err := v.start(name, logFile); err != nil {
 		return err
 	}
 	if o.macos == 0 {
 		return nil
 	}
-	// Tart starts in the background. Keep the lock until another caller can count this VM.
+	// Tart announces VNC after the VM starts. Polling tart list here can lock the ASIF disk during boot.
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		list, err := v.list()
-		if err != nil {
-			return errors.Join(err, v.stop(name))
-		}
-		for _, vm := range list {
-			if vm.Name == name && vm.isRunning() {
-				return nil
-			}
+		if _, _, err := tartVNC(logFile); err == nil {
+			return nil
 		}
 		time.Sleep(250 * time.Millisecond)
 	}

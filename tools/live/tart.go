@@ -74,7 +74,7 @@ func (e *env) lockMacOSBoot(o osDef) (func(), error) {
 // start boots a VM headless in the background; Tart's output goes to logFile.
 // The VM keeps running after this process exits.
 func (t tart) start(name, logFile string) error {
-	log, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	log, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
