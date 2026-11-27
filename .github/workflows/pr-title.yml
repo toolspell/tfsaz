@@ -6,12 +6,15 @@ name: PR title
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
+  # The ruleset requires this check in the merge queue too. A queue group has no title of its own,
+  # and every PR in it passed this check on its pull_request run.
+  merge_group:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-title-${{ github.event.pull_request.number }}
+  group: pr-title-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -20,11 +23,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: github.event_name == 'merge_group'
+        run: echo "Every PR in this merge queue group passed the title check on its pull request."
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github/scripts
           persist-credentials: false
       # The title goes through the environment, never into the script text.
-      - env:
+      - if: github.event_name == 'pull_request'
+        env:
           TITLE: ${{ github.event.pull_request.title }}
         run: node .github/scripts/pr-title.cjs
