@@ -82,7 +82,12 @@ func (e *env) ensureT3(osName string) (tag, path string, err error) {
 	}
 	manifestPath := filepath.Join(dir, manifest)
 	if _, err := os.Stat(manifestPath); err != nil {
-		if _, err := output(nil, "curl", "-fsSL", "--retry", "3", "-o", manifestPath, t3Releases+tag+"/"+manifest); err != nil {
+		part := manifestPath + ".part"
+		if _, err := output(nil, "curl", "-fsSL", "--retry", "3", "-o", part, t3Releases+tag+"/"+manifest); err != nil {
+			_ = os.Remove(part)
+			return "", "", err
+		}
+		if err := os.Rename(part, manifestPath); err != nil {
 			return "", "", err
 		}
 	}
