@@ -20,6 +20,10 @@ Resolve REST routes through the server's resource-location catalog, not hard-cod
 
 TFSaz solves the problem from outside, against the real installed T3 Code app or server. Never suggest or make a change, fork or upstream PR to T3 Code, Microsoft's Azure CLI or the `azure-devops` extension, and never patch an installed copy. If a fix seems to need one, report it to the maintainer as a gap.
 
+### Simple first
+
+Do not overengineer, on the system or in commands. Start with the simplest approach built on common existing tools before reinventing one. Build a custom solution only when it makes our case meaningfully easier, or is meaningfully more efficient or effective.
+
 ### Reversible and verifiable system changes
 
 - Everything TFSaz or its setup changes outside its own configuration (hosts file, trust stores, services, firewall rules, Git config and remotes, link handlers, keyring entries, shims, browser and proxy settings) must be cleanly undoable with a TFSaz command or a documented step, leaving no residue, and checkable by TFSaz itself, so users can see the current state. A feature that lacks either is a gap: report it and open an issue labeled `reversibility`.
