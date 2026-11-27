@@ -569,6 +569,35 @@ func TestMockRequestsVMFilter(t *testing.T) {
 	}
 }
 
+func TestSSHForwardArgs(t *testing.T) {
+	const ssh = "/usr/bin/ssh"
+	for _, tc := range []struct {
+		name string
+		host string
+		port int
+		peer []string
+	}{
+		{"default SSH port", "192.0.2.1", 0, []string{"tester@192.0.2.1"}},
+		{"forwarded SSH port", "127.0.0.1", 22222, []string{"-p", "22222", "tester@127.0.0.1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			target := sshTarget{user: "tester", host: tc.host, port: tc.port, key: "id_ed25519", knownHosts: "known_hosts"}
+			want := append([]string{
+				ssh, "-N", "-n", "-o", "ExitOnForwardFailure=yes",
+				"-o", "ForkAfterAuthentication=no", "-S", "none",
+				"-L", "127.0.0.1:19222:127.0.0.1:9222",
+				"-i", "id_ed25519", "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
+				"-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=known_hosts",
+				"-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR",
+				"-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3",
+			}, tc.peer...)
+			if got := target.forwardArgs(ssh, "19222", "9222"); !slices.Equal(got, want) {
+				t.Errorf("forwardArgs = %q; want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestSensitiveSSHError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake SSH executable uses a sh script")
