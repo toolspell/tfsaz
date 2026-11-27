@@ -100,3 +100,13 @@ func TestPeersSkipsStagingFiles(t *testing.T) {
 		t.Fatalf("peers = %v, %v; want only tfsaz-ubuntu-a", peers, err)
 	}
 }
+
+func TestLoadVMStaysInRuns(t *testing.T) {
+	e := &env{home: t.TempDir()}
+	if err := os.WriteFile(e.path("vm.json"), []byte(`{"name":"outside"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := e.loadVM("tfsaz-ubuntu-/../.."); err == nil {
+		t.Fatalf("loadVM read %+v outside runs", info)
+	}
+}

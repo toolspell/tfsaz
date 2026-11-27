@@ -31,6 +31,9 @@ func (e *env) runDir(name string) string { return e.path("runs", name) }
 
 func (e *env) loadVM(name string) (vmInfo, error) {
 	var info vmInfo
+	if _, ok := osOfVM(name); !ok {
+		return info, fmt.Errorf("%s is not a clone name (tfsaz-OS-SUFFIX)", name)
+	}
 	data, err := os.ReadFile(filepath.Join(e.runDir(name), "vm.json"))
 	if err != nil {
 		return info, fmt.Errorf("no clone %s: %w", name, err)
