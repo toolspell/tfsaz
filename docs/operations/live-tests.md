@@ -58,6 +58,7 @@ Run the live suite outside GitHub CI and `ci-local`. When `CI` or `GITHUB_ACTION
 
 - Use the [live-tests skill](../../.agents/skills/live-tests/SKILL.md) to choose guests and run the cases affected by your change.
 - Target the mock. Use the shared Azure DevOps Server testbed only when the maintainer asks ([AGENTS.md](../../AGENTS.md#ways-to-hurt-yourself)).
+- The mock's PAT (`MOCK_PAT`) and the keys and certificates it generates are public test values for a throwaway local test bed, not credentials. Any other credential, such as a real PAT for the shared testbed or a TFSaz profile in a VM, follows the [credential rules](../../AGENTS.md#credentials).
 - Run `base build` and `setup` in the background and watch their output. Do not wait past Packer's SSH timeout (25 minutes for Ubuntu, 10 for macOS, 60 for Windows); [Troubleshooting](#troubleshooting) has the known causes.
 - When the Windows ISO is missing, ask the maintainer to download it; do not fetch it from another source.
 - When a base command refuses because clones exist, remove the clones; do not work around it. Leave the base VM and the state directory's `cache/` in place between tasks.
