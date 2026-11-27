@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"time"
 )
 
@@ -74,7 +75,10 @@ func vncScreenshot(address, password, file string) error {
 	return out.Close()
 }
 
-func vncFrame(r io.Reader, w io.Writer, password string) (*image.RGBA, error) {
+// vncBlackWait is how long vncFrame waits for a frame after a black one.
+var vncBlackWait = 5 * time.Second
+
+func vncFrame(r io.Reader, w net.Conn, password string) (*image.RGBA, error) {
 	version := make([]byte, 12)
 	if _, err := io.ReadFull(r, version); err != nil {
 		return nil, err
@@ -153,27 +157,38 @@ func vncFrame(r io.Reader, w io.Writer, password string) (*image.RGBA, error) {
 		return nil, err
 	}
 	// Apple's server first reports a placeholder size and sends the real
-	// one as a desktop-size rectangle before any pixels, and its first full
-	// frame after connecting can still be black; the second one is current.
+	// one as a desktop-size rectangle before any pixels. Its first full
+	// frame after connecting can still be black, and it answers another
+	// request only once the screen changes, so a black frame gets a short
+	// wait for a better one.
 	img := image.NewRGBA(image.Rect(0, 0, int(init.Width), int(init.Height)))
-	frames := 0
+	var black *image.RGBA
+	fail := func(err error) (*image.RGBA, error) {
+		var timeout net.Error
+		if black != nil && errors.As(err, &timeout) && timeout.Timeout() {
+			return black, nil
+		}
+		return nil, err
+	}
 	for range 50 {
 		var kind uint8
 		if err := binary.Read(r, binary.BigEndian, &kind); err != nil {
-			return nil, err
+			return fail(err)
 		}
 		switch kind {
 		case 0: // FramebufferUpdate
 			covered, size, err := vncRects(r, img)
 			if err != nil {
-				return nil, err
+				return fail(err)
 			}
 			if size != (image.Point{}) {
-				img, frames = image.NewRGBA(image.Rectangle{Max: size}), 0
+				img = image.NewRGBA(image.Rectangle{Max: size})
 			} else if covered >= img.Bounds().Dx()*img.Bounds().Dy() {
-				if frames++; frames == 2 {
+				if black != nil || !vncIsBlack(img) {
 					return img, nil
 				}
+				black = &image.RGBA{Pix: slices.Clone(img.Pix), Stride: img.Stride, Rect: img.Rect}
+				_ = w.SetReadDeadline(time.Now().Add(vncBlackWait))
 			}
 			bounds := img.Bounds()
 			if _, err := w.Write(vncUpdateRequest(uint16(bounds.Dx()), uint16(bounds.Dy()))); err != nil {
@@ -186,16 +201,25 @@ func vncFrame(r io.Reader, w io.Writer, password string) (*image.RGBA, error) {
 				Length  uint32
 			}
 			if err := binary.Read(r, binary.BigEndian, &head); err != nil {
-				return nil, err
+				return fail(err)
 			}
 			if _, err := io.CopyN(io.Discard, r, int64(head.Length)); err != nil {
-				return nil, err
+				return fail(err)
 			}
 		default:
 			return nil, fmt.Errorf("unexpected message %d", kind)
 		}
 	}
 	return nil, errors.New("no full frame after 50 updates")
+}
+
+func vncIsBlack(img *image.RGBA) bool {
+	for i := 0; i < len(img.Pix); i += 4 {
+		if img.Pix[i]|img.Pix[i+1]|img.Pix[i+2] != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // vncUpdateRequest asks for the whole screen, not only what changed.

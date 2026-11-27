@@ -186,51 +186,70 @@ func TestEncodePowerShell(t *testing.T) {
 }
 
 func TestVNCFrame(t *testing.T) {
-	// A real socket: net.Pipe's unbuffered writes would deadlock the
-	// handshake, where both sides write before they read.
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = l.Close() }()
-	done := make(chan error, 1)
-	go func() {
-		server, err := l.Accept()
-		if err != nil {
-			done <- err
-			return
-		}
-		defer func() { _ = server.Close() }()
-		_ = server.SetDeadline(time.Now().Add(10 * time.Second))
-		done <- fakeVNCServer(server)
-	}()
-	client, err := net.Dial("tcp", l.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = client.Close() }()
-	_ = client.SetDeadline(time.Now().Add(10 * time.Second))
-	img, err := vncFrame(client, client, "secret")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	if got := img.Bounds().Size(); got != image.Pt(2, 1) {
-		t.Fatalf("size = %v, want the size the server announced after its placeholder", got)
-	}
-	for x, want := range []color.RGBA{{3, 2, 1, 255}, {6, 5, 4, 255}} {
-		if got := img.RGBAAt(x, 0); got != want {
-			t.Errorf("pixel %d = %v, want %v", x, got, want)
-		}
+	defer func(wait time.Duration) { vncBlackWait = wait }(vncBlackWait)
+	vncBlackWait = 200 * time.Millisecond
+	black := []byte{0, 0, 0, 0, 0, 0, 0, 0}
+	current := []byte{1, 2, 3, 0, 4, 5, 6, 0}
+	for _, tc := range []struct {
+		name   string
+		frames [][]byte
+		want   []color.RGBA
+	}{
+		{"current frame, no second request", [][]byte{current}, []color.RGBA{{3, 2, 1, 255}, {6, 5, 4, 255}}},
+		{"black frame, then the current one", [][]byte{black, current}, []color.RGBA{{3, 2, 1, 255}, {6, 5, 4, 255}}},
+		{"black frame only", [][]byte{black}, []color.RGBA{{0, 0, 0, 255}, {0, 0, 0, 255}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// A real socket: net.Pipe's unbuffered writes would deadlock the
+			// handshake, where both sides write before they read.
+			l, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = l.Close() }()
+			done := make(chan error, 1)
+			go func() {
+				server, err := l.Accept()
+				if err != nil {
+					done <- err
+					return
+				}
+				defer func() { _ = server.Close() }()
+				_ = server.SetDeadline(time.Now().Add(10 * time.Second))
+				done <- fakeVNCServer(server, tc.frames)
+			}()
+			client, err := net.Dial("tcp", l.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = client.SetDeadline(time.Now().Add(10 * time.Second))
+			img, err := vncFrame(client, client, "secret")
+			_ = client.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+			if got := img.Bounds().Size(); got != image.Pt(2, 1) {
+				t.Fatalf("size = %v, want the size the server announced after its placeholder", got)
+			}
+			for x, want := range tc.want {
+				if got := img.RGBAAt(x, 0); got != want {
+					t.Errorf("pixel %d = %v, want %v", x, got, want)
+				}
+			}
+		})
 	}
 }
 
 // fakeVNCServer speaks the server side of RFB 3.8 with VNC authentication.
 // It answers the first request with a new size only, as Apple's server
 // does, then sends a stale frame and the current one.
-func fakeVNCServer(conn net.Conn) error {
+// fakeVNCServer answers the handshake, announces a 2x1 screen and sends
+// frames, each after a request, then waits until the client hangs up, as
+// Apple's server does on a screen that does not change.
+func fakeVNCServer(conn net.Conn, frames [][]byte) error {
 	read := func(n int) ([]byte, error) {
 		b := make([]byte, n)
 		_, err := io.ReadFull(conn, b)
@@ -283,16 +302,18 @@ func fakeVNCServer(conn net.Conn) error {
 	if _, err := read(10); err != nil {
 		return err
 	}
-	// A stale first frame, and after the next request the current one.
-	stale := []byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 0, 9, 9, 9, 0, 9, 9, 9, 0}
-	if _, err := conn.Write(stale); err != nil {
-		return err
+	for i, pixels := range frames {
+		if i > 0 {
+			if _, err := read(10); err != nil {
+				return err
+			}
+		}
+		update := append([]byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 0}, pixels...)
+		if _, err := conn.Write(update); err != nil {
+			return err
+		}
 	}
-	if _, err := read(10); err != nil {
-		return err
-	}
-	current := []byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 0, 1, 2, 3, 0, 4, 5, 6, 0}
-	_, err = conn.Write(current)
+	_, err = io.Copy(io.Discard, conn)
 	return err
 }
 
