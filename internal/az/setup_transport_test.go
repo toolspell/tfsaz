@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
@@ -420,7 +421,7 @@ func TestPreserveSetupAccessHTTPSErrors(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git unavailable")
 	}
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ok/info/refs":
 			w.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
@@ -435,6 +436,16 @@ func TestPreserveSetupAccessHTTPSErrors(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
+	// Git prints the URL in its errors, so a port such as 40123 must not read as a 401 status.
+	_ = server.Listener.Close()
+	server.Listener = nil
+	for port := 40100; port < 40200 && server.Listener == nil; port++ {
+		server.Listener, _ = net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
+	}
+	if server.Listener == nil {
+		t.Fatal("no free loopback port from 40100 to 40199")
+	}
+	server.StartTLS()
 	defer server.Close()
 	root := t.TempDir()
 	trusted := filepath.Join(root, "trusted.pem")
