@@ -75,9 +75,10 @@ func (s *server) seed() error {
 	merged := dc.addPR(&pullRequest{Repo: infra, CreatedBy: ben, Title: "Add the network module", Source: "refs/heads/feature/network", Target: "refs/heads/main",
 		Reviewers: []*reviewer{rv(tester, approved, false), rv(alice, approved, false)},
 		Checks:    []check{{"Infra CI", "build", "approved"}}, Completion: map[string]any{"mergeStrategy": "squash"}})
-	if err := s.completePR(merged, prWrite{}); err != nil {
+	if err := s.completePR(merged, prWrite{}, seedEnv); err != nil {
 		return err
 	}
+	merged.Closed, merged.ClosedBy = merged.Created.Add(2*time.Hour), merged.CreatedBy
 	pr7 := dc.addPR(&pullRequest{Repo: infra, CreatedBy: tester, Title: "Add the queue module", Source: "refs/heads/feature/queue", Target: "refs/heads/main",
 		Reviewers: []*reviewer{rv(ben, noVote, false), rv(rita, noVote, false)},
 		Checks:    []check{{"Infra CI", "build", "queued"}, {"Minimum reviewers", "reviewers", "queued"}}})

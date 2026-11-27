@@ -376,7 +376,7 @@ func (s *server) updatePR(q *req, pr *pullRequest) {
 	case "active":
 		pr.Status, pr.Closed, pr.ClosedBy = "active", time.Time{}, nil
 	case "completed":
-		if err := s.completePR(pr, body); err != nil {
+		if err := s.completePR(pr, body, gitIdentityEnv); err != nil {
 			serviceError(q.w, http.StatusConflict, err.Error(), "GitPullRequestUpdateRejectedException")
 			return
 		}
@@ -387,7 +387,9 @@ func (s *server) updatePR(q *req, pr *pullRequest) {
 	writeJSON(q.w, http.StatusOK, s.prJSON(q.l, pr, false))
 }
 
-func (s *server) completePR(pr *pullRequest, body prWrite) error {
+// completePR merges with the given Git environment; the seed passes fixed
+// dates so the merge commit ID is the same on every start.
+func (s *server) completePR(pr *pullRequest, body prWrite, env []string) error {
 	if pr.Status != "active" {
 		return fmt.Errorf("TF401181: The pull request cannot be completed because it is %s", pr.Status)
 	}
@@ -402,7 +404,7 @@ func (s *server) completePR(pr *pullRequest, body prWrite) error {
 	if message == "" {
 		message = fmt.Sprintf("Merged PR %d: %s", pr.ID, pr.Title)
 	}
-	commit, err := merge(pr.Repo.Dir, source, target, message, squash)
+	commit, err := merge(pr.Repo.Dir, source, target, message, squash, env)
 	if err != nil {
 		return err
 	}

@@ -188,8 +188,8 @@ func objectAt(dir, commit, path string) string {
 
 // merge completes a PR the way the server does: a merge commit with both
 // parents, or a squash commit with only the target as parent.
-func merge(dir, source, target, message string, squash bool) (string, error) {
-	out, err := git(dir, gitIdentityEnv, nil, "merge-tree", "--write-tree", target, source)
+func merge(dir, source, target, message string, squash bool, env []string) (string, error) {
+	out, err := git(dir, env, nil, "merge-tree", "--write-tree", target, source)
 	if err != nil {
 		return "", fmt.Errorf("merge conflict: %w", err)
 	}
@@ -198,7 +198,7 @@ func merge(dir, source, target, message string, squash bool) (string, error) {
 	if !squash {
 		args = append(args, "-p", source)
 	}
-	out, err = git(dir, gitIdentityEnv, []byte(message), args...)
+	out, err = git(dir, env, []byte(message), args...)
 	if err != nil {
 		return "", err
 	}
