@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -33,6 +36,22 @@ func (e *env) serviceRunning(service string) (bool, error) {
 	out, err := output(e.network.composeEnv(e.project(), e.instancePath()), "docker", e.composeArgs(
 		[]string{"ps", "--status", "running", "-q", service})...)
 	return out != "", err
+}
+
+func (e *env) servicesStatusJSON(w io.Writer) error {
+	var running []string
+	if e.network != nil {
+		out, err := output(e.network.composeEnv(e.project(), e.instancePath()), "docker", e.composeArgs(
+			[]string{"ps", "--status", "running", "--services"})...)
+		if err != nil {
+			return err
+		}
+		running = strings.Fields(out)
+	}
+	return json.NewEncoder(w).Encode(struct {
+		Running   []string `json:"running"`
+		StateHome string   `json:"stateHome"`
+	}{running, e.home})
 }
 
 func (e *env) prepareBed() error {

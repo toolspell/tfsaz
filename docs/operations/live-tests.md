@@ -49,6 +49,7 @@ go run ./tools/live services up       # services only
 go run ./tools/live services down     # stop services and keep the slot for existing clones
 go run ./tools/live clean             # delete this instance's clones; keep services and slot
 go run ./tools/live prune             # remove instances whose worktree paths are missing
+go run ./tools/live services status [-json]      # this instance's services
 go run ./tools/live status
 ```
 
@@ -69,6 +70,29 @@ The instance ID is 12 hex digits derived from the absolute worktree path. To ove
 Use `status` to find orphaned slots and `prune` to remove their clones, router state and Docker projects and release their slots. A slot is orphaned when its worktree path is missing. If Docker is stopped, `prune` frees the slot and removes local state and clones, and reports which Docker project remains. Follow [Remove everything](#remove-everything) after starting Docker. `prune` is disabled in CI.
 
 Before upgrading an older bed, run its `clean` and `services down` from the old checkout. Keep the bases and caches. Remove the old `live-tests/.state` symlink if it is still there. For any remaining legacy clone, get its name from `vm list` and delete it with `vm down NAME`.
+
+## Write a live test
+
+Add a test alongside [the smoke cases](../../live-tests/harness/smoke_test.go) in `live-tests/harness`. Its `TestMain` builds `tools/live` once. Iterate over `harness.Platforms(t)` and call `t.Parallel()` in each OS subtest. Use `harness.Start(t)` in the subtest, then `h.Clone(t, osName)` to start a fresh VM. Tests in another package can call `harness.RunTests(m)` from their `TestMain`.
+
+Use `vm.Run` for guest scripts and `vm.RunGUI` for scripts that need the desktop session. Check the returned exit code and output. Use `vm.Push` and `vm.Pull` to transfer files, `vm.Screenshot` to save a PNG, and `vm.InstallT3` then `vm.StartT3` to get a host CDP URL. Use `h.Requests(t, vm)` to inspect that clone's traffic. `h.ResetJournal(t)` clears every clone's entries, so use it only with exclusive access to the test bed.
+
+With the base VM already built, run from the repository root.
+
+```sh
+go run ./tools/live services up
+TFSAZ_LIVE=1 TFSAZ_LIVE_OS=ubuntu go test -count=1 -run TestSmoke ./live-tests/harness
+```
+
+| Variable | Effect |
+| --- | --- |
+| `TFSAZ_LIVE=1` | Enables VM tests. They skip when `CI` or `GITHUB_ACTIONS` is set, even if empty. |
+| `TFSAZ_LIVE_OS` | Comma-separated guests to run. The default is `ubuntu,macos,windows`. |
+| `TFSAZ_LIVE_MAX_UBUNTU`, `TFSAZ_LIVE_MAX_MACOS`, `TFSAZ_LIVE_MAX_WINDOWS` | Concurrent clones per guest OS in one test process. Defaults are 2, 2 and 1. macOS cannot exceed 2. |
+| `TFSAZ_LIVE_ARTIFACTS` | Directory for per-test artifacts, relative to the repository root or absolute. Defaults to `artifacts/` under the tool's [state home](#state-outside-the-repository). |
+| `TFSAZ_LIVE_KEEP=1` | Stops and keeps each successful clone for inspection. Cleanup logs its name and the command to remove it. |
+
+Use `go test -v` to see artifact paths and retained clone names on success. Cleanup stops CDP forwards, attempts to save a screenshot and request journal on failure, and deletes each clone by default. Use Go's `-timeout` to give longer runs and their cleanup time to finish.
 
 ## For agents
 

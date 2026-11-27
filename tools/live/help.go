@@ -27,7 +27,7 @@ var liveCommands = []commandHelp{
 	{"services", "", "<action>", "Manage the mock, DNS sinkhole and VM router in Docker."},
 	{"services up", "", "", "Start this instance's testbed services and wait for the router and mock."},
 	{"services down", "", "", "Stop and remove this instance's testbed services, including their locally built images, keeping its slot and keys."},
-	{"services status", "", "", "Show this instance's service status, subnet and published ports."},
+	{"services status", "", "[-json]", "Show this instance's service status, subnet and published ports."},
 	{"mock", "", "<action>", "Inspect the Azure DevOps Server mock."},
 	{"mock ca", "", "", "Print the path to this instance's mock CA certificate."},
 	{"mock requests", "", "[-vm NAME] [-json]", "Read this instance's mock request journal."},
@@ -124,7 +124,7 @@ func (c *liveInvocation) flagSet() *flag.FlagSet {
 		flags.BoolVar(&c.asJSON, "json", false, "Print exit code, output and timing as JSON.")
 		flags.DurationVar(&c.timeout, "timeout", 10*time.Minute, "Stop waiting after this duration (for example 30s or 2m). The timeout exit code is 124.")
 		flags.BoolVar(&c.gui, "gui", false, "Run in the test user's desktop session.")
-	case "vm list", "mock requests":
+	case "vm list", "mock requests", "services status":
 		flags.BoolVar(&c.asJSON, "json", false, "Print JSON.")
 		if c.path == "mock requests" {
 			flags.StringVar(&c.vm, "vm", "", "Filter by clone name.")

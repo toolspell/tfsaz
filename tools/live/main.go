@@ -80,6 +80,9 @@ func (e *env) runCommand(call liveInvocation, stdout io.Writer, inCI bool) error
 	case "doctor":
 		return e.doctor(call.install || call.yes, inCI)
 	case "services":
+		if call.asJSON {
+			return e.servicesStatusJSON(stdout)
+		}
 		return e.services(action)
 	case "mock":
 		return e.mock(action, call.vm, call.asJSON, stdout)

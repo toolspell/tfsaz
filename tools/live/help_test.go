@@ -28,7 +28,7 @@ func TestLiveHelp(t *testing.T) {
 		{"services", " <action>", nil},
 		{"services up", "", nil},
 		{"services down", "", nil},
-		{"services status", "", nil},
+		{"services status", " [-json]", []string{"-json"}},
 		{"mock", " <action>", nil},
 		{"mock ca", "", nil},
 		{"mock requests", " [-vm NAME] [-json]", []string{"-vm", "-json"}},

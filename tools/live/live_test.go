@@ -64,6 +64,7 @@ func TestCIGuard(t *testing.T) {
 				{"doctor --install", true},
 				{"doctor -yes=true", true},
 				{"services status", false},
+				{"services status -json", false},
 				{"services up", true},
 				{"services down", true},
 				{"mock ca", false},
