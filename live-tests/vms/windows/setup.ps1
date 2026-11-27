@@ -6,9 +6,10 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Start-Transcript -Path C:\Windows\Temp\tfsaz-setup.log
 
-# Windows has no inbox driver for QEMU's virtio network card; the virtio-win
-# ISO on another drive has it.
-foreach ($driver in 'NetKVM\w11\ARM64\netkvm.inf') {
+# Windows has no inbox drivers for QEMU's virtio network card and GPU; the
+# virtio-win ISO on another drive has them. The GPU gives the desktop
+# 1920x1080, which ramfb, the boot display, cannot.
+foreach ($driver in 'NetKVM\w11\ARM64\netkvm.inf', 'viogpudo\w11\ARM64\viogpudo.inf') {
     $inf = Get-PSDrive -PSProvider FileSystem |
         ForEach-Object { Join-Path $_.Root $driver } |
         Where-Object { Test-Path $_ } |

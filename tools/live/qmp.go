@@ -71,13 +71,14 @@ func (s *qmpSession) execute(command string, arguments any) (json.RawMessage, er
 	}
 }
 
-// qmpScreendump asks QEMU to write the screen to file as a PNG.
-func qmpScreendump(socket, file string) error {
+// qmpScreendump asks QEMU to write the screen of a display device to file
+// as a PNG.
+func qmpScreendump(socket, device, file string) error {
 	s, err := dialQMP(socket)
 	if err != nil {
 		return err
 	}
 	defer s.close()
-	_, err = s.execute("screendump", map[string]string{"filename": file, "format": "png"})
+	_, err = s.execute("screendump", map[string]string{"filename": file, "format": "png", "device": device})
 	return err
 }

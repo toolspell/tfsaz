@@ -139,10 +139,13 @@ func (q qemu) start(name, logFile string) error {
 		"-drive", "if=none,id=disk,format=qcow2,discard=unmap,file="+filepath.Join(dir, "disk.qcow2"),
 		"-device", "nvme,drive=disk,serial=disk0",
 		"-device", "qemu-xhci", "-device", "usb-kbd", "-device", "usb-tablet",
+		// Windows' boot manager needs ramfb's linear framebuffer, which
+		// tops out at 1024x768; the desktop runs on the virtio GPU.
 		"-device", "ramfb",
-		// QEMU's own VNC server, for agents and people; its password comes
-		// over QMP once QEMU runs.
-		"-vnc", "127.0.0.1:0,to=99,password=on",
+		"-device", fmt.Sprintf("virtio-gpu-pci,id=%s,xres=%d,yres=%d", qemuDisplay, displayWidth, displayHeight),
+		// QEMU's own VNC server shows the desktop to agents and people; its
+		// password comes over QMP once QEMU runs.
+		"-vnc", "127.0.0.1:0,to=99,password=on,display="+qemuDisplay,
 		"-device", "virtio-net-pci,netdev=net0",
 		// Without IPv6 the NAT offers no second DNS server past the router.
 		"-netdev", fmt.Sprintf("user,id=net0,ipv6=off,hostfwd=tcp:127.0.0.1:%d-:22", port),
@@ -246,8 +249,11 @@ func (q qemu) remove(name string) error {
 }
 
 func (q qemu) screenshot(name, _, file string) error {
-	return qmpScreendump(filepath.Join(q.dir(name), "qmp.sock"), file)
+	return qmpScreendump(filepath.Join(q.dir(name), "qmp.sock"), qemuDisplay, file)
 }
+
+// qemuDisplay is the QEMU id of the display adapter the desktop runs on.
+const qemuDisplay = "gpu"
 
 func (q qemu) rename(from, to string) error {
 	return os.Rename(q.dir(from), q.dir(to))
