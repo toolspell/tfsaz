@@ -36,6 +36,7 @@ go run ./tools/live vm pull NAME REMOTE LOCAL     # copy a file or folder out of
 go run ./tools/live vm forward NAME PORT[:PORT]   # host 127.0.0.1:PORT to the clone's loopback port
 go run ./tools/live vm screenshot NAME FILE       # PNG of the clone's desktop
 go run ./tools/live vm vnc NAME                   # print a VNC URL for the clone
+go run ./tools/live vm t3 NAME                    # install the T3 Code desktop app of the reference pin
 go run ./tools/live vm list -json
 go run ./tools/live vm stop NAME      # shut it down, keep it for later
 go run ./tools/live vm start NAME     # boot it again; prints its details as JSON
@@ -142,6 +143,17 @@ Every clone's desktop is 1920x1080. Tart clones get it from `tart set NAME --dis
 | `vm forward NAME PORT[:PORT]` | Forwards the host's 127.0.0.1:PORT to the clone's loopback port until stopped, for example to reach a browser's or an app's debugging port from Playwright on the host. Run it in the background. |
 | `vm screenshot NAME FILE` | Saves a PNG of the clone's desktop, taken from the hypervisor, so the guest needs no permission and nobody has to click anything. Windows: QEMU's QMP `screendump` of the virtio GPU. macOS and Ubuntu: the VNC server of Apple's Virtualization.framework, which Tart starts for every clone (`tart run --no-graphics --vnc-experimental`, which prints the address instead of opening a window). |
 | `vm vnc NAME` | Prints `vnc://:PASSWORD@127.0.0.1:PORT` for a VNC client or an agent's VNC tool. The hypervisor serves it (Virtualization.framework for Tart, QEMU's own VNC server bound to the virtio GPU for Windows). Loopback only, a new random password per start; nothing runs in the guest for it. |
+| `vm t3 NAME` | Installs the stock T3 Code desktop app at the tag that `tools/syncrepos` pins for `.reference-apps/t3code`, as its user would, and prints the tag. Clones start without T3, so a test can also cover a machine without it. The arm64 installer comes from T3's GitHub release, is checked against the SHA-512 in the release's electron-builder manifest and is cached in `~/.tfsaz-live/cache/t3/TAG/`. macOS: the app in `/Applications`. Ubuntu: the `.deb` through apt. Windows: the NSIS installer, silent, per user. About 10 seconds on macOS, 30 on Ubuntu and a minute on Windows. |
+
+Start T3 with `-gui`. A nightly tag installs `T3 Code (Nightly)`; a release installs `T3 Code`:
+
+```sh
+go run ./tools/live vm run NAME -gui -- 'open -a "T3 Code (Nightly)"'                                  # macOS
+go run ./tools/live vm run NAME -gui -- 'gtk-launch t3code >/dev/null 2>&1 &'                          # Ubuntu
+go run ./tools/live vm run NAME -gui -- 'Start-Process "$env:LOCALAPPDATA\Programs\t3code\T3 Code (Nightly).exe"'   # Windows
+```
+
+On Windows, the first start shows Windows Defender Firewall's prompt for T3, as on a user's machine. A test that takes screenshots closes it first.
 
 ## Network
 
