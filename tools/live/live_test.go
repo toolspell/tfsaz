@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
@@ -385,5 +386,56 @@ func TestManifestSHA512(t *testing.T) {
 	}
 	if _, err := manifestSHA512(strings.NewReader(manifest), "missing.zip"); err == nil {
 		t.Error("manifestSHA512 found a file the manifest does not list")
+	}
+}
+
+func TestDownload(t *testing.T) {
+	if _, err := exec.LookPath("curl"); err != nil {
+		t.Skip("curl unavailable")
+	}
+	src := filepath.Join(t.TempDir(), "installer")
+	if err := os.WriteFile(src, []byte("installer"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	url := "file://" + filepath.ToSlash(src)
+	if !strings.HasPrefix(url, "file:///") {
+		url = "file:///" + filepath.ToSlash(src)
+	}
+	sum := sha512.Sum512([]byte("installer"))
+	good := base64.StdEncoding.EncodeToString(sum[:])
+	for _, tc := range []struct {
+		name, url, want string
+		runs            int
+		ok              bool
+	}{
+		{name: "no checksum", url: url, runs: 1, ok: true},
+		{name: "matching checksum, parallel runs", url: url, want: good, runs: 4, ok: true},
+		{name: "wrong checksum", url: url, want: "AAAA", runs: 1},
+		{name: "failed download", url: url + ".missing", runs: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "file")
+			errs := make(chan error, tc.runs)
+			for range tc.runs {
+				go func() { errs <- download(path, tc.url, tc.want) }()
+			}
+			for range tc.runs {
+				if err := <-errs; (err == nil) != tc.ok {
+					t.Errorf("download: %v, want success %v", err, tc.ok)
+				}
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var names []string
+			for _, e := range entries {
+				names = append(names, e.Name())
+			}
+			if want := map[bool][]string{true: {"file"}, false: nil}[tc.ok]; !slices.Equal(names, want) {
+				t.Errorf("directory holds %q, want %q", names, want)
+			}
+		})
 	}
 }

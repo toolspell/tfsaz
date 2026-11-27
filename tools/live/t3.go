@@ -82,12 +82,7 @@ func (e *env) ensureT3(osName string) (tag, path string, err error) {
 	}
 	manifestPath := filepath.Join(dir, manifest)
 	if _, err := os.Stat(manifestPath); err != nil {
-		part := manifestPath + ".part"
-		if _, err := output(nil, "curl", "-fsSL", "--retry", "3", "-o", part, t3Releases+tag+"/"+manifest); err != nil {
-			_ = os.Remove(part)
-			return "", "", err
-		}
-		if err := os.Rename(part, manifestPath); err != nil {
+		if err := download(manifestPath, t3Releases+tag+"/"+manifest, ""); err != nil {
 			return "", "", err
 		}
 	}
@@ -105,15 +100,33 @@ func (e *env) ensureT3(osName string) (tag, path string, err error) {
 		return tag, path, nil
 	}
 	step("downloading %s", file)
-	part := path + ".part"
-	if err := cmd("", nil, "curl", "-fL", "--retry", "3", "--progress-bar", "-C", "-", "-o", part, t3Releases+tag+"/"+file); err != nil {
-		return "", "", fmt.Errorf("download %s: %w", file, err)
+	if err := download(path, t3Releases+tag+"/"+file, want); err != nil {
+		return "", "", fmt.Errorf("%s: %w", file, err)
 	}
-	if ok, err := hasSHA512(part, want); !ok {
-		_ = os.Remove(part)
-		return "", "", fmt.Errorf("%s does not match the SHA-512 in %s; deleted it (%v)", file, manifest, err)
+	return tag, path, nil
+}
+
+// download fetches url to path through a temporary file of its own, so a
+// failed download leaves nothing behind and parallel runs, for example
+// from other worktrees, do not write the same file. A file whose SHA-512
+// is not want (when given) is deleted.
+func download(path, url, want string) error {
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.part")
+	if err != nil {
+		return err
 	}
-	return tag, path, os.Rename(part, path)
+	part := f.Name()
+	_ = f.Close()
+	defer func() { _ = os.Remove(part) }()
+	if err := cmd("", nil, "curl", "-fL", "--retry", "3", "--progress-bar", "-o", part, url); err != nil {
+		return fmt.Errorf("download %s: %w", url, err)
+	}
+	if want != "" {
+		if ok, err := hasSHA512(part, want); !ok {
+			return fmt.Errorf("the download does not match the SHA-512 of the release manifest; deleted it (%v)", err)
+		}
+	}
+	return os.Rename(part, path)
 }
 
 func hasSHA512(path, want string) (bool, error) {
