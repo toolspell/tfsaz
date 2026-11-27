@@ -126,9 +126,13 @@ func (e *env) vmRun(args []string) error {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// userScript makes a PowerShell script of vm run end with its exit N, or
-// else with the exit code of its last native command, with and without -gui.
-func userScript(script string) string { return script + "\nexit $LASTEXITCODE" }
+// userScript gives a PowerShell script of vm run the exit code PowerShell
+// itself would give it, with and without -gui: its own exit N, else 0 when
+// the last statement succeeded, else the exit code of a failed native
+// command or 1 for a failed cmdlet.
+func userScript(script string) string {
+	return script + "\nif ($?) { exit 0 }; if ($LASTEXITCODE) { exit $LASTEXITCODE }; exit 1"
+}
 
 // windowsGUI returns a PowerShell script that runs command as its own
 // script in the test user's desktop session through a one-time scheduled
@@ -144,7 +148,10 @@ func windowsGUI(command string, timeout time.Duration) string {
 	run := base64.StdEncoding.EncodeToString([]byte(`$out = Join-Path $PSScriptRoot 'out.txt'
 $err = Join-Path $PSScriptRoot 'err.txt'
 $arguments = '-NoProfile -NonInteractive -File "{0}"' -f (Join-Path $PSScriptRoot 'user.ps1')
-$p = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList $arguments -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -Wait -PassThru
+$p = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList $arguments -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -PassThru
+$null = $p.Handle
+# Only the script: apps it starts keep running, as for a user.
+$p.WaitForExit()
 Set-Content (Join-Path $PSScriptRoot 'exit.txt') ([string]$p.ExitCode)`))
 	return fmt.Sprintf(`$dir = Join-Path $env:TEMP 'tfsaz-gui-%[1]s'
 $name = 'tfsaz-gui-%[1]s'

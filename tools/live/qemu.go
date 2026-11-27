@@ -160,6 +160,8 @@ func (q qemu) start(name, logFile string) error {
 	}
 	exited := make(chan error, 1)
 	go func() { exited <- c.Wait() }()
+	// QEMU may write its pid file before its QMP socket exists.
+	var vncErr error
 	for range 50 {
 		select {
 		case err := <-exited:
@@ -167,12 +169,14 @@ func (q qemu) start(name, logFile string) error {
 		case <-time.After(200 * time.Millisecond):
 		}
 		if q.pid(name) != 0 {
-			if err := q.setVNC(name); err != nil {
-				// A VM whose start failed must not keep running.
-				return errors.Join(err, q.stop(name))
+			if vncErr = q.setVNC(name); vncErr == nil {
+				return nil
 			}
-			return nil
 		}
+	}
+	if vncErr != nil {
+		// A VM whose start failed must not keep running.
+		return errors.Join(vncErr, q.stop(name))
 	}
 	return fmt.Errorf("qemu-system-aarch64 did not start %s within 10s; see %s", name, logFile)
 }
