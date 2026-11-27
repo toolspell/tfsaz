@@ -138,7 +138,12 @@ func journalQuery(query string, redact func(string) string) string {
 			pairs[i] += "=" + value
 		}
 	}
-	return strings.Join(pairs, "&")
+	// A secret with = or & in it spans pairs.
+	joined := strings.Join(pairs, "&")
+	if decoded, err := url.QueryUnescape(joined); err == nil && redact(decoded) != decoded {
+		return "[redacted]"
+	}
+	return redact(joined)
 }
 
 // redactPart reports whether a query name or value holds a secret, raw or

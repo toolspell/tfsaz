@@ -62,6 +62,14 @@ func TestRequestJournal(t *testing.T) {
 	r4.RemoteAddr = "172.30.53.132:34567"
 	r4.SetBasicAuth("tester", "password")
 	s.ServeHTTP(httptest.NewRecorder(), r4)
+	r5 := httptest.NewRequest(http.MethodGet, "http://devops.mock.test:8080/?%61ttempt=value&x=1", nil)
+	r5.RemoteAddr = "172.30.53.133:45678"
+	r5.SetBasicAuth("tester", "attempt=value")
+	s.ServeHTTP(httptest.NewRecorder(), r5)
+	var split []requestEntry
+	if err := json.Unmarshal(get("?ip=172.30.53.133").Body.Bytes(), &split); err != nil || len(split) != 1 || split[0].Query != "[redacted]" {
+		t.Errorf("a secret across a query separator stays in the journal: %+v, %v", split, err)
+	}
 	var named []requestEntry
 	if err := json.Unmarshal(get("?ip=172.30.53.132").Body.Bytes(), &named); err != nil || len(named) != 1 || named[0].Query != "[redacted]=[redacted]" {
 		t.Errorf("a password used as a query name stays in the journal: %+v, %v", named, err)
