@@ -150,9 +150,10 @@ try {
 	while (-not ((Test-Path "$dir\exit.txt") -and (Get-Content "$dir\exit.txt"))) {
 		if ((Get-Date) -gt $deadline) {
 			Stop-ScheduledTask -TaskName $name
-			# The task's own process goes; the script it started does not.
+			# The task's own process goes; the script and whatever it
+			# started, such as a native program, go with its process tree.
 			Get-CimInstance Win32_Process | Where-Object CommandLine -like "*$dir*" |
-				ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+				ForEach-Object { taskkill.exe /T /F /PID $_.ProcessId 2>&1 | Out-Null }
 			[Console]::Error.WriteLine('tfsaz-live: timed out')
 			exit 124
 		}
