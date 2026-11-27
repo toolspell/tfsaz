@@ -105,14 +105,26 @@ func commitAll(work, message string) error {
 	return err
 }
 
-// head returns the commit a ref points to, or "" when it does not exist.
-func head(dir, ref string) string {
-	out, err := git(dir, gitIdentityEnv, nil, "rev-parse", "--verify", "-q", ref+"^{commit}")
+// resolve looks up a revision and returns its object ID if it has the
+// wanted type. Values from requests reach Git only on stdin, never as
+// arguments, so they cannot become options.
+func resolve(dir, rev, typ string) string {
+	if rev == "" || strings.ContainsAny(rev, "\n\x00") {
+		return ""
+	}
+	out, err := git(dir, gitIdentityEnv, []byte(rev+"\n"), "cat-file", "--batch-check=%(objectname) %(objecttype)")
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(out)
+	id, got, ok := strings.Cut(strings.TrimSpace(out), " ")
+	if !ok || got != typ {
+		return ""
+	}
+	return id
 }
+
+// head returns the commit a ref points to, or "" when it does not exist.
+func head(dir, ref string) string { return resolve(dir, ref+"^{commit}", "commit") }
 
 func defaultBranch(dir string) string {
 	out, err := git(dir, gitIdentityEnv, nil, "symbolic-ref", "HEAD")
@@ -164,17 +176,14 @@ func diff(dir, from, to string) ([]change, error) {
 	return changes, nil
 }
 
+// blob reads a blob by an object ID that git itself returned.
 func blob(dir, object string) ([]byte, error) {
 	out, err := git(dir, gitIdentityEnv, nil, "cat-file", "blob", object)
 	return []byte(out), err
 }
 
 func objectAt(dir, commit, path string) string {
-	out, err := git(dir, gitIdentityEnv, nil, "rev-parse", "--verify", "-q", commit+":"+strings.TrimPrefix(path, "/"))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(out)
+	return resolve(dir, commit+":"+strings.TrimPrefix(path, "/"), "blob")
 }
 
 // merge completes a PR the way the server does: a merge commit with both
@@ -196,13 +205,18 @@ func merge(dir, source, target, message string, squash bool) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// updateRef and deleteRef pass the ref on stdin; see resolve.
 func updateRef(dir, ref, commit, old string) error {
-	_, err := git(dir, gitIdentityEnv, nil, "update-ref", ref, commit, old)
-	return err
+	return refTransaction(dir, "update "+ref+" "+commit+" "+old+"\n")
 }
 
-func deleteRef(dir, ref string) error {
-	_, err := git(dir, gitIdentityEnv, nil, "update-ref", "-d", ref)
+func deleteRef(dir, ref string) error { return refTransaction(dir, "delete "+ref+"\n") }
+
+func refTransaction(dir, command string) error {
+	if strings.Count(command, "\n") != 1 || strings.Contains(command, "\x00") {
+		return fmt.Errorf("invalid ref")
+	}
+	_, err := git(dir, gitIdentityEnv, []byte(command), "update-ref", "--stdin")
 	return err
 }
 

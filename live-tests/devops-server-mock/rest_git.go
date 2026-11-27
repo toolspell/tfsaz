@@ -570,7 +570,11 @@ func (s *server) blobs(q *req, rp *repo) {
 	q.w.Header().Set("Content-Type", "application/zip")
 	zw := zip.NewWriter(q.w)
 	for _, id := range ids {
-		content, err := blob(rp.Dir, strings.ToLower(id))
+		object := resolve(rp.Dir, strings.ToLower(id), "blob")
+		if object == "" {
+			continue
+		}
+		content, err := blob(rp.Dir, object)
 		if err != nil {
 			continue
 		}
