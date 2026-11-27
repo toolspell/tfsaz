@@ -12,7 +12,7 @@ import (
 func TestRequestJournal(t *testing.T) {
 	s := &server{cfg: config{pat: "seed-value"}, collections: []*collection{{Name: "DefaultCollection"}}}
 	const path = "/tfs/DefaultCollection/_apis"
-	r := httptest.NewRequest(http.MethodOptions, "https://devops.mock.test:8443"+path+"?allHostTypes=true&%50assword=query-value&other=attempt-value&encoded=%61ttempt-value", nil)
+	r := httptest.NewRequest(http.MethodOptions, "https://devops.mock.test:8443"+path+"?allHostTypes=true&%50assword=query-value&other=attempt-value&encoded=%61ttempt-value&attempt-value=visible", nil)
 	r.RemoteAddr = "172.30.53.129:12345"
 	r.Header.Set("X-Forwarded-For", "172.30.53.130")
 	r.Header.Set("User-Agent", "journal-test seed-value")
@@ -54,7 +54,7 @@ func TestRequestJournal(t *testing.T) {
 	got := rows[0]
 	if got.Time.IsZero() || got.ClientIP != "172.30.53.129" || got.Method != "OPTIONS" ||
 		got.Scheme != "https" || got.Host != "devops.mock.test:8443" || got.Path != path ||
-		got.Query != "allHostTypes=true&%50assword=[redacted]&other=[redacted]&encoded=[redacted]" ||
+		got.Query != "allHostTypes=true&%50assword=[redacted]&other=[redacted]&encoded=[redacted]&[redacted]=[redacted]" ||
 		got.Status != http.StatusUnauthorized || got.UserAgent != "journal-test [redacted]" || got.AuthScheme != "Basic" {
 		t.Errorf("unexpected journal entry: %+v", got)
 	}

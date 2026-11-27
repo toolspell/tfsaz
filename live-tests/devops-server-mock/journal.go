@@ -129,7 +129,11 @@ func journalQuery(query string, redact func(string) string) string {
 			// A value with an encoded secret, such as %61 for a, matches
 			// only when decoded.
 			if value, err := url.QueryUnescape(pair); err == nil && redact(value) != value {
-				pairs[i] = name + "=[redacted]"
+				shown := name
+				if decoded, err := url.QueryUnescape(name); err == nil && redact(decoded) != decoded {
+					shown = redact(decoded)
+				}
+				pairs[i] = shown + "=[redacted]"
 			} else {
 				pairs[i] = redact(pair)
 			}
