@@ -50,6 +50,15 @@ func (e *env) base(action, osName string, force bool) error {
 	return errUsage
 }
 
+// baseHint says how to renew an existing base: Windows has no update in
+// place.
+func baseHint(o osDef) string {
+	if o.guest.update == "" {
+		return fmt.Sprintf("base build %s -force rebuilds it", o.name)
+	}
+	return fmt.Sprintf("base update %s upgrades it, base build %s -force rebuilds it", o.name, o.name)
+}
+
 func (e *env) baseKey(o osDef) string { return e.path("keys", o.name+"-base", "id_ed25519") }
 
 // buildBase installs the OS into a build VM and replaces the base VM with it
@@ -61,7 +70,7 @@ func (e *env) buildBase(o osDef, force bool) error {
 		return err
 	}
 	if exists && !force {
-		return fmt.Errorf("%s exists; use base update %s, or base build %s -force to rebuild it", o.base(), o.name, o.name)
+		return fmt.Errorf("%s exists; %s", o.base(), baseHint(o))
 	}
 	dir := filepath.Join(e.bed, "vms", o.name)
 	// The new key replaces the base's key only with the base itself, so a

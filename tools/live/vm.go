@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -224,14 +225,20 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 // restart reboots the clone and waits until SSH answers again. QEMU keeps
 // its port forward, so the address stays the same.
 func restart(o osDef, login sshTarget) error {
-	_, _ = login.run(nil, o.guest.restart)
 	deadline := time.Now().Add(2 * time.Minute)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	// The session may end with the restart; only the probes below tell.
+	_, _ = login.runContext(ctx, nil, o.guest.restart)
 	for {
-		if _, err := login.run(nil, "exit 0"); err != nil {
-			break
-		}
-		if time.Now().After(deadline) {
+		probe, stop := context.WithTimeout(ctx, 15*time.Second)
+		_, err := login.runContext(probe, nil, "exit 0")
+		stop()
+		if ctx.Err() != nil {
 			return errors.New("the clone did not restart within 2 minutes")
+		}
+		if err != nil {
+			break
 		}
 		time.Sleep(2 * time.Second)
 	}

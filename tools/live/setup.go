@@ -28,7 +28,7 @@ func (e *env) setup(osName string) error {
 		return err
 	}
 	if exists {
-		step("%s exists; base update %s upgrades it, base build %s -force rebuilds it", o.base(), o.name, o.name)
+		step("%s exists; %s", o.base(), baseHint(o))
 	} else if err := e.base("build", o.name, false); err != nil {
 		return err
 	}
