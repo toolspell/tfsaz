@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -78,12 +79,14 @@ type osDef struct {
 	provider string
 	ready    bool
 	user     string
+	guest    guest
+	macos    int // for a macOS guest: its major version, which the host needs at least
 }
 
 var oses = []osDef{
-	{name: "ubuntu", provider: "tart", ready: true, user: "tester"},
-	{name: "windows", provider: "utm"},
-	{name: "macos", provider: "tart"},
+	{name: "ubuntu", provider: "tart", ready: true, user: "tester", guest: ubuntuGuest},
+	{name: "macos", provider: "tart", ready: true, user: "admin", guest: macosGuest, macos: 27},
+	{name: "windows", provider: "qemu"},
 }
 
 func lookupOS(name string) (osDef, error) {
@@ -94,9 +97,17 @@ func lookupOS(name string) (osDef, error) {
 		if !o.ready {
 			return o, fmt.Errorf("%s VMs (%s) are not set up yet", name, o.provider)
 		}
+		if o.macos > 0 {
+			// Virtualization.framework runs no macOS guest newer than its host.
+			out, err := exec.Command("sw_vers", "-productVersion").Output()
+			major, _ := strconv.Atoi(strings.SplitN(strings.TrimSpace(string(out)), ".", 2)[0])
+			if err != nil || major < o.macos {
+				return o, fmt.Errorf("macOS %d guests need a macOS %d host or newer", o.macos, o.macos)
+			}
+		}
 		return o, nil
 	}
-	return osDef{}, fmt.Errorf("unknown OS %q; use ubuntu", name)
+	return osDef{}, fmt.Errorf("unknown OS %q; use ubuntu or macos", name)
 }
 
 const prefix = "tfsaz-"

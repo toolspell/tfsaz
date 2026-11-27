@@ -63,10 +63,6 @@ func (e *env) buildBase(o osDef, force bool) error {
 		return fmt.Errorf("%s exists; use base update %s, or base build %s -force to rebuild it", o.base(), o.name, o.name)
 	}
 	dir := filepath.Join(e.bed, "vms", o.name)
-	iso, err := e.ensureISO(dir)
-	if err != nil {
-		return err
-	}
 	// The new key replaces the base's key only with the base itself, so a
 	// failed rebuild leaves the old base usable.
 	key := e.path("keys", o.name+"-build", "id_ed25519")
@@ -77,8 +73,11 @@ func (e *env) buildBase(o osDef, force bool) error {
 	if err := newSSHKey(key, "tfsaz-live "+o.base()); err != nil {
 		return err
 	}
-	seed, err := e.seedISO(o, dir, key+".pub")
+	inputs, from, err := e.buildInputs(o, dir, key)
 	if err != nil {
+		return err
+	}
+	if err := e.macosSlot(o); err != nil {
 		return err
 	}
 	if err := t.remove(o.build()); err != nil {
@@ -93,10 +92,12 @@ func (e *env) buildBase(o osDef, force bool) error {
 	if err := cmd(dir, packerEnv, "packer", "init", "."); err != nil {
 		return err
 	}
-	step("building %s from %s (this takes a while)", o.build(), filepath.Base(iso))
-	err = cmd(dir, packerEnv, "packer", "build", "-color=false",
-		"-var", "vm_name="+o.build(), "-var", "iso="+iso, "-var", "seed_iso="+seed,
-		"-var", "ssh_private_key_file="+key, ".")
+	step("building %s from %s (this takes a while)", o.build(), from)
+	args := []string{"build", "-color=false", "-var", "vm_name=" + o.build(), "-var", "ssh_private_key_file=" + key}
+	for _, v := range inputs {
+		args = append(args, "-var", v)
+	}
+	err = cmd(dir, packerEnv, "packer", append(args, ".")...)
 	if err != nil {
 		_ = t.remove(o.build())
 		return fmt.Errorf("packer build failed: %w", err)
@@ -116,6 +117,36 @@ func (e *env) buildBase(o osDef, force bool) error {
 	}
 	step("built %s", o.base())
 	return nil
+}
+
+// buildInputs returns the Packer variables of o's template besides the VM
+// name and the build key, and what the build starts from.
+func (e *env) buildInputs(o osDef, dir, key string) ([]string, string, error) {
+	switch o.name {
+	case "ubuntu":
+		iso, err := e.ensureISO(dir)
+		if err != nil {
+			return nil, "", err
+		}
+		seed, err := e.seedISO(o, dir, key+".pub")
+		return []string{"iso=" + iso, "seed_iso=" + seed}, filepath.Base(iso), err
+	case "macos":
+		data, err := os.ReadFile(filepath.Join(dir, "image.json"))
+		if err != nil {
+			return nil, "", err
+		}
+		var spec struct{ Image string }
+		if err := json.Unmarshal(data, &spec); err != nil || !strings.Contains(spec.Image, "@sha256:") {
+			return nil, "", fmt.Errorf("%s/image.json needs an image pinned by digest", dir)
+		}
+		pub, err := os.ReadFile(key + ".pub")
+		if err != nil {
+			return nil, "", err
+		}
+		// Tart pulls the image into its cache once; later builds reuse it.
+		return []string{"base_image=" + spec.Image, "ssh_public_key=" + strings.TrimSpace(string(pub))}, spec.Image, nil
+	}
+	return nil, "", fmt.Errorf("%s has no base build", o.name)
 }
 
 // ensureISO downloads the installer named in iso.json into the cache and
@@ -215,6 +246,9 @@ func (e *env) updateBase(o osDef) error {
 	if err := os.MkdirAll(work, 0o700); err != nil {
 		return err
 	}
+	if err := e.macosSlot(o); err != nil {
+		return err
+	}
 	step("booting %s", o.base())
 	if err := t.start(o.base(), filepath.Join(work, "update.log")); err != nil {
 		return err
@@ -230,7 +264,7 @@ func (e *env) updateBase(o osDef) error {
 		return errors.Join(err, t.stop(o.base()))
 	}
 	step("upgrading packages")
-	if _, err := login.run(nil, "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update && apt-get -y -o DPkg::Lock::Timeout=600 full-upgrade && apt-get -y autoremove'"); err != nil {
+	if _, err := login.run(nil, o.guest.update); err != nil {
 		return errors.Join(err, e.shutdownBase(o, login))
 	}
 	if _, err := login.run(prepare, "sudo sh -eu -s"); err != nil {
@@ -252,7 +286,7 @@ func (e *env) shutdownBase(o osDef, login sshTarget) error {
 	// tells whether it stopped.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	_, _ = login.runContext(ctx, nil, "sudo systemctl poweroff")
+	_, _ = login.runContext(ctx, nil, o.guest.poweroff)
 	if err := e.tart().waitStopped(o.base(), 2*time.Minute); err != nil {
 		return fmt.Errorf("%w; check it, then stop it with TART_HOME=%s tart stop %s", err, e.tart().home, o.base())
 	}

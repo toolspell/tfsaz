@@ -19,20 +19,18 @@ var (
 
 // wgConfig is the VM's tunnel: all traffic goes to the router, except the
 // tunnel itself and the VM's own NAT network, so SSH from the host keeps
-// working. DNS goes to the router's resolver. The private key stays in the
-// VM, in a file wg genkey wrote there.
-func wgConfig(address netip.Addr, routerKey, endpoint string) string {
+// working. lines set the private key, which stays in the VM in a file wg
+// genkey wrote there, and DNS through the router's resolver.
+func wgConfig(address netip.Addr, routerKey, endpoint, lines string) string {
 	return fmt.Sprintf(`[Interface]
 Address = %s/32
-PostUp = wg set %%i private-key /etc/wireguard/private.key
-PostUp = resolvectl dns %%i %s; resolvectl domain %%i '~.'
-
+%s
 [Peer]
 PublicKey = %s
 Endpoint = %s:51820
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
-`, address, routerAddress, routerKey, endpoint)
+`, address, lines, routerKey, endpoint)
 }
 
 // freeAddress picks the first VM address no saved peer uses.
