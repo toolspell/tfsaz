@@ -52,9 +52,9 @@ var ubuntuGuest = guest{
 	hostname:   "sudo hostnamectl set-hostname %[1]s && sudo sed -i 's/^127\\.0\\.1\\.1 .*/127.0.1.1 %[1]s/' /etc/hosts",
 	wgKey:      "sudo sh -c 'umask 077 && wg genkey >/etc/wireguard/private.key && wg pubkey </etc/wireguard/private.key'",
 	wgLines: "PostUp = wg set %i private-key /etc/wireguard/private.key\n" +
-		"PostUp = resolvectl dns %i " + routerAddress.String() + "; resolvectl domain %i '~.'\n",
+		"PostUp = resolvectl dns %i ${router_ip}; resolvectl domain %i '~.'\n",
 	wgUp:     "sudo sh -c 'umask 077 && cat >/etc/wireguard/wg0.conf' && sudo systemctl enable --now wg-quick@wg0",
-	resolves: "getent hosts devops.mock.test | grep -q '^172.30.53.10 '",
+	resolves: "getent ahostsv4 devops.mock.test | awk '$1 == \"%s\" { found = 1 } END { exit !found }'",
 	// gnome-shell runs before its compositor accepts clients; connect to
 	// its Wayland socket to see that it does. -gui takes the display from
 	// the user's systemd manager, which GNOME tells once it is up.
@@ -85,9 +85,9 @@ var macosGuest = guest{
 	hostname:   "sudo scutil --set HostName %[1]s && sudo scutil --set LocalHostName %[1]s && sudo scutil --set ComputerName %[1]s",
 	wgKey:      "sudo sh -c 'umask 077 && /opt/homebrew/bin/wg genkey >/etc/wireguard/private.key && /opt/homebrew/bin/wg pubkey </etc/wireguard/private.key'",
 	wgLines: "PostUp = wg set %i private-key /etc/wireguard/private.key\n" +
-		"DNS = " + routerAddress.String() + "\n",
+		"DNS = ${router_ip}\n",
 	wgUp:     "sudo sh -c 'umask 077 && cat >/etc/wireguard/wg0.conf' && sudo launchctl kickstart -k system/com.tfsaz.live.wg0",
-	resolves: "dscacheutil -q host -a name devops.mock.test | grep -q 'ip_address: 172.30.53.10'",
+	resolves: "dscacheutil -q host -a name devops.mock.test | grep -Fq 'ip_address: %s'",
 	reaches:  "nc -z -G 5 devops.mock.test 8080",
 	tunneled: "route -n get 1.1.1.1 | grep -q 'interface: utun'",
 	session:  "test \"$(stat -f %Su /dev/console)\" = \"$USER\"",
@@ -117,14 +117,14 @@ var windowsGuest = guest{
 	wgKey: `$key = & 'C:\Program Files\WireGuard\wg.exe' genkey
 Set-Content -NoNewline -Encoding ascii C:\ProgramData\tfsaz-live\private.key $key
 $key | & 'C:\Program Files\WireGuard\wg.exe' pubkey`,
-	wgLines:    "PrivateKey = __PRIVATE_KEY__\nDNS = " + routerAddress.String() + "\n",
+	wgLines:    "PrivateKey = __PRIVATE_KEY__\nDNS = ${router_ip}\n",
 	allowedIPs: "0.0.0.0/1, 128.0.0.0/1",
 	wgUp: `$key = (Get-Content -Raw C:\ProgramData\tfsaz-live\private.key).Trim()
 [Console]::In.ReadToEnd().Replace('__PRIVATE_KEY__', $key) | Set-Content -Encoding ascii C:\ProgramData\tfsaz-live\wg0.conf
 Start-Process -Wait 'C:\Program Files\WireGuard\wireguard.exe' '/installtunnelservice C:\ProgramData\tfsaz-live\wg0.conf'
 (Get-Service 'WireGuardTunnel$wg0').WaitForStatus('Running', '00:00:30')
-Get-NetAdapter | Where-Object Name -ne 'wg0' | Set-DnsClientServerAddress -ServerAddresses ` + routerAddress.String(),
-	resolves: "if ((Resolve-DnsName -Name devops.mock.test -Type A -DnsOnly).IPAddress -contains '172.30.53.10') { exit 0 }; exit 1",
+Get-NetAdapter | Where-Object Name -ne 'wg0' | Set-DnsClientServerAddress -ServerAddresses ${router_ip}`,
+	resolves: "if ((Resolve-DnsName -Name devops.mock.test -Type A -DnsOnly).IPAddress -contains '%s') { exit 0 }; exit 1",
 	reaches:  "if ((New-Object Net.Sockets.TcpClient).ConnectAsync('devops.mock.test', 8080).Wait(5000)) { exit 0 }; exit 1",
 	rest:     "if ((curl.exe -s -u ':%[1]s' -o NUL -w '%%{http_code}' '" + connectionData + "') -eq '200') { exit 0 }; exit 1",
 	tunneled: "if ((Find-NetRoute -RemoteIPAddress 1.1.1.1).InterfaceAlias -contains 'wg0') { exit 0 }; exit 1",

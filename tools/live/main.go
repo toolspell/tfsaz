@@ -60,6 +60,24 @@ func run(call liveInvocation, stdout io.Writer) error {
 		return err
 	}
 	command, action, _ := strings.Cut(call.path, " ")
+	if usesInstance(command) {
+		loadNetwork := true
+		if command != "vm" || vmChangesState(action) {
+			unlock, err := e.lockInstance(ciReadOnly(call))
+			if err != nil {
+				return err
+			}
+			loadNetwork = unlock != nil
+			if unlock != nil {
+				defer unlock()
+			}
+		}
+		if loadNetwork {
+			if err := e.loadNetwork(); err != nil {
+				return err
+			}
+		}
+	}
 	switch command {
 	case "doctor":
 		return e.doctor(call.install || call.yes, ci != "")
@@ -75,8 +93,10 @@ func run(call liveInvocation, stdout io.Writer) error {
 		return e.setup(call.args[0])
 	case "verify":
 		return e.verify(call.args[0])
-	case "clean":
-		return e.clean()
+	case "up":
+		return e.up(call.args, stdout)
+	case "clean", "down":
+		return e.down()
 	case "status":
 		return e.status()
 	}
@@ -98,6 +118,22 @@ func ciReadOnly(call liveInvocation) bool {
 		return true
 	case "doctor":
 		return !call.install && !call.yes
+	}
+	return false
+}
+
+func usesInstance(command string) bool {
+	switch command {
+	case "up", "down", "clean", "status", "setup", "verify", "services", "mock", "vm":
+		return true
+	}
+	return false
+}
+
+func vmChangesState(action string) bool {
+	switch action {
+	case "up", "down", "start", "stop":
+		return true
 	}
 	return false
 }

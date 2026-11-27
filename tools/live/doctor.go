@@ -102,10 +102,7 @@ func (e *env) doctor(install, checkOnly bool) error {
 		return fmt.Errorf("%d tools missing or not working", n)
 	}
 	fmt.Println("state    " + e.home)
-	if checkOnly {
-		return nil
-	}
-	return e.ensureHome()
+	return nil
 }
 
 // checkTools prints one line per tool and returns the ones Homebrew can

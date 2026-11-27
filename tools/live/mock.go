@@ -8,32 +8,47 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
-	"path/filepath"
 	"time"
 )
 
-const mockRequestsURL = "http://127.0.0.1:19090/requests"
 const mockJournalHint = "check with go run ./tools/live services status"
 
 func (e *env) mock(action, vm string, asJSON bool, out io.Writer) error {
 	switch action {
 	case "ca":
-		path := filepath.Join(e.bed, "devops-server-mock", "keys", "ca.pem")
+		path := e.instancePath("mock-keys", "ca.pem")
 		if _, err := os.Stat(path); err != nil {
 			return fmt.Errorf("mock CA unavailable; run go run ./tools/live services up: %w", err)
 		}
 		_, err := fmt.Fprintln(out, path)
 		return err
 	case "requests":
-		return e.mockRequests(mockRequestsURL, vm, asJSON, out)
+		if err := e.requireMock(); err != nil {
+			return err
+		}
+		return e.mockRequests(e.network.journalURL(), vm, asJSON, out)
 	case "reset":
-		resp, err := requestMockJournal(http.MethodDelete, mockRequestsURL, http.StatusNoContent)
+		if err := e.requireMock(); err != nil {
+			return err
+		}
+		resp, err := requestMockJournal(http.MethodDelete, e.network.journalURL(), http.StatusNoContent)
 		if err != nil {
 			return err
 		}
 		return resp.Body.Close()
 	}
 	return fmt.Errorf("unknown mock action %q", action)
+}
+
+func (e *env) requireMock() error {
+	running, err := e.serviceRunning("devops-server-mock")
+	if err != nil {
+		return err
+	}
+	if !running {
+		return fmt.Errorf("no mock running for instance %s; run go run ./tools/live up", e.instance)
+	}
+	return nil
 }
 
 func (e *env) mockRequests(endpoint, vm string, asJSON bool, out io.Writer) error {

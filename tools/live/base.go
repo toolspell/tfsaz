@@ -29,16 +29,32 @@ func (e *env) base(action, osName string, force bool) error {
 	if err != nil {
 		return err
 	}
-	if err := e.ensureHome(); err != nil {
+	unlock, err := acquireLock(e.path("bases.lock"), false)
+	if err != nil {
 		return err
 	}
+	defer unlock()
+	return e.changeBase(o, action, force)
+}
+
+func (e *env) changeBase(o osDef, action string, force bool) error {
 	v := e.vms(o)
 	clones, err := v.clones(o)
 	if err != nil {
 		return err
 	}
 	if len(clones) > 0 {
-		return fmt.Errorf("%s has clones: %s; remove them first (vm down NAME or clean)", o.base(), strings.Join(clones, ", "))
+		return fmt.Errorf("%s has clones: %s; remove them in the owning worktrees first (vm down NAME or down)", o.base(), strings.Join(clones, ", "))
+	}
+	if action == "build" || action == "update" {
+		unlock, err := e.lockMacOSBoot(o)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+		if err := e.macosSlot(o); err != nil {
+			return err
+		}
 	}
 	switch action {
 	case "build":
@@ -91,9 +107,6 @@ func (e *env) buildBase(o osDef, force bool) error {
 	defer func() { _ = os.RemoveAll(e.path("build", o.name)) }()
 	inputs, from, err := e.buildInputs(o, dir, key)
 	if err != nil {
-		return err
-	}
-	if err := e.macosSlot(o); err != nil {
 		return err
 	}
 	if err := v.remove(o.build()); err != nil {
@@ -324,9 +337,6 @@ func (e *env) updateBase(o osDef) error {
 	defer func() { _ = prepare.Close() }()
 	work := e.path("build", o.name)
 	if err := os.MkdirAll(work, 0o700); err != nil {
-		return err
-	}
-	if err := e.macosSlot(o); err != nil {
 		return err
 	}
 	step("booting %s", o.base())

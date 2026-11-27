@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -12,6 +13,8 @@ type vmEntry struct {
 	Running bool
 	Size    float64 // GB on disk
 }
+
+func (vm vmEntry) isRunning() bool { return vm.Running || strings.EqualFold(vm.State, "running") }
 
 // provider runs the VMs of one hypervisor: Tart for Ubuntu and macOS,
 // QEMU for Windows.
@@ -83,7 +86,7 @@ func (v vms) waitStopped(name string, timeout time.Duration) error {
 		}
 		running := false
 		for _, vm := range list {
-			if vm.Name == name && vm.Running {
+			if vm.Name == name && vm.isRunning() {
 				running = true
 			}
 		}

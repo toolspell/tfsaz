@@ -10,31 +10,25 @@ import (
 	"strings"
 )
 
-// Addresses of the test bed; they match live-tests/compose.yaml.
-var (
-	routerAddress = netip.MustParseAddr("172.30.53.2")
-	firstVMAddr   = netip.MustParseAddr("172.30.53.129")
-	lastVMAddr    = netip.MustParseAddr("172.30.53.254")
-)
-
 // wgConfig is the VM's tunnel: all IPv4 traffic goes to the router, except
 // the tunnel itself and the VM's own NAT network, so SSH from the host keeps
 // working. The guest's lines set the private key, which never leaves the VM,
 // and DNS through the router's resolver.
-func wgConfig(address netip.Addr, routerKey, endpoint string, g guest) string {
+func (b bedNetwork) wgConfig(address netip.Addr, routerKey, endpoint string, g guest) string {
 	return fmt.Sprintf(`[Interface]
 Address = %s/32
 %s
 [Peer]
 PublicKey = %s
-Endpoint = %s:51820
+Endpoint = %s:%d
 AllowedIPs = %s
 PersistentKeepalive = 25
-`, address, g.wgLines, routerKey, endpoint, g.allowedIPs)
+`, address, strings.ReplaceAll(g.wgLines, "${router_ip}", b.address(2).String()), routerKey, endpoint, b.ports.WireGuard, g.allowedIPs)
 }
 
 // freeAddress picks the first VM address no saved peer uses.
-func freeAddress(used map[netip.Addr]bool) (netip.Addr, error) {
+func (b bedNetwork) freeAddress(used map[netip.Addr]bool) (netip.Addr, error) {
+	firstVMAddr, lastVMAddr := b.address(129), b.address(254)
 	for a := firstVMAddr; a.Compare(lastVMAddr) <= 0; a = a.Next() {
 		if !used[a] {
 			return a, nil
@@ -45,7 +39,7 @@ func freeAddress(used map[netip.Addr]bool) (netip.Addr, error) {
 
 // peers reads the router's saved peers: one file per VM with "KEY ADDRESS".
 func (e *env) peers() (map[string]netip.Addr, error) {
-	dir := e.path("router", "peers")
+	dir := e.instancePath("router", "peers")
 	entries, err := os.ReadDir(dir)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
@@ -75,7 +69,7 @@ func (e *env) peers() (map[string]netip.Addr, error) {
 }
 
 func (e *env) routerKey() (string, error) {
-	data, err := os.ReadFile(e.path("router", "public.key"))
+	data, err := os.ReadFile(e.instancePath("router", "public.key"))
 	if err != nil {
 		return "", fmt.Errorf("read router public key; check with go run ./tools/live services status: %w", err)
 	}
@@ -97,7 +91,7 @@ func (e *env) registerPeer(name, key string) (netip.Addr, error) {
 				used[a] = true
 			}
 		}
-		address, err := freeAddress(used)
+		address, err := e.network.freeAddress(used)
 		if err != nil {
 			return address, err
 		}
@@ -114,10 +108,14 @@ func (e *env) registerPeer(name, key string) (netip.Addr, error) {
 // removePeer drops a peer. With the router down, deleting its file is
 // enough, since the router loads the files on start.
 func (e *env) removePeer(name string) error {
-	if running, _ := e.routerRunning(); running {
+	running, err := e.serviceRunning("router")
+	if err != nil {
+		return err
+	}
+	if running {
 		return e.compose("exec", "-T", "router", "peer", "remove", name)
 	}
-	err := os.Remove(e.path("router", "peers", name))
+	err = os.Remove(e.instancePath("router", "peers", name))
 	if os.IsNotExist(err) {
 		return nil
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -21,6 +22,11 @@ func (t tart) env() []string { return []string{"TART_HOME=" + t.home} }
 func (t tart) run(args ...string) (string, error) { return output(t.env(), "tart", args...) }
 
 func (t tart) list() ([]vmEntry, error) {
+	if _, err := os.Stat(t.home); errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
 	out, err := t.run("list", "--source", "local", "--format", "json")
 	if err != nil {
 		return nil, err
@@ -42,9 +48,13 @@ func (e *env) macosSlot(o osDef) error {
 	if err != nil {
 		return err
 	}
+	return checkMacOSCapacity(o, vms)
+}
+
+func checkMacOSCapacity(o osDef, vms []vmEntry) error {
 	var running []string
 	for _, vm := range vms {
-		if vm.Running && strings.HasPrefix(vm.Name, prefix+o.name+"-") {
+		if vm.isRunning() && (o.isClone(vm.Name) || vm.Name == o.base() || vm.Name == o.build()) {
 			running = append(running, vm.Name)
 		}
 	}
@@ -52,6 +62,13 @@ func (e *env) macosSlot(o osDef) error {
 		return fmt.Errorf("macOS allows two macOS VMs at a time; running: %s", strings.Join(running, ", "))
 	}
 	return nil
+}
+
+func (e *env) lockMacOSBoot(o osDef) (func(), error) {
+	if o.macos == 0 {
+		return func() {}, nil
+	}
+	return acquireLock(e.path("macos-boot.lock"), false)
 }
 
 // start boots a VM headless in the background; Tart's output goes to logFile.

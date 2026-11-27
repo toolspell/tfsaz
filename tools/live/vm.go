@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -30,12 +31,13 @@ type vmInfo struct {
 	SSH        string `json:"ssh"`
 }
 
-func (e *env) runDir(name string) string { return e.path("runs", name) }
+func (e *env) runDir(name string) string { return e.instancePath("runs", name) }
 
 func (e *env) loadVM(name string) (vmInfo, error) {
 	var info vmInfo
-	if _, ok := osOfVM(name); !ok {
-		return info, fmt.Errorf("%s is not a clone name (tfsaz-OS-SUFFIX)", name)
+	o, ok := e.osOfVM(name)
+	if !ok {
+		return info, fmt.Errorf("%s is not a clone of instance %s (use vm list)", name, e.instance)
 	}
 	dir := e.runDir(name)
 	file := filepath.Join(dir, "vm.json")
@@ -52,23 +54,21 @@ func (e *env) loadVM(name string) (vmInfo, error) {
 	if err := json.Unmarshal(data, &info); err != nil {
 		return info, fmt.Errorf("decode metadata for %s in %s; %s: %w", name, file, hint, err)
 	}
+	if info.Name != name || info.OS != o.name {
+		return info, fmt.Errorf("clone record does not match %s; %s", name, hint)
+	}
 	return info, nil
 }
 
 func (info vmInfo) login() sshTarget {
-	o, _ := osOfVM(info.Name)
 	return sshTarget{
 		user: info.User, host: info.IP, port: info.Port, key: info.SSHKey, knownHosts: info.KnownHosts,
-		powershell: o.guest.powershell,
+		powershell: info.OS == "windows",
 	}
 }
 
-func (e *env) saveVM(info vmInfo) ([]byte, error) {
-	data, err := json.MarshalIndent(info, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	return data, os.WriteFile(filepath.Join(e.runDir(info.Name), "vm.json"), data, 0o600)
+func (e *env) saveVM(info vmInfo) error {
+	return writeJSON(filepath.Join(e.runDir(info.Name), "vm.json"), info)
 }
 
 var suffixPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,19}$`)
@@ -88,11 +88,7 @@ func (e *env) vm(action string, call liveInvocation) error {
 		if err != nil {
 			return err
 		}
-		data, err := json.MarshalIndent(info, "", "  ")
-		if err == nil {
-			fmt.Println(string(data))
-		}
-		return err
+		return printVM(info)
 	case "ssh":
 		info, err := e.loadVM(args[0])
 		if err != nil {
@@ -118,7 +114,11 @@ func (e *env) vm(action string, call liveInvocation) error {
 	case "stop":
 		return e.vmStop(args[0], call.force)
 	case "start":
-		return e.vmStart(args[0])
+		info, err := e.startVM(args[0])
+		if err != nil {
+			return err
+		}
+		return printVM(info)
 	case "down":
 		return e.vmDown(args[0])
 	case "list":
@@ -142,22 +142,11 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 	if !validSuffix(suffix) {
 		return info, fmt.Errorf("-name must be 1 to 20 lowercase letters, digits or dashes, not base or build")
 	}
-	name := prefix + o.name + "-" + suffix
-	v := e.vms(o)
-	if ok, err := v.exists(o.base()); err != nil || !ok {
-		return info, errors.Join(err, fmt.Errorf("%s does not exist; run base build %s", o.base(), o.name))
-	}
-	if ok, err := v.exists(name); err != nil || ok {
-		return info, errors.Join(err, fmt.Errorf("%s exists already", name))
-	}
 	if err := e.requireRouter(); err != nil {
 		return info, err
 	}
-	if err := e.macosSlot(o); err != nil {
-		return info, err
-	}
-	dir := e.runDir(name)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	name := e.cloneName(o, suffix)
+	if err := e.cloneVM(o, name); err != nil {
 		return info, err
 	}
 	defer func() {
@@ -166,15 +155,11 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 			err = errors.Join(err, e.vmDown(name))
 		}
 	}()
-
-	step("cloning %s to %s", o.base(), name)
-	if err := v.clone(o, name); err != nil {
+	dir := e.runDir(name)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return info, err
 	}
-	if err := v.start(name, filepath.Join(dir, o.provider+".log")); err != nil {
-		return info, err
-	}
-	host, port, err := v.address(name, 3*time.Minute)
+	host, port, err := e.bootVM(o, name)
 	if err != nil {
 		return info, err
 	}
@@ -204,7 +189,7 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 	if _, err := login.run(nil, "exit 0"); err != nil {
 		return info, fmt.Errorf("the run key does not work: %w", err)
 	}
-	if _, err := login.run(nil, fmt.Sprintf(o.guest.hostname, name)); err != nil {
+	if _, err := login.run(nil, fmt.Sprintf(o.guest.hostname, guestHostname(o, name))); err != nil {
 		return info, err
 	}
 	if o.guest.restart != "" {
@@ -224,8 +209,95 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 		return info, err
 	}
 	info.SSH = "go run ./tools/live vm ssh " + name + " -- CMD"
-	_, err = e.saveVM(info)
-	return info, err
+	return info, e.saveVM(info)
+}
+
+func printVM(info vmInfo) error {
+	data, err := json.MarshalIndent(info, "", "  ")
+	if err == nil {
+		fmt.Println(string(data))
+	}
+	return err
+}
+
+func guestHostname(o osDef, name string) string {
+	if o.name == "windows" {
+		// Windows computer names have a 15-character NetBIOS limit.
+		sum := sha256.Sum256([]byte(name))
+		return prefix + hex.EncodeToString(sum[:4])
+	}
+	return name
+}
+
+func (e *env) cloneVM(o osDef, name string) error {
+	unlock, err := acquireLock(e.path("bases.lock"), true)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	v := e.vms(o)
+	if ok, err := v.exists(o.base()); err != nil || !ok {
+		return errors.Join(err, fmt.Errorf("%s does not exist; run base build %s", o.base(), o.name))
+	}
+	if ok, err := v.exists(name); err != nil || ok {
+		return errors.Join(err, fmt.Errorf("%s exists already; use vm start or vm down NAME", name))
+	}
+	if _, err := os.Stat(e.runDir(name)); err == nil {
+		return fmt.Errorf("%s has leftover run files; run vm down %s", name, name)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	step("cloning %s to %s", o.base(), name)
+	if err := v.clone(o, name); err != nil {
+		return errors.Join(err, v.remove(name))
+	}
+	return nil
+}
+
+func (e *env) bootVM(o osDef, name string) (string, int, error) {
+	if err := e.startVMProcess(o, name); err != nil {
+		return "", 0, err
+	}
+	v := e.vms(o)
+	host, port, err := v.address(name, 3*time.Minute)
+	if err != nil {
+		return "", 0, errors.Join(err, v.stop(name))
+	}
+	return host, port, nil
+}
+
+func (e *env) startVMProcess(o osDef, name string) error {
+	unlock, err := e.lockMacOSBoot(o)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := e.macosSlot(o); err != nil {
+		return err
+	}
+	v := e.vms(o)
+	step("starting %s", name)
+	if err := v.start(name, filepath.Join(e.runDir(name), o.provider+".log")); err != nil {
+		return err
+	}
+	if o.macos == 0 {
+		return nil
+	}
+	// Tart starts in the background. Keep the lock until another caller can count this VM.
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		list, err := v.list()
+		if err != nil {
+			return errors.Join(err, v.stop(name))
+		}
+		for _, vm := range list {
+			if vm.Name == name && vm.isRunning() {
+				return nil
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return errors.Join(fmt.Errorf("%s did not start; check its Tart log and retry", name), v.stop(name))
 }
 
 // restart reboots the clone and waits until SSH answers from the new boot.
@@ -273,11 +345,11 @@ func (e *env) joinRouter(o osDef, name string, login sshTarget) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	config := strings.NewReader(wgConfig(address, routerKey, gateway, o.guest))
-	if _, err := login.run(config, o.guest.wgUp); err != nil {
+	config := strings.NewReader(e.network.wgConfig(address, routerKey, gateway, o.guest))
+	if _, err := login.run(config, strings.ReplaceAll(o.guest.wgUp, "${router_ip}", e.network.address(2).String())); err != nil {
 		return "", err
 	}
-	return address.String(), reachesMock(o, login)
+	return address.String(), e.reachesMock(o, login)
 }
 
 // waitSession waits until the test user's desktop session runs, so a clone
@@ -302,10 +374,11 @@ func waitSession(o osDef, login sshTarget) error {
 }
 
 // reachesMock waits until the clone reaches the mock by name through the router.
-func reachesMock(o osDef, login sshTarget) error {
+func (e *env) reachesMock(o osDef, login sshTarget) error {
+	resolves := fmt.Sprintf(o.guest.resolves, e.network.address(10))
 	var last error
 	for range 15 {
-		if _, last = login.run(nil, o.guest.resolves); last == nil {
+		if _, last = login.run(nil, resolves); last == nil {
 			if _, last = login.run(nil, o.guest.reaches); last == nil {
 				return nil
 			}
@@ -323,7 +396,7 @@ func (e *env) vmStop(name string, force bool) error {
 		return err
 	}
 	step("stopping %s", name)
-	o, _ := osOfVM(name)
+	o, _ := e.osOfVM(name)
 	v := e.vms(o)
 	if force {
 		return v.stop(name)
@@ -339,54 +412,53 @@ func (e *env) vmStop(name string, force bool) error {
 	return nil
 }
 
-// vmStart boots a stopped clone again. Its NAT address or SSH port can
-// change; its tunnel comes back on its own.
-func (e *env) vmStart(name string) error {
+func (e *env) startVM(name string) (vmInfo, error) {
 	info, err := e.loadVM(name)
 	if err != nil {
-		return err
+		return info, err
 	}
 	if err := e.requireRouter(); err != nil {
-		return err
+		return info, err
 	}
-	o, _ := osOfVM(name)
-	if err := e.macosSlot(o); err != nil {
-		return err
-	}
+	o, _ := e.osOfVM(name)
 	v := e.vms(o)
-	step("starting %s", name)
-	if err := v.start(name, filepath.Join(e.runDir(name), o.provider+".log")); err != nil {
-		return err
-	}
-	if info.IP, info.Port, err = v.address(name, 3*time.Minute); err != nil {
-		return err
-	}
-	// Save the new address first, so vm stop and vm ssh use it even if a
-	// check below fails.
-	data, err := e.saveVM(info)
+	list, err := v.list()
 	if err != nil {
-		return err
+		return info, err
 	}
-	login := info.login()
-	if err := login.wait(5 * time.Minute); err != nil {
-		return err
+	for _, vm := range list {
+		if vm.Name != name {
+			continue
+		}
+		if vm.isRunning() {
+			info.IP, info.Port, err = v.address(name, 3*time.Minute)
+		} else {
+			info.IP, info.Port, err = e.bootVM(o, name)
+		}
+		if err != nil {
+			return info, err
+		}
+		if err := e.saveVM(info); err != nil {
+			return info, err
+		}
+		login := info.login()
+		if err := login.wait(5 * time.Minute); err != nil {
+			return info, err
+		}
+		if err := e.reachesMock(o, login); err != nil {
+			return info, err
+		}
+		return info, waitSession(o, login)
 	}
-	if err := reachesMock(o, login); err != nil {
-		return err
-	}
-	if err := waitSession(o, login); err != nil {
-		return err
-	}
-	fmt.Println(string(data))
-	return nil
+	return info, fmt.Errorf("clone %s has a record but no VM; run vm down %s and retry", name, name)
 }
 
 // vmDown removes a clone, its router peer and its run directory; parts
 // that are already gone are skipped.
 func (e *env) vmDown(name string) error {
-	o, ok := osOfVM(name)
+	o, ok := e.osOfVM(name)
 	if !ok {
-		return fmt.Errorf("%s is not a clone name (tfsaz-OS-SUFFIX)", name)
+		return fmt.Errorf("%s is not a clone of instance %s (use vm list)", name, e.instance)
 	}
 	step("removing %s", name)
 	// Keep the peer and the run directory with the clone's key while the VM
@@ -408,7 +480,10 @@ func (e *env) cloneNames() ([]string, error) {
 	for _, vm := range vms {
 		seen[vm.Name] = true
 	}
-	runs, _ := os.ReadDir(e.path("runs"))
+	runs, err := os.ReadDir(e.instancePath("runs"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
 	for _, r := range runs {
 		seen[r.Name()] = true
 	}
@@ -419,14 +494,18 @@ func (e *env) cloneNames() ([]string, error) {
 	for p := range peers {
 		seen[p] = true
 	}
+	return e.ownClones(seen), nil
+}
+
+func (e *env) ownClones(seen map[string]bool) []string {
 	var names []string
 	for n := range seen {
-		if _, ok := osOfVM(n); ok {
+		if _, ok := e.osOfVM(n); ok {
 			names = append(names, n)
 		}
 	}
 	sort.Strings(names)
-	return names, nil
+	return names
 }
 
 func (e *env) vmList(asJSON bool) error {
@@ -473,9 +552,9 @@ func (e *env) vmList(asJSON bool) error {
 	return nil
 }
 
-func (e *env) clean() error {
-	if err := requireMac(); err != nil {
-		return err
+func (e *env) removeClones() error {
+	if requireMac() != nil {
+		return nil
 	}
 	names, err := e.cloneNames()
 	if err != nil {
@@ -493,7 +572,7 @@ func (e *env) status() error {
 		return err
 	}
 	fmt.Println("services:")
-	if err := e.compose("ps", "--format", "  {{.Service}}\t{{.State}}"); err != nil {
+	if err := e.services("status"); err != nil {
 		return err
 	}
 	vms, err := e.allVMs()

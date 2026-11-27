@@ -17,6 +17,8 @@ func TestLiveHelp(t *testing.T) {
 		flags          []string
 	}{
 		{"", "<command>", nil},
+		{"up", " [OS...]", nil},
+		{"down", "", nil},
 		{"setup", " OS", nil},
 		{"verify", " OS", nil},
 		{"doctor", " [-install] [-yes]", []string{"-install", "-yes"}},
@@ -81,12 +83,15 @@ func TestLiveHelp(t *testing.T) {
 func TestLiveUsageErrors(t *testing.T) {
 	t.Setenv("CI", "true")
 	t.Setenv("GIT_DIR", filepath.Join(t.TempDir(), "missing"))
-	const name = "tfsaz-ubuntu-demo"
+	const name = "tfsaz-live-first-ubuntu-demo"
 	for _, tc := range []struct{ args, path, message string }{
 		{"", "<command>", "missing command"},
 		{"ghost", "<command>", "unknown command"},
 		{"help ghost", "<command>", "unknown command"},
 		{"help vm t3 start extra", "vm t3 start NAME", "unexpected operand"},
+		{"up -bad", "up [OS...]", "flag provided but not defined"},
+		{"up ubuntu solaris", "up [OS...]", "unknown OS"},
+		{"down extra", "down", "unexpected operand"},
 		{"setup", "setup OS", "missing OS"},
 		{"verify solaris", "verify OS", "unknown OS"},
 		{"doctor extra", "doctor [-install]", "unexpected operand"},
@@ -109,6 +114,7 @@ func TestLiveUsageErrors(t *testing.T) {
 		{"vm", "vm <action>", "missing action"},
 		{"vm unknown", "vm <action>", "unknown action"},
 		{"vm up ubuntu -name -bad", "vm up OS", "invalid -name suffix"},
+		{"vm up ubuntu -name up", "vm up OS", "reserved"},
 		{"vm ssh " + name + " cmd", "vm ssh NAME", "unexpected operand"},
 		{"vm run", "vm run NAME", "missing NAME"},
 		{"vm run " + name, "vm run NAME", "missing -- CMD"},
@@ -149,7 +155,7 @@ func TestLiveUsageErrors(t *testing.T) {
 }
 
 func TestLiveGuestArgs(t *testing.T) {
-	const name = "tfsaz-ubuntu-demo"
+	const name = "tfsaz-live-first-ubuntu-demo"
 	for _, tc := range []struct {
 		args, path, guest string
 		asJSON, gui       bool

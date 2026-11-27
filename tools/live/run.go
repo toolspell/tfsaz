@@ -34,7 +34,7 @@ func (e *env) vmRun(name string, command []string, asJSON, gui bool, timeout tim
 	if err != nil {
 		return err
 	}
-	o, _ := osOfVM(name)
+	o, _ := e.osOfVM(name)
 	script := strings.Join(command, " ")
 	login := info.login()
 	var remote string
@@ -233,7 +233,7 @@ func (e *env) vmVNC(name string) error {
 	if _, err := e.loadVM(name); err != nil {
 		return err
 	}
-	o, _ := osOfVM(name)
+	o, _ := e.osOfVM(name)
 	address, err := e.vms(o).vnc(name, filepath.Join(e.runDir(name), o.provider+".log"))
 	if err == nil {
 		fmt.Println(address)
@@ -250,6 +250,6 @@ func (e *env) vmScreenshot(name, file string) error {
 	if _, err := e.loadVM(name); err != nil {
 		return err
 	}
-	o, _ := osOfVM(name)
+	o, _ := e.osOfVM(name)
 	return e.vms(o).screenshot(name, filepath.Join(e.runDir(name), o.provider+".log"), file)
 }

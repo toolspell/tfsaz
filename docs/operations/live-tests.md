@@ -26,7 +26,9 @@ go run ./tools/live setup windows
 ## Commands
 
 ```sh
-go run ./tools/live setup OS          # everything above, then verify; OS is ubuntu, macos or windows
+go run ./tools/live up [OS...]         # services and one reusable clone per OS; prints JSON
+go run ./tools/live down              # delete this instance's clones, stop its services and free its slot
+go run ./tools/live setup OS          # install prerequisites, build the base if needed and verify
 go run ./tools/live verify OS         # boot a throwaway clone and check the bed
 go run ./tools/live vm up OS          # clone, boot and connect a VM; prints its details as JSON
 go run ./tools/live vm ssh NAME -- uname -a
@@ -42,7 +44,9 @@ go run ./tools/live vm list -json
 go run ./tools/live vm stop NAME      # shut it down, keep it for later
 go run ./tools/live vm start NAME     # boot it again; prints its details as JSON
 go run ./tools/live vm down NAME
-go run ./tools/live clean             # delete every clone
+go run ./tools/live services up       # services only
+go run ./tools/live services down     # stop services and keep the slot for existing clones
+go run ./tools/live clean             # alias for down
 go run ./tools/live status
 ```
 
@@ -54,6 +58,14 @@ Run the live suite outside GitHub CI and `ci-local`. When `CI` or `GITHUB_ACTION
 
 `verify` checks from a new clone that `devops.mock.test` resolves to the mock, that the mock's REST API answers through the router, that internet traffic goes through the tunnel and works, that the router reaches the VM, and that the test user is logged in to the desktop. It prints one line per check, deletes the clone and fails if any check failed.
 
+## Worktrees and instances
+
+Run `up ubuntu macos windows` after building the shared bases. It starts this worktree's services and boots the requested guests in parallel. Its JSON includes the instance ID, subnet, host ports and each guest's `vm.json`. Repeat `up` with the same OS arguments to reuse those clones, including restarting stopped ones. With no OS arguments, `up` starts services only. Use `vm up OS` to make an additional clone.
+
+The instance ID is 12 hex digits derived from the absolute worktree path. To override it, set `TFSAZ_LIVE_INSTANCE` to 1 to 16 lowercase letters or digits and keep it set for that instance's commands. Use one shared `TFSAZ_LIVE_HOME` and the same local Docker engine for all worktrees on the host. A file lock protects the slot registry. The slot is kept across `services down` and freed by `down` or `clean`.
+
+Before upgrading an older bed, run its `clean` and `services down` from the old checkout. Keep the bases and caches. Remove the old `live-tests/.state` symlink if it is still there.
+
 ## For agents
 
 - Use the [live-tests skill](../../.agents/skills/live-tests/SKILL.md) to choose guests and run the cases affected by your change.
@@ -61,13 +73,13 @@ Run the live suite outside GitHub CI and `ci-local`. When `CI` or `GITHUB_ACTION
 - The mock's PAT (`MOCK_PAT`) and the keys and certificates it generates are public test values for a throwaway local test bed, not credentials. Any other credential, such as a real PAT for the shared testbed or a TFSaz profile in a VM, follows the [credential rules](../../AGENTS.md#credentials).
 - Run `base build` and `setup` in the background and watch their output. Do not wait past Packer's SSH timeout (25 minutes for Ubuntu, 10 for macOS, 60 for Windows); [Troubleshooting](#troubleshooting) has the known causes.
 - When the Windows ISO is missing, ask the maintainer to download it; do not fetch it from another source.
-- When a base command refuses because clones exist, remove the clones; do not work around it. Leave the base VM and the state directory's `cache/` in place between tasks.
-- Never commit anything from `live-tests/.state` or copy keys into the repository.
+- When a base command names clones in another worktree, coordinate with its owner before removing them. Leave bases and caches in place between tasks.
+- Keep instance state and keys outside the repository.
 - Ask the maintainer before the `sudo` step `doctor` advises.
 - Keep a clone while its case or PR may still need it, for example for review fixes or a rerun. Stop it with `vm stop NAME` while you do not use it and start it again with `vm start NAME`. Delete it with `vm down NAME` only once you are sure nothing needs it any more.
-- Nothing runs when nothing needs it: before you hand back, stop the clones you keep, delete the others, and run `services down`. The base VM stays stopped.
+- Run `down` when you are done with an instance. If you still need its clones, stop them and run `services down` to keep their slot and router state.
 - Record dated live results in [`docs/verification/`](../verification/).
-- macOS runs at most two macOS VMs at a time, base builds included; `vm up` refuses a third. Stop or delete one first.
+- The two running macOS VM limit spans worktrees and includes base builds. Stop or delete one before starting a third.
 - Use `vm run -json` for scripted checks and `vm run -gui` for anything that needs the desktop session. Take a `vm screenshot` to see the screen instead of asking a human to look.
 - Drive T3's UI through Playwright ([Drive T3 with Playwright](#drive-t3-with-playwright)), not by clicking screen coordinates over VNC. Stop your forwards when the test ends.
 - Prefer the tools already in use (Tart, Packer, `curl`, `wg`, cloud-init, Homebrew, CoreDNS) over new code.
@@ -89,17 +101,19 @@ A new guest OS gets a `live-tests/vms/<os>/` directory, an entry in the tool's O
 
 ## State outside the repository
 
-The state directory is the absolute path in `TFSAZ_LIVE_HOME`, or `~/.tfsaz-live` by default. The tool links it as `live-tests/.state`. The mock writes its CA certificate and SSH files under `live-tests/devops-server-mock/keys/`. Git ignores both paths in the checkout.
+The tool stores state outside the worktree in `~/.tfsaz-live` (or the absolute path in `TFSAZ_LIVE_HOME`).
 
 | Path | Contents |
 | --- | --- |
 | `tart/` | Tart's home for these VMs only (`TART_HOME`), so they never mix with other Tart VMs; its `cache/` holds the pulled macOS image |
-| `qemu/` | QEMU's VMs, one directory each: `disk.qcow2` (a clone's is an overlay on the base's), UEFI variables, its last SSH port, and while it runs its PID, QMP socket and `vnc` (VNC address with password, mode 600) |
+| `qemu/` | Shared QEMU base images and one directory per named clone: `disk.qcow2` (a clone's is an overlay on the base's), UEFI variables, its last SSH port, and while it runs its PID, QMP socket and `vnc` (VNC address with password, mode 600) |
 | `cache/iso/` | Installer ISOs, checked against the SHA-256 in `vms/<os>/iso.json` (and `virtio.json` for Windows) |
 | `packer/` | Packer plugins and cache |
 | `keys/<os>-base/` | The key of the last base build; for Windows also the password of `tester` |
-| `runs/<name>/` | Per clone: its own SSH key, known_hosts, Tart or QEMU log, `vm.json`; `tart.log` holds Tart's VNC address with password (mode 600) |
-| `router/` | The router's WireGuard key and one file per connected VM |
+| `slots.json`, `*.lock` | Shared slot registry and locks for allocating slots, changing bases and starting macOS VMs |
+| `instances/ID/runs/NAME/` | Clone SSH key, known_hosts, `vm.json` and VM log. `tart.log` holds the VNC address with password (mode 600). |
+| `instances/ID/router/`, `instances/ID/mock-keys/`, `instances/ID/Corefile` | Instance WireGuard keys and peers, mock CA and SSH keys, generated sinkhole config |
+| `instances/ID/instance.lock`, `qemu/start.lock` | Locks for instance lifecycle changes and QEMU starts |
 
 A base build downloads only what the cache lacks: an ISO matching `iso.json` (`curl` resumes an interrupted download), or the macOS image pinned in `image.json` (Tart pulls it once). The Windows ISO is the exception: the tool only checks it. The Windows build also downloads the virtio-win ISO once (about 880 MB) and, inside the VM, OpenSSH Server and WireGuard. `setup` recreates the state directory when needed. See [Remove everything](#remove-everything) for cleanup.
 
@@ -131,13 +145,13 @@ Windows has no update in place: `base update windows` refuses. A newer Windows c
 | `base update OS` | Boots the base, upgrades its packages (apt on Ubuntu, Homebrew on macOS), prepares it again; not on Windows |
 | `base rm OS` | Deletes the base and its build key |
 
-All three refuse while clones of the base exist.
+All three hold the shared base lock and refuse while any worktree has clones of that OS, even if those clones are stopped.
 
 ## Clones
 
-`vm up OS` clones the base (an APFS copy, or a qcow2 overlay for Windows, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in about 20 seconds for Ubuntu, 30 for macOS and a minute for Windows. A macOS clone boots into the logged-in GUI session of `admin`, an Ubuntu or Windows clone into the one of `tester`, and `vm up` and `vm start` wait until that session runs; a Windows clone restarts once for its computer name. It prints `vm.json`: name, NAT address (for Windows `127.0.0.1` and a port), address in the test bed, SSH key. Commands over `vm ssh` run in sh on Ubuntu and macOS and in PowerShell 7 (`pwsh`) on Windows. TFSaz must not rely on PowerShell 7, since users may have only Windows PowerShell 5.1 and cmd: run a step whose shell matters with `powershell` or `cmd /c`. `vm stop NAME` shuts a clone down from inside and keeps it with its key and router peer; when it cannot reach the clone it leaves it running, and `-force` stops it without a shutdown, which can lose unwritten changes. `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
+`vm up OS` clones the base (an APFS copy, or a qcow2 overlay for Windows, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in about 20 seconds for Ubuntu, 30 for macOS and a minute for Windows. A macOS clone boots into the logged-in GUI session of `admin`, an Ubuntu or Windows clone into the one of `tester`, and `vm up` and `vm start` wait until that session runs; a Windows clone restarts once for its computer name. It prints `vm.json`: name, NAT address (for Windows `127.0.0.1` and a port), address in the test bed, SSH key. Commands over `vm ssh` run in sh on Ubuntu and macOS and in PowerShell 7 (`pwsh`) on Windows. TFSaz must not rely on PowerShell 7, since users may have only Windows PowerShell 5.1 and cmd: run a step whose shell matters with `powershell` or `cmd /c`. `vm stop NAME` shuts a clone down from inside and keeps it with its key and router peer; when it cannot reach the clone it leaves it running, and `-force` stops it without a shutdown, which can lose unwritten changes. `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` deletes a clone and its router peer. Names have the form `tfsaz-live-ID-OS-SUFFIX`. Use `vm list` to find the clones owned by this instance.
 
-With `vm up OS -name SUFFIX`, the clone is named `tfsaz-OS-SUFFIX`. Use 1 to 20 lowercase letters, digits or dashes, starting with a letter or digit. The suffixes `base` and `build` are reserved. The default is six random hex digits.
+Set the suffix with `vm up OS -name SUFFIX`. Use 1 to 20 lowercase letters, digits or dashes, starting with a letter or digit. The suffixes `base`, `build` and `up` are reserved. The default is six random hex digits.
 
 Every clone's desktop is 1920x1080. Tart clones get it from `tart set NAME --display 1920x1080px` when `vm up` clones them; GNOME starts at 1280x720 and switches a few seconds after login, so an early screenshot of an Ubuntu clone can be smaller.
 
@@ -195,15 +209,19 @@ T3 checks its update feed and offers a newer release. Do not accept it: tests ru
 
 ## Network
 
-The VMs use Tart's NAT for SSH from the host (Windows: QEMU's user-mode NAT, with SSH forwarded from a loopback port), and a WireGuard tunnel to the router for everything else:
+The VMs use Tart's NAT for SSH from the host (Windows uses QEMU's user-mode NAT with SSH forwarded from a loopback port) and a WireGuard tunnel to the router for everything else.
 
-| Address | What |
-| --- | --- |
-| `172.30.53.2` | Router: WireGuard on UDP 51820 (published on the host), resolver for the VMs |
-| `172.30.53.10` | Mock, `devops.mock.test`, with HTTPS on 443 and 8443, HTTP on 8080, and SSH on 2222, and its [text generator](../../live-tests/devops-server-mock/README.md#text-generator), `llm.mock.test`, on HTTP port 80. 8443, 8080 and 2222 are also published on the host's loopback, where TFSaz's own redirector may use 443. |
-| `172.30.53.53` | DNS sinkhole |
-| `172.30.53.129` and up | VMs, one address each |
-| `127.0.0.1:19090` | Mock journal on the host. The router blocks direct access from VMs. |
+Each instance uses a Compose project named `tfsaz-live-ID` and a slot from 0 to 15. Slot N uses `172.30.(53+N).0/24`. The tool checks Docker networks, specific host routes and interface addresses before starting services. It skips overlapping slots during allocation and refuses to start a reserved slot that now overlaps. If Docker reports a host port in use, free the port and retry `up`.
+
+| Address in the subnet | Service | Host port |
+| --- | --- | --- |
+| `.2` | WireGuard router and VM resolver | UDP `51820+N` |
+| `.10` | `devops.mock.test` on HTTP 8080, HTTPS 443 and 8443, SSH 2222. [Text generator](../../live-tests/devops-server-mock/README.md#text-generator) at `llm.mock.test` on HTTP 80. | Loopback `8080+N`, `8443+N`, `2222+N` |
+| `.53` | DNS sinkhole | |
+| `.129` through `.254` | VM tunnel addresses | |
+| `.10:19090` | Mock journal. The router blocks access from VMs. | Loopback `19090+N` |
+
+Read the actual host ports from `up` JSON or `services status`. Guest service ports stay the same in every slot.
 
 On Windows the tunnel routes `0.0.0.0/1` and `128.0.0.0/1` instead of `0.0.0.0/0`, which would turn on WireGuard for Windows' kill switch and cut off SSH from the host. Without the kill switch Windows would also ask QEMU's DNS server, so the tool sets the router's resolver on the network card too. The router answers ARP for the VM addresses, so containers reach a VM like any other host in the subnet. Traffic from a VM to anywhere else leaves through Docker's NAT, so VMs have internet access for now. The router's resolver sends `mock.test` names to the sinkhole and everything else to Docker's resolver. Its key and peer list survive a restart; VMs reconnect within seconds.
 
@@ -218,7 +236,7 @@ go run ./tools/live mock reset
 
 The mock keeps the last 5,000 completed HTTP and HTTPS requests, text generator requests included, in memory. Each entry includes the time, client IP, method, scheme, host, path, query, status, user agent and authentication scheme. It omits authorization values and masks known credentials and common credential query parameters. The router only masquerades traffic destined outside the bed, so journal entries for a VM use the `bedAddress` recorded in its `vm.json`.
 
-`mock requests` prints one line per request. Use `-vm NAME` to read only that clone's requests and `-json` to get a JSON array. The host admin API exposes `GET /requests` with optional `?ip=ADDRESS` and `DELETE /requests` to clear the journal. Resetting the journal leaves the mock's repositories and work items in place.
+`mock requests` prints one line per request from this instance's mock. Use `-vm NAME` to read only that clone's requests and `-json` to get a JSON array. The host admin API uses the journal port from `up` or `services status`. It exposes `GET /requests` with optional `?ip=ADDRESS` and `DELETE /requests` to clear the journal. Resetting the journal leaves the mock's repositories and work items in place.
 
 ## Text generator
 
@@ -226,17 +244,17 @@ T3 generates PR text and commit messages through a model. The mock fakes an Open
 
 ## DNS sinkhole
 
-The `dns` service (CoreDNS, `live-tests/dns/Corefile`) logs every query with the client's address.
+The `dns` service uses a Corefile generated from `live-tests/dns/Corefile` and logs every query with the client's address.
 
 | Name | Answer | Meaning |
 | --- | --- | --- |
-| `devops.mock.test` | `172.30.53.10` | The mock |
-| `llm.mock.test` | `172.30.53.10` | The mock's text generator |
+| `devops.mock.test` | The instance's `.10` | The mock |
+| `llm.mock.test` | The instance's `.10` | The mock's text generator |
 | `*.visualstudio.com`, `dev.azure.com` | NXDOMAIN | TFSaz's hosts-file entries must answer these on the client. A query that reaches the sinkhole is a leak. |
 | Anything else | NXDOMAIN | Offline test runs |
 
 ```sh
-docker compose -f live-tests/compose.yaml logs dns | grep -E 'visualstudio\.com|dev\.azure\.com'
+docker logs tfsaz-live-ID-dns-1 2>&1 | grep -E 'visualstudio\.com|dev\.azure\.com'
 ```
 
 The other answers are NXDOMAIN rather than REFUSED because Docker's resolver retries a refusal for 10 seconds before it gives up. While VMs have internet access, only `mock.test` names reach the sinkhole; offline runs will point the VMs at it for every name.
@@ -259,8 +277,8 @@ In the commands below, set `state_dir="${TFSAZ_LIVE_HOME:-$HOME/.tfsaz-live}"` t
 - The Ubuntu system must ask DHCP with its MAC address (`dhcp-identifier: mac` in the autoinstall and clone network config); otherwise Tart finds no IP and Packer waits until its SSH timeout.
 - Packer finds the Ubuntu installer's autoinstall prompt by OCR, which sometimes misreads it; when a build waits longer than 5 minutes after "Typing commands", stop it and build again. `PACKER_LOG=1` shows what the OCR reads.
 - A running Ubuntu installer accepts the build key for the user `installer`; `ssh -i "$state_dir/keys/ubuntu-build/id_ed25519" installer@IP` shows its progress.
-- A clone's Tart output is in `$state_dir/runs/NAME/tart.log`. `vm up` deletes a clone that fails to come up.
-- To see a clone's screen, use `vm screenshot NAME FILE`. A Windows build prints a VNC address without a password and has no clone name; to capture its screen, send QMP `screendump` to `$state_dir/build/windows/qmp.sock`, for example `{ echo '{"execute":"qmp_capabilities"}'; sleep 1; echo '{"execute":"screendump","arguments":{"filename":"/tmp/screen.png","format":"png"}}'; sleep 2; } | nc -U SOCKET`. A Windows build logs its first logon to `C:\Windows\Temp\tfsaz-setup.log`; a clone's QEMU output is in `$state_dir/runs/NAME/qemu.log`.
+- A clone's Tart output is in `$state_dir/instances/ID/runs/NAME/tart.log`. `vm up` deletes a clone that fails to come up.
+- To see a clone's screen, use `vm screenshot NAME FILE`. A Windows build prints a VNC address without a password and has no clone name; to capture its screen, send QMP `screendump` to `$state_dir/build/windows/qmp.sock`, for example `{ echo '{"execute":"qmp_capabilities"}'; sleep 1; echo '{"execute":"screendump","arguments":{"filename":"/tmp/screen.png","format":"png"}}'; sleep 2; } | nc -U SOCKET`. A Windows build logs its first logon to `C:\Windows\Temp\tfsaz-setup.log`; a clone's QEMU output is in `$state_dir/instances/ID/runs/NAME/qemu.log`.
 - A macOS clone's tunnel logs to `/var/log/tfsaz-live-wg0.log` in the VM; `sudo launchctl kickstart -k system/com.tfsaz.live.wg0` restarts it.
 
 ## Remove everything
@@ -269,9 +287,9 @@ Use the same `TFSAZ_LIVE_HOME` as for setup. Set `state_dir="${TFSAZ_LIVE_HOME:-
 
 | Change on the host | Undo |
 | --- | --- |
-| Clones, base VMs, ISOs, keys, router state in the state directory | `go run ./tools/live clean`, `go run ./tools/live services down`, then `rm -rf -- "$state_dir" live-tests/.state` |
-| The mock's CA and SSH files | After stopping services, run `rm -f live-tests/devops-server-mock/keys/{ca.pem,client_ed25519,client_ed25519.pub,known_hosts}` |
-| Docker images and network `tfsaz-live_bed` | `docker compose -f live-tests/compose.yaml down --rmi local` |
+| Per-instance clones, Docker containers and network, router and mock keys | `go run ./tools/live down` in each worktree, with its instance override if set |
+| Images built by Compose | After `down`, run `docker image rm tfsaz-live-ID-router tfsaz-live-ID-devops-server-mock`, using the instance ID |
+| Shared bases, caches and locks | Once all instances are down, run `rm -rf -- "$state_dir"` |
 | Tart, softnet, Packer and QEMU from Homebrew | `brew uninstall tart softnet packer qemu` |
 | Trusted formulas `openai/tools/tart`, `openai/tools/softnet` and `hashicorp/tap/packer` (Homebrew trusts the last one itself when installing it) | `brew untrust --formula openai/tools/tart openai/tools/softnet hashicorp/tap/packer` |
 | Taps `openai/tools` and `hashicorp/tap` | `brew untap openai/tools hashicorp/tap` |
