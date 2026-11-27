@@ -206,10 +206,6 @@ func TestCloneResources(t *testing.T) {
 			if i < 0 || len(args)-i < len(tc.want) || !slices.Equal(args[i:i+len(tc.want)], tc.want) {
 				t.Fatalf("QEMU args %q are missing %q", args, tc.want)
 			}
-			i = slices.Index(args, "virtio-balloon-pci")
-			if i < 1 || args[i-1] != "-device" {
-				t.Fatalf("QEMU args %q are missing the balloon device", args)
-			}
 		})
 	}
 }

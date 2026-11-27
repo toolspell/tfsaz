@@ -181,7 +181,6 @@ func (q qemu) commandArgs(name, code string, port int) []string {
 		// password comes over QMP once QEMU runs.
 		"-vnc", "127.0.0.1:0,to=99,password=on,display=" + qemuDisplay,
 		"-device", "virtio-net-pci,netdev=net0",
-		"-device", "virtio-balloon-pci",
 		// Without IPv6 the NAT offers no second DNS server past the router.
 		"-netdev", fmt.Sprintf("user,id=net0,ipv6=off,hostfwd=tcp:127.0.0.1:%d-:22", port),
 		"-qmp", "unix:" + filepath.Join(dir, "qmp.sock") + ",server=on,wait=off",

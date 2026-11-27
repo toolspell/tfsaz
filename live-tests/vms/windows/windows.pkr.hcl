@@ -22,7 +22,7 @@ variable "iso" {
 
 variable "virtio_iso" {
   type        = string
-  description = "Absolute path to the virtio-win ISO with the ARM64 drivers."
+  description = "Absolute path to the virtio-win ISO with the network driver."
 }
 
 variable "seed_iso" {
@@ -95,7 +95,6 @@ source "qemu" "windows" {
     ["-device", "ramfb"],
     ["-device", "virtio-gpu-pci,id=gpu,xres=1920,yres=1080"],
     ["-device", "virtio-net-pci,netdev=user.0"],
-    ["-device", "virtio-balloon-pci"],
     ["-netdev", "user,id=user.0,ipv6=off,hostfwd=tcp:127.0.0.1:{{ .SSHHostPort }}-:22"],
     ["-qmp", "unix:${var.qmp_socket},server=on,wait=off"],
     ["-display", "none"],

@@ -1,5 +1,5 @@
 # First logon of the Windows base build, started by Autounattend.xml from
-# the seed ISO: the virtio drivers and OpenSSH Server with the build key.
+# the seed ISO: the network driver and OpenSSH Server with the build key.
 # Packer connects once sshd runs and does the rest. `base build windows`
 # fills in the build key.
 $ErrorActionPreference = 'Stop'
@@ -9,21 +9,12 @@ Start-Transcript -Path C:\Windows\Temp\tfsaz-setup.log
 # Windows has no inbox drivers for QEMU's virtio network card and GPU; the
 # virtio-win ISO on another drive has them. The GPU gives the desktop
 # 1920x1080, which ramfb, the boot display, cannot.
-$balloon = 'Balloon\w11\ARM64\balloon.inf'
-foreach ($driver in 'NetKVM\w11\ARM64\netkvm.inf', 'viogpudo\w11\ARM64\viogpudo.inf', $balloon) {
+foreach ($driver in 'NetKVM\w11\ARM64\netkvm.inf', 'viogpudo\w11\ARM64\viogpudo.inf') {
     $inf = Get-PSDrive -PSProvider FileSystem |
         ForEach-Object { Join-Path $_.Root $driver } |
         Where-Object { Test-Path $_ } |
         Select-Object -First 1
     if (-not $inf) { throw "no drive has $driver" }
-    if ($driver -eq $balloon) {
-        $catalog = Join-Path (Split-Path -Parent $inf) 'balloon.cat'
-        $signature = Get-AuthenticodeSignature -LiteralPath $catalog
-        if ($signature.Status -ne 'Valid' -or
-            $signature.SignerCertificate.Subject -notmatch 'CN=Microsoft Windows Hardware Compatibility Publisher(,|$)') {
-            throw "balloon.cat is not signed by Microsoft Windows Hardware Compatibility Publisher: $($signature.Status)"
-        }
-    }
     pnputil.exe /add-driver $inf /install
     if ($LASTEXITCODE -notin 0, 3010) { throw "pnputil failed for ${driver}: $LASTEXITCODE" }
 }
