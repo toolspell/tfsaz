@@ -1,8 +1,29 @@
-# Provisions the Windows base build after setup.ps1: WireGuard for the
-# tunnel to the router, the tool's state directory, and no updates or sleep
-# during tests. Packer runs it over SSH as tester, an administrator.
+# Provisions the Windows base build after setup.ps1: PowerShell 7 for the
+# tool and SSH sessions, WireGuard for the tunnel to the router, the tool's
+# state directory, and no updates or sleep during tests. Packer runs it over
+# SSH as tester, an administrator.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+
+# Microsoft ships PowerShell 7 for Windows ARM64 only as a zip. The hash
+# pins it; Authenticode must name Microsoft.
+$zip = Join-Path $env:TEMP 'pwsh.zip'
+Invoke-WebRequest -UseBasicParsing -OutFile $zip `
+    -Uri 'https://github.com/PowerShell/PowerShell/releases/download/v7.7.0/PowerShell-7.7.0-win-arm64.zip'
+if ((Get-FileHash -Algorithm SHA256 $zip).Hash -ne '5dc7440cd98f0ba786a44d7db9205df5058474fd4db143caf7171e8375f34f75') {
+    throw 'PowerShell zip does not match its pinned SHA-256'
+}
+$pwshDir = 'C:\Program Files\PowerShell\7'
+Expand-Archive -Force $zip $pwshDir
+Remove-Item $zip
+$signature = Get-AuthenticodeSignature (Join-Path $pwshDir 'pwsh.exe')
+if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+    throw "pwsh.exe is not signed by Microsoft: $($signature.Status)"
+}
+$path = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+if ($path -notlike "*$pwshDir*") {
+    [Environment]::SetEnvironmentVariable('Path', "$path;$pwshDir", 'Machine')
+}
 
 # The hash pins the MSI; its Authenticode signature must name WireGuard LLC.
 $msi = Join-Path $env:TEMP 'wireguard.msi'

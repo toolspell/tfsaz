@@ -131,7 +131,7 @@ func TestLoadVMStaysInRuns(t *testing.T) {
 
 func TestEncodePowerShell(t *testing.T) {
 	command := encodePowerShell(`Write-Output "ä 'b'"`)
-	b64, ok := strings.CutPrefix(command, "powershell -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand ")
+	b64, ok := strings.CutPrefix(command, "pwsh -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand ")
 	if !ok {
 		t.Fatalf("command = %q", command)
 	}

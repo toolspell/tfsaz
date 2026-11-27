@@ -21,7 +21,7 @@ import (
 type sshTarget struct {
 	user, host, key, knownHosts string
 	port                        int  // 0 is 22
-	powershell                  bool // the tool's commands are PowerShell, not sh
+	powershell                  bool // the tool's commands are PowerShell 7, not sh
 }
 
 func (t sshTarget) args(command ...string) []string {
@@ -112,5 +112,5 @@ func encodePowerShell(script string) string {
 	for i, u := range units {
 		binary.LittleEndian.PutUint16(raw[2*i:], u)
 	}
-	return "powershell -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand " + base64.StdEncoding.EncodeToString(raw)
+	return "pwsh -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand " + base64.StdEncoding.EncodeToString(raw)
 }

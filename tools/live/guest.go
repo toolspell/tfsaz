@@ -1,7 +1,7 @@
 package main
 
 // guest holds the commands the tool runs in a VM, per guest OS: sh for
-// Ubuntu and macOS, PowerShell for Windows.
+// Ubuntu and macOS, PowerShell 7 for Windows.
 type guest struct {
 	powershell bool
 	authorize  string // reads a public key on stdin and makes it the only login key
@@ -78,7 +78,9 @@ var macosGuest = guest{
 // Windows: the base has WireGuard for Windows and C:\ProgramData\tfsaz-live,
 // writable only by administrators and SYSTEM. Its tunnel service reads the
 // private key from wg0.conf, and AllowedIPs avoids 0.0.0.0/0, which turns on
-// WireGuard's kill switch and cuts off SSH through QEMU's NAT.
+// WireGuard's kill switch and cuts off SSH through QEMU's NAT. Without the
+// kill switch Windows also asks the NAT's DNS server, so the network card
+// gets the router's resolver too.
 var windowsGuest = guest{
 	powershell: true,
 	authorize:  `[Console]::In.ReadToEnd() | Set-Content -Encoding ascii C:\ProgramData\ssh\administrators_authorized_keys`,
@@ -93,7 +95,8 @@ $key | & 'C:\Program Files\WireGuard\wg.exe' pubkey`,
 	wgUp: `$key = (Get-Content -Raw C:\ProgramData\tfsaz-live\private.key).Trim()
 [Console]::In.ReadToEnd().Replace('__PRIVATE_KEY__', $key) | Set-Content -Encoding ascii C:\ProgramData\tfsaz-live\wg0.conf
 Start-Process -Wait 'C:\Program Files\WireGuard\wireguard.exe' '/installtunnelservice C:\ProgramData\tfsaz-live\wg0.conf'
-(Get-Service 'WireGuardTunnel$wg0').WaitForStatus('Running', '00:00:30')`,
+(Get-Service 'WireGuardTunnel$wg0').WaitForStatus('Running', '00:00:30')
+Get-NetAdapter | Where-Object Name -ne 'wg0' | Set-DnsClientServerAddress -ServerAddresses ` + routerAddress.String(),
 	resolves: "if ((Resolve-DnsName -Name devops.mock.test -Type A -DnsOnly).IPAddress -contains '172.30.53.10') { exit 0 }; exit 1",
 	reaches:  "if ((New-Object Net.Sockets.TcpClient).ConnectAsync('devops.mock.test', 8080).Wait(5000)) { exit 0 }; exit 1",
 	rest:     "if ((curl.exe -s -u ':%[1]s' -o NUL -w '%%{http_code}' '" + connectionData + "') -eq '200') { exit 0 }; exit 1",
