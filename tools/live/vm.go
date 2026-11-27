@@ -254,7 +254,10 @@ func (e *env) vmStop(name string, force bool) error {
 	if _, err := info.login().run(nil, "sudo systemctl poweroff"); err != nil && !strings.Contains(err.Error(), "closed by remote host") {
 		return fmt.Errorf("%w; %s keeps running. vm stop %s -force stops it without a shutdown and can lose its unwritten changes", err, name, name)
 	}
-	return t.waitStopped(name, 2*time.Minute)
+	if err := t.waitStopped(name, 2*time.Minute); err != nil {
+		return fmt.Errorf("%w; vm stop %s -force stops it without a shutdown and can lose its unwritten changes", err, name)
+	}
+	return nil
 }
 
 // vmStart boots a stopped clone again. Its NAT address can change; its

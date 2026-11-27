@@ -237,5 +237,9 @@ func (e *env) updateBase(o osDef) error {
 	}
 	_, _ = login.run(nil, "sudo systemctl poweroff")
 	step("updated %s", o.base())
-	return t.waitStopped(o.base(), 2*time.Minute)
+	if err := t.waitStopped(o.base(), 2*time.Minute); err != nil {
+		// prepare-base.sh ended with sync, so a stop now loses nothing.
+		return t.stop(o.base())
+	}
+	return nil
 }

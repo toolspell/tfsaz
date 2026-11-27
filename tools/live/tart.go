@@ -98,7 +98,7 @@ func (t tart) stop(name string) error {
 	return nil
 }
 
-// waitStopped waits for a VM that shuts itself down.
+// waitStopped waits for a VM that shuts itself down; it never stops it.
 func (t tart) waitStopped(name string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -117,7 +117,7 @@ func (t tart) waitStopped(name string, timeout time.Duration) error {
 		}
 		time.Sleep(2 * time.Second)
 	}
-	return t.stop(name)
+	return fmt.Errorf("%s still runs %s after its shutdown began", name, timeout)
 }
 
 // remove stops and deletes a VM; a VM that does not exist is not an error.
