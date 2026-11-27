@@ -128,7 +128,7 @@ The VMs use Tart's NAT for SSH from the host (Windows: QEMU's user-mode NAT, wit
 | Address | What |
 | --- | --- |
 | `172.30.53.2` | Router: WireGuard on UDP 51820 (published on the host), resolver for the VMs |
-| `172.30.53.10` | Mock, `devops.mock.test`, with HTTPS on 443 and 8443, HTTP on 8080, and SSH on 2222. These ports are also published on the host's loopback. |
+| `172.30.53.10` | Mock, `devops.mock.test`, with HTTPS on 443 and 8443, HTTP on 8080, and SSH on 2222. All but 443 are also published on the host's loopback, where TFSaz's own redirector may use 443. |
 | `172.30.53.53` | DNS sinkhole |
 | `172.30.53.129` and up | VMs, one address each |
 | `127.0.0.1:19090` | Mock journal on the host. The router blocks direct access from VMs. |
