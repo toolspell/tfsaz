@@ -8,9 +8,14 @@ set -eu
 
 dir=/state/peers
 
+# apply leaves nothing behind when it fails. It checks each step itself,
+# because set -e does not apply when load calls it with ||.
 apply() {
-	wg set wg0 peer "$1" allowed-ips "$2/32"
-	ip route replace "$2/32" dev wg0
+	wg set wg0 peer "$1" allowed-ips "$2/32" || return 1
+	if ! ip route replace "$2/32" dev wg0; then
+		wg set wg0 peer "$1" remove
+		return 1
+	fi
 }
 
 case "${1:-}" in
