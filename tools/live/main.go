@@ -6,6 +6,9 @@
 //	go run ./tools/live verify OS                  check a throwaway clone against the test bed
 //	go run ./tools/live doctor [-install]          check the host tools; -install adds missing ones
 //	go run ./tools/live services up|down|status    mock, DNS sinkhole and VM router in Docker
+//	go run ./tools/live mock ca
+//	go run ./tools/live mock requests [-vm NAME] [-json]
+//	go run ./tools/live mock reset
 //	go run ./tools/live base build OS [-force]     build the base VM from scratch
 //	go run ./tools/live base update OS             upgrade the base VM's packages in place
 //	go run ./tools/live base rm OS                 delete the base VM
@@ -34,6 +37,9 @@ const usage = `usage: go run ./tools/live <command>
   verify OS                       boot a throwaway clone and check the mock, the router and internet
   doctor [-install] [-yes]        check host tools; offer to install missing ones with Homebrew
   services up|down|status         the test bed in Docker: mock, DNS sinkhole, VM router
+  mock ca                         print the path to the mock CA certificate
+  mock requests [-vm NAME] [-json]  read the mock's request journal
+  mock reset                      clear the mock's request journal
   base build OS [-force]          build OS's base VM from scratch (-force replaces an existing one)
   base update OS                  upgrade the base VM's packages in place
   base rm OS                      delete the base VM
@@ -101,6 +107,8 @@ func run(command string, args []string) error {
 			return errUsage
 		}
 		return e.services(args[0])
+	case "mock":
+		return e.mock(args, os.Stdout)
 	case "base":
 		force := flags.Bool("force", false, "replace an existing base VM")
 		if len(args) < 2 {

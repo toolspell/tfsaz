@@ -236,6 +236,7 @@ func (s *server) serveGitHTTP(w http.ResponseWriter, r *http.Request, rp *repo, 
 		}, gitIdentityEnv...),
 	}
 	clone := r.Clone(r.Context())
+	clone.Header.Del("Authorization")
 	clone.URL.Path = "/" + filepath.Base(rp.Dir) + rest
 	clone.URL.RawPath = ""
 	// Git sends pushes over http.postBuffer (1 MiB) chunked, which CGI

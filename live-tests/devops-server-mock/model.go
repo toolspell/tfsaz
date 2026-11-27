@@ -105,6 +105,7 @@ type collection struct {
 
 type server struct {
 	mu          sync.Mutex
+	journal     requestJournal
 	cfg         config
 	gitRoot     string
 	collections []*collection
@@ -221,23 +222,38 @@ func (c *collection) workItem(id int) *workItem {
 	return nil
 }
 
-// links builds the URLs the server puts in responses, from the Host the
-// client used.
 type links struct {
-	base string // scheme://host
-	c    *collection
-	ssh  string // host:port for SSH URLs
+	origin, virtualDir, ssh string
+	c                       *collection
 }
 
-func (s *server) links(r *http.Request, c *collection) links {
+func requestScheme(r *http.Request) string {
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
+func splitCollectionPath(path string) (virtualDir string, segments []string) {
+	segments = strings.Split(strings.Trim(path, "/"), "/")
+	if len(segments) > 1 && strings.EqualFold(segments[0], "tfs") {
+		return "/" + segments[0], segments[1:]
+	}
+	return "", segments
+}
+
+func (s *server) links(r *http.Request, virtualDir string, c *collection) links {
 	host := r.Host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	return links{base: "http://" + r.Host, c: c, ssh: net.JoinHostPort(strings.Trim(host, "[]"), s.cfg.sshPort)}
+	return links{
+		origin: requestScheme(r) + "://" + r.Host, virtualDir: virtualDir, c: c,
+		ssh: net.JoinHostPort(strings.Trim(host, "[]"), s.cfg.sshPort),
+	}
 }
 
-func (l links) coll() string { return l.base + "/" + url.PathEscape(l.c.Name) }
+func (l links) coll() string { return l.origin + l.virtualDir + "/" + url.PathEscape(l.c.Name) }
 
 func (l links) api(parts ...string) string {
 	escaped := make([]string, len(parts))
@@ -250,11 +266,11 @@ func (l links) api(parts ...string) string {
 // gitWeb matches the server: a literal space in the collection name, the
 // project and repository escaped.
 func (l links) gitWeb(r *repo) string {
-	return l.base + "/" + l.c.Name + "/" + url.PathEscape(r.Project.Name) + "/_git/" + url.PathEscape(r.Name)
+	return l.origin + l.virtualDir + "/" + l.c.Name + "/" + url.PathEscape(r.Project.Name) + "/_git/" + url.PathEscape(r.Name)
 }
 
 func (l links) gitSSH(r *repo) string {
-	return "ssh://" + l.ssh + "/" + url.PathEscape(l.c.Name) + "/" + url.PathEscape(r.Project.Name) + "/_git/" + url.PathEscape(r.Name)
+	return "ssh://" + l.ssh + l.virtualDir + "/" + url.PathEscape(l.c.Name) + "/" + url.PathEscape(r.Project.Name) + "/_git/" + url.PathEscape(r.Name)
 }
 
 func (l links) identityRef(p *identity) map[string]any {

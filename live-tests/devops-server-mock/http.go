@@ -48,8 +48,20 @@ type req struct {
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%s %s", r.Method, r.URL.RequestURI())
-	segments := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	entry := newRequestEntry(r, s.cfg.pat)
+	response := &journalResponse{ResponseWriter: w}
+	defer func() {
+		entry.Status = response.status
+		if entry.Status == 0 {
+			entry.Status = http.StatusOK
+		}
+		s.journal.record(entry)
+	}()
+	s.serveCollection(response, r)
+}
+
+func (s *server) serveCollection(w http.ResponseWriter, r *http.Request) {
+	virtualDir, segments := splitCollectionPath(r.URL.Path)
 	if segments[0] == "" {
 		s.page(w, "Azure DevOps Server mock", "Collections: "+strings.Join(s.collectionNames(), ", "))
 		return
@@ -64,7 +76,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
-	q := &req{w: w, r: r, c: c, parts: segments[1:], l: s.links(r, c)}
+	q := &req{w: w, r: r, c: c, parts: segments[1:], l: s.links(r, virtualDir, c)}
 	if len(q.parts) >= 2 && !strings.EqualFold(q.parts[0], "_apis") && !strings.EqualFold(q.parts[0], "_git") {
 		q.project = c.project(q.parts[0])
 		if q.project == nil {
@@ -83,7 +95,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch strings.ToLower(q.parts[0]) {
 	case "_apis":
-		if !s.authorized(w, r) {
+		if !s.authorized(q) {
 			return
 		}
 		if r.Method != http.MethodOptions {
@@ -104,12 +116,13 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // authorized accepts Basic authentication with any user name and the PAT,
 // and answers like the server otherwise.
-func (s *server) authorized(w http.ResponseWriter, r *http.Request) bool {
-	if _, password, ok := r.BasicAuth(); ok && password == s.cfg.pat {
+func (s *server) authorized(q *req) bool {
+	if _, password, ok := q.r.BasicAuth(); ok && password == s.cfg.pat {
 		return true
 	}
+	w := q.w
 	w.Header().Add("WWW-Authenticate", "Bearer")
-	w.Header().Add("WWW-Authenticate", `Basic realm="http://`+r.Host+`/"`)
+	w.Header().Add("WWW-Authenticate", `Basic realm="`+q.l.coll()+`/"`)
 	w.Header().Set("X-TFS-ServiceError", "TF400813%3A%20Resource%20not%20available%20for%20anonymous%20access.%20Client%20authentication%20required.")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusUnauthorized)
@@ -123,6 +136,7 @@ func (s *server) api(q *req) {
 	switch {
 	case len(p) == 1 && m == http.MethodOptions:
 		q.w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		q.w.Header().Set("Content-Location", q.l.origin+q.r.URL.RequestURI())
 		_, _ = q.w.Write(catalog)
 	case match(p, "_apis", "connectiondata") && m == http.MethodGet:
 		s.connectionData(q)
@@ -143,11 +157,12 @@ func (s *server) api(q *req) {
 
 func (s *server) connectionData(q *req) {
 	me := q.l.identity(s.viewer, false)
+	q.w.Header().Set("Content-Location", q.l.origin+q.r.URL.RequestURI())
 	writeJSON(q.w, http.StatusOK, map[string]any{
 		"authenticatedUser": me, "authorizedUser": me,
 		"instanceId": q.c.ID, "deploymentId": guid("deployment"), "deploymentType": "onPremises",
 		"locationServiceData":             map[string]any{"clientCacheTimeToLive": 86400, "defaultAccessMappingMoniker": "PublicAccessMapping", "lastChangeId": 1, "lastChangeId64": 1},
-		"webApplicationRelativeDirectory": q.c.Name + "/",
+		"webApplicationRelativeDirectory": strings.TrimPrefix(q.l.virtualDir+"/"+q.c.Name, "/") + "/",
 	})
 }
 

@@ -128,11 +128,25 @@ The VMs use Tart's NAT for SSH from the host (Windows: QEMU's user-mode NAT, wit
 | Address | What |
 | --- | --- |
 | `172.30.53.2` | Router: WireGuard on UDP 51820 (published on the host), resolver for the VMs |
-| `172.30.53.10` | Mock, `devops.mock.test`; ports 8080 and 2222 also published on the host's loopback |
+| `172.30.53.10` | Mock, `devops.mock.test`, with HTTPS on 443 and 8443, HTTP on 8080, and SSH on 2222. These ports are also published on the host's loopback. |
 | `172.30.53.53` | DNS sinkhole |
 | `172.30.53.129` and up | VMs, one address each |
+| `127.0.0.1:19090` | Mock journal on the host. The router blocks direct access from VMs. |
 
 On Windows the tunnel routes `0.0.0.0/1` and `128.0.0.0/1` instead of `0.0.0.0/0`, which would turn on WireGuard for Windows' kill switch and cut off SSH from the host. Without the kill switch Windows would also ask QEMU's DNS server, so the tool sets the router's resolver on the network card too. The router answers ARP for the VM addresses, so containers reach a VM like any other host in the subnet. Traffic from a VM to anywhere else leaves through Docker's NAT, so VMs have internet access for now. The router's resolver sends `mock.test` names to the sinkhole and everything else to Docker's resolver. Its key and peer list survive a restart; VMs reconnect within seconds.
+
+For HTTPS tests, `go run ./tools/live mock ca` prints the mock CA certificate's path on the host. Clients need to trust this CA explicitly. Copy the certificate into the clone and pass its guest path to TFSaz's `--ca-file` or to `curl --cacert`. Use the hostname `devops.mock.test` for TLS verification.
+
+## Request journal
+
+```sh
+go run ./tools/live mock requests [-vm NAME] [-json]
+go run ./tools/live mock reset
+```
+
+The mock keeps the last 5,000 completed HTTP and HTTPS requests in memory. Each entry includes the time, client IP, method, scheme, host, path, query, status, user agent and authentication scheme. It omits authorization values and masks known credentials and common credential query parameters. The router only masquerades traffic destined outside the bed, so journal entries for a VM use the `bedAddress` recorded in its `vm.json`.
+
+`mock requests` prints one line per request. Use `-vm NAME` to read only that clone's requests and `-json` to get a JSON array. The host admin API exposes `GET /requests` with optional `?ip=ADDRESS` and `DELETE /requests` to clear the journal. Resetting the journal leaves the mock's repositories and work items in place.
 
 ## DNS sinkhole
 
@@ -171,6 +185,7 @@ It also advises shortening macOS's DHCP leases for VMs from a day to ten minutes
 | Change on the host | Undo |
 | --- | --- |
 | Clones, base VMs, ISOs, keys, router state in `~/.tfsaz-live` | `go run ./tools/live clean`, `go run ./tools/live services down`, then `rm -rf ~/.tfsaz-live live-tests/.state` |
+| The mock's CA and SSH files | After stopping services, run `rm -f live-tests/devops-server-mock/keys/{ca.pem,client_ed25519,client_ed25519.pub,known_hosts}` |
 | Docker images and network `tfsaz-live_bed` | `docker compose -f live-tests/compose.yaml down --rmi local` |
 | Tart, softnet, Packer and QEMU from Homebrew | `brew uninstall tart softnet packer qemu` |
 | Trusted formulas `openai/tools/tart`, `openai/tools/softnet` and `hashicorp/tap/packer` (Homebrew trusts the last one itself when installing it) | `brew untrust --formula openai/tools/tart openai/tools/softnet hashicorp/tap/packer` |
