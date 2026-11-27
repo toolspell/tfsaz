@@ -103,6 +103,7 @@ TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter 
 - Open a PR only when asked. One request is one PR.
 - Title: a conventional commit in plain language, such as `fix(setup): restore no longer leaves a lock file`. PRs are squash merged, so it becomes the commit on `main`.
 - Body: fill in the [PR template](.github/pull_request_template.md).
+- Credit the agents that contributed changes. Whoever merges the PR verifies that all [co-author trailers reach main](docs/operations/development.md#co-author-attribution).
 - Babysit a PR with `watch_pull_request`; never poll checks or reviews.
 - Workflows that run on PRs must work for stacked PRs: [GitHub workflows](docs/operations/development.md#github-workflows).
 - Outside contributions follow [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -207,6 +207,21 @@ CodeRabbit and Codex review PRs. CodeRabbit reads [`.coderabbit.config.ts`](../.
 
 These are the rules for `main`, enforced by a ruleset. `main` takes only squash-merged PRs that pass `Check`, `PR title` and `Agent context budget`, on the PR and again in the [merge queue](#merge-queue). Resolve a Dependabot PR's conflicts with a `@dependabot rebase` comment, not by pushing to it: Dependabot stops rebasing a PR once someone else pushed to it.
 
+### Co-author attribution
+
+Keep the human author and add a `Co-authored-by` trailer after a blank line for each agent that contributed changes. Keep any existing co-author trailers. A review alone calls for no co-author trailer.
+
+Use the contributing agent's GitHub-linked identity. TFSaz uses these trailers for Codex and Claude Opus 5.5.
+
+```text
+Co-authored-by: Codex <267193182+codex@users.noreply.github.com>
+Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+```
+
+For another harness or model, use the identity its integration provides if the email is linked to its GitHub account. Several models may share one agent identity. Use one trailer per identity and record the specific harness and model in the PR description when that detail matters. If the agent has no verified GitHub identity, credit its harness and model by name in the PR description. [GitHub co-author requirements](https://docs.github.com/en/pull-requests/how-tos/commit-changes/creating-a-commit-with-multiple-authors)
+
+Keep the trailers on commits in the PR for the merge queue. GitHub can carry co-authors into the squash commit even with a blank default squash body. Whoever merges the PR checks the squash commit on `main` for every credited co-author and flags any missing credit.
+
 ### Merge queue
 
 A PR merges through the merge queue, not directly. Add it with "Merge when ready" or `gh pr merge <number> --squash`; with auto-merge (`gh pr merge <number> --squash --auto`) GitHub adds it once its own checks pass. The queue tests each PR on top of `main` and the PRs ahead of it, so nobody updates a branch to bring it up to date. Each PR still gets its own CI run, but up to three run at the same time instead of one after another.
