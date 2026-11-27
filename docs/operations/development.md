@@ -203,7 +203,7 @@ These are the rules for `main`, enforced by a ruleset. `main` takes only squash-
 
 ### Merge queue
 
-A PR merges through the merge queue, not directly. Add it with "Merge when ready" or `gh pr merge <number> --squash`; with auto-merge (`gh pr merge <number> --squash --auto`) GitHub adds it once its own checks pass. The queue tests each PR on top of `main` and the PRs ahead of it, so nobody updates a branch to bring it up to date, and several ready PRs share one CI run.
+A PR merges through the merge queue, not directly. Add it with "Merge when ready" or `gh pr merge <number> --squash`; with auto-merge (`gh pr merge <number> --squash --auto`) GitHub adds it once its own checks pass. The queue tests each PR on top of `main` and the PRs ahead of it, so nobody updates a branch to bring it up to date. Each PR still gets its own CI run, but up to three run at the same time instead of one after another.
 
 | Setting | Value | Why |
 | --- | --- | --- |
