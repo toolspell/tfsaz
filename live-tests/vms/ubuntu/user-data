@@ -1,0 +1,46 @@
+#cloud-config
+# Autoinstall config for the Ubuntu base VM. `go run ./tools/live base build
+# ubuntu` replaces ${ssh_public_key} with the key of this build and puts the
+# file on a seed ISO labeled cidata.
+autoinstall:
+  version: 1
+  source:
+    id: ubuntu-server-minimal
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  timezone: Etc/UTC
+  storage:
+    swap:
+      size: 0
+    layout:
+      name: direct
+  # DHCP with the MAC address as client ID: Tart finds a VM's address by
+  # its MAC in macOS's DHCP leases.
+  network:
+    version: 2
+    ethernets:
+      wired:
+        match:
+          name: "en*"
+        dhcp4: true
+        dhcp-identifier: mac
+  ssh:
+    install-server: true
+    allow-pw: false
+  packages:
+    - wireguard-tools
+  updates: all
+  shutdown: reboot
+  # cloud-init applies this on the first boot of the installed system.
+  user-data:
+    hostname: tfsaz-ubuntu
+    users:
+      - name: tester
+        gecos: Test User
+        groups: [adm, sudo]
+        shell: /bin/bash
+        lock_passwd: true
+        sudo: "ALL=(ALL) NOPASSWD:ALL"
+        ssh_authorized_keys:
+          - ${ssh_public_key}
