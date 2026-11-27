@@ -83,6 +83,7 @@ func TestCIGuard(t *testing.T) {
 				{"vm forward tfsaz-live-first-ubuntu-demo 9222", true},
 				{"vm t3 install tfsaz-live-first-ubuntu-demo", true},
 				{"vm t3 start tfsaz-live-first-ubuntu-demo", true},
+				{"vm browser start tfsaz-live-first-ubuntu-demo chrome", true},
 				{"vm stop tfsaz-live-first-ubuntu-demo", true},
 				{"vm start tfsaz-live-first-ubuntu-demo", true},
 				{"vm down tfsaz-live-first-ubuntu-demo", true},
@@ -950,6 +951,26 @@ func TestBrowserStartCommand(t *testing.T) {
 			}
 			if command := browserStartCommand(tc.os, tc.browser, 9333, ""); strings.Contains(command, urlArg) || strings.Contains(command, " -- ") || strings.Contains(command, "Add('--')") {
 				t.Errorf("command without URL has a trailing argument: %s", command)
+			}
+		})
+	}
+}
+
+func TestCDPVersionMatches(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, app string
+	}{
+		{"T3", `{"Browser":"Chrome/140.0","User-Agent":"Mozilla/5.0 T3Code/0.1.13 Chrome/140.0","webSocketDebuggerUrl":"ws://127.0.0.1:9222/devtools/browser/t3"}`, t3UserAgent},
+		{"Chrome", `{"Browser":"Chrome/158.0","webSocketDebuggerUrl":"ws://127.0.0.1:9222/devtools/browser/chrome"}`, "chrome"},
+		{"Edge", `{"Browser":"Edg/158.0","User-Agent":"Mozilla/5.0 Chrome/158.0 Edg/158.0","webSocketDebuggerUrl":"ws://127.0.0.1:9222/devtools/browser/edge"}`, "edge"},
+		{"missing WebSocket", `{"Browser":"Chrome/158.0"}`, ""},
+		{"invalid JSON", `Chrome/158.0 T3Code webSocketDebuggerUrl`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, app := range []string{t3UserAgent, "chrome", "edge"} {
+				if got, want := cdpVersionMatches(tc.body, app), app == tc.app; got != want {
+					t.Errorf("match %s = %t, want %t", app, got, want)
+				}
 			}
 		})
 	}

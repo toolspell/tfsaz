@@ -119,7 +119,7 @@ func (c *liveInvocation) flagSet() *flag.FlagSet {
 	case "vm stop":
 		flags.BoolVar(&c.force, "force", false, "Stop without shutting down the guest. This can lose unwritten changes.")
 	case "vm t3 start", "vm browser start":
-		flags.IntVar(&c.port, "port", 9222, "Chrome debugging port inside the clone, from 1 to 65535.")
+		flags.IntVar(&c.port, "port", 9222, "Debugging port inside the clone, from 1 to 65535.")
 	case "vm run":
 		flags.BoolVar(&c.asJSON, "json", false, "Print exit code, output and timing as JSON.")
 		flags.DurationVar(&c.timeout, "timeout", 10*time.Minute, "Stop waiting after this duration (for example 30s or 2m). The timeout exit code is 124.")

@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -52,31 +54,58 @@ func (e *env) vmBrowserStart(name, browser string, port int, url string) error {
 	}
 	login := info.login()
 	step("starting %s in %s", browser, name)
-	if _, err := login.runRemote(context.Background(), nil, remote, "vm browser start"); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute+30*time.Second)
+	defer cancel()
+	if _, err := login.runRemote(ctx, nil, remote, "vm browser start"); err != nil {
 		return err
 	}
-	endpoint, err := waitCDP(o, login, port, "webSocketDebuggerUrl")
+	endpoint, err := waitCDP(o, login, port, browser)
 	if err != nil {
-		return fmt.Errorf("%s's debugging port %d in %s did not answer within a minute: %w", browser, port, name, err)
+		return fmt.Errorf("%s's debugging port %d in %s did not answer within a minute; pick another -port if an app already uses it: %w", browser, port, name, err)
 	}
 	fmt.Println(endpoint)
 	return nil
 }
 
-func waitCDP(o osDef, login sshTarget, port int, marker string) (string, error) {
+func waitCDP(o osDef, login sshTarget, port int, app string) (string, error) {
 	url := fmt.Sprintf("http://127.0.0.1:%d", port)
-	probe := fmt.Sprintf(o.guest.serves, url+"/json/version", marker)
+	probe := fmt.Sprintf(o.guest.cdpVersion, url+"/json/version")
 	wait, stop := context.WithTimeout(context.Background(), time.Minute)
 	defer stop()
 	for {
-		_, err := login.runContext(wait, nil, probe)
+		body, err := login.runContext(wait, nil, probe)
 		if err == nil {
-			return url, nil
+			if cdpVersionMatches(body, app) {
+				return url, nil
+			}
+			err = fmt.Errorf("/json/version did not identify the expected app")
 		}
 		select {
 		case <-wait.Done():
 			return "", err
 		case <-time.After(2 * time.Second):
 		}
+	}
+}
+
+func cdpVersionMatches(body, app string) bool {
+	var version struct {
+		Browser      string
+		UserAgent    string `json:"User-Agent"`
+		WebSocketURL string `json:"webSocketDebuggerUrl"`
+	}
+	if err := json.Unmarshal([]byte(body), &version); err != nil || version.WebSocketURL == "" {
+		return false
+	}
+	isT3 := strings.Contains(version.UserAgent, t3UserAgent) || strings.Contains(version.Browser, t3UserAgent)
+	switch app {
+	case t3UserAgent:
+		return isT3
+	case "chrome":
+		return !isT3 && strings.HasPrefix(version.Browser, "Chrome/")
+	case "edge":
+		return !isT3 && strings.HasPrefix(version.Browser, "Edg/")
+	default:
+		return false
 	}
 }

@@ -195,7 +195,7 @@ top -l 10 -s 1 -pid PID -stats pid,command,cpu,mem,rsize
 | `vm vnc NAME` | Prints `vnc://:PASSWORD@127.0.0.1:PORT` for a VNC client or an agent's VNC tool. The hypervisor serves it (Virtualization.framework for Tart, QEMU's own VNC server bound to the virtio GPU for Windows). Loopback only, a new random password per start; nothing runs in the guest for it. |
 | `vm t3 install NAME` | Installs the stock T3 Code desktop app at the tag that `tools/syncrepos` pins for `.reference-apps/t3code`, as its user would, and prints the tag. Clones start without T3, so a test can also cover a machine without it. The arm64 installer comes from T3's GitHub release, is checked against the SHA-512 in the release's electron-builder manifest and is cached in the state directory under `cache/t3/TAG/`. macOS: the app in `/Applications`. Ubuntu: the `.deb` through apt. Windows: the NSIS installer, silent, per user. About 10 seconds on macOS, 30 on Ubuntu and a minute on Windows. |
 | `vm t3 start NAME [-port P]` | Starts the installed T3 in the desktop session of the clone's test user with Chrome's debugging port P (1 to 65535, default 9222) on the clone's loopback. After launch it probes the port for up to a minute and prints its URL once T3 answers. When T3 already runs with that port, it only checks the port; when T3 runs without it, quit T3 first. Another app's debugging port on the same number does not count; pick another port. |
-| `vm browser start NAME chrome\|edge [-port P] [URL]` | Starts Chrome or Edge (Windows only) in the test user's desktop session with a temporary profile per browser and port. Opens URL if given, waits for the debugging port P (default 9222) and prints its loopback URL in the clone. |
+| `vm browser start NAME BROWSER [-port P] [URL]` | Starts the browser in the test user's desktop session with a temporary profile per browser and port. Use `chrome` on any guest or `edge` on Windows. Opens URL if given, waits for that browser to answer on port P (1 to 65535, default 9222) and prints its loopback URL in the clone. |
 
 On Windows, the first start shows Windows Defender Firewall's prompt for T3, as on a user's machine. It is a system dialog in front of T3, not part of T3's page, so Playwright does not see it; a test that takes screenshots closes it first.
 
@@ -219,7 +219,7 @@ T3 checks its update feed and offers a newer release. Do not accept it: tests ru
 
 ## Drive browsers
 
-Run `vm browser start NAME chrome` (or `edge` on Windows) and follow [Drive T3 with Playwright](#drive-t3-with-playwright) to forward the port and attach from the host. Give T3 and each browser a different guest port if they run together. Node.js and Playwright run on the host.
+Run `vm browser start NAME chrome` (or `edge` on Windows) with a clone name from this instance's `up` output or `vm list`. Follow [Drive T3 with Playwright](#drive-t3-with-playwright) to forward the port and attach from the host. Give apps in the same clone different guest ports when they run together and use a free host port for each forward. Node.js and Playwright run on the host.
 
 To verify a URL opened in the default browser, open a mock URL with `vm run NAME -gui` using `open` on macOS, `xdg-open` on Ubuntu or `Start-Process` on Windows. Check the path and user agent in `mock requests -vm NAME -json`. This also works with Safari and Firefox, which Playwright cannot attach to over CDP.
 
