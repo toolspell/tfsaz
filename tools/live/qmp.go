@@ -15,12 +15,13 @@ type qmpSession struct {
 	r    *bufio.Reader
 }
 
-func dialQMP(socket string) (*qmpSession, error) {
-	conn, err := net.DialTimeout("unix", socket, 5*time.Second)
+// dialQMP connects and negotiates; every read and write ends by deadline.
+func dialQMP(socket string, deadline time.Time) (*qmpSession, error) {
+	conn, err := net.DialTimeout("unix", socket, time.Until(deadline))
 	if err != nil {
 		return nil, fmt.Errorf("the VM does not run or has no QMP socket: %w", err)
 	}
-	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+	_ = conn.SetDeadline(deadline)
 	s := &qmpSession{conn: conn, r: bufio.NewReader(conn)}
 	if _, err := s.r.ReadString('\n'); err != nil {
 		_ = conn.Close()
@@ -74,7 +75,7 @@ func (s *qmpSession) execute(command string, arguments any) (json.RawMessage, er
 // qmpScreendump asks QEMU to write the screen of a display device to file
 // as a PNG.
 func qmpScreendump(socket, device, file string) error {
-	s, err := dialQMP(socket)
+	s, err := dialQMP(socket, time.Now().Add(30*time.Second))
 	if err != nil {
 		return err
 	}

@@ -161,15 +161,16 @@ func (q qemu) start(name, logFile string) error {
 	exited := make(chan error, 1)
 	go func() { exited <- c.Wait() }()
 	// QEMU may write its pid file before its QMP socket exists.
+	deadline := time.Now().Add(10 * time.Second)
 	var vncErr error
-	for range 50 {
+	for time.Now().Before(deadline) {
 		select {
 		case err := <-exited:
 			return fmt.Errorf("qemu-system-aarch64 exited at start (%v); see %s", err, logFile)
 		case <-time.After(200 * time.Millisecond):
 		}
 		if q.pid(name) != 0 {
-			if vncErr = q.setVNC(name); vncErr == nil {
+			if vncErr = q.setVNC(name, deadline); vncErr == nil {
 				return nil
 			}
 		}
@@ -183,8 +184,8 @@ func (q qemu) start(name, logFile string) error {
 
 // setVNC gives QEMU's VNC server a new password and saves its address for
 // vm vnc. VNC passwords have at most 8 characters.
-func (q qemu) setVNC(name string) error {
-	s, err := dialQMP(filepath.Join(q.dir(name), "qmp.sock"))
+func (q qemu) setVNC(name string, deadline time.Time) error {
+	s, err := dialQMP(filepath.Join(q.dir(name), "qmp.sock"), deadline)
 	if err != nil {
 		return err
 	}
