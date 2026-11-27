@@ -19,7 +19,7 @@ docker compose up -d --build
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `MOCK_PAT` | `mock-pat` | The only PAT the mock accepts. Its permissions are not checked. |
-| `MOCK_DNS_PORT` | `53` | Host port of the DNS sinkhole, UDP and TCP. |
+| `MOCK_DNS_PORT` | `53` | Host port of the DNS sinkhole, UDP and TCP. VMs need `53`; another port only suits local checks such as `dig -p`. |
 | `MOCK_ADDRESS` | `172.30.53.10` | The address the sinkhole returns for `devops.mock.test`. |
 
 On every start the mock generates a fresh SSH host key and client key and writes them to `keys/` (gitignored): `client_ed25519`, `client_ed25519.pub` and `known_hosts`. SSH accepts only that client key. No personal key is used or needed.
@@ -44,7 +44,7 @@ docker compose logs dns | grep -E 'visualstudio\.com|dev\.azure\.com'
 
 The other answers are NXDOMAIN rather than REFUSED because Docker's resolver retries a refusal for 10 seconds before it gives up.
 
-Containers on the compose network use the sinkhole through `dns:`. VMs point their resolver at the host's port 53 (or `MOCK_DNS_PORT`). They cannot reach the compose network, so for VM clients set `MOCK_ADDRESS` to the host address the VMs reach, where the mock's ports 8080 and 2222 are published. Containers on the compose network reach that address too. The test machine must not reach any other resolver, or a lookup that bypasses the hosts file goes unnoticed.
+Containers on the compose network use the sinkhole through `dns:`. VMs point their resolver at the host's port 53: OS resolver settings take only an address, not a port, so keep `MOCK_DNS_PORT` at `53` for VMs. They cannot reach the compose network, so for VM clients set `MOCK_ADDRESS` to the host address the VMs reach, where the mock's ports 8080 and 2222 are published. Containers on the compose network reach that address too. The test machine must not reach any other resolver, or a lookup that bypasses the hosts file goes unnoticed.
 
 Test browsers keep their default settings, as users have them. In this offline test bed, DNS-over-HTTPS (secure DNS) providers are unreachable, so browsers fall back to the system resolver: the hosts file first, then the sinkhole. A later browser test case runs once with DNS over HTTPS forced on, to find out whether an alias host leaks past TFSaz's hosts lines.
 
