@@ -62,20 +62,21 @@ func (e *env) vmRun(args []string) error {
 	var remote string
 	switch {
 	case *gui && o.guest.powershell:
-		remote = encodePowerShell(windowsGUI(script, *timeout))
+		remote = encodePowerShell(windowsGUI(userScript(script), *timeout))
 	case *gui && o.guest.gui == "":
 		return fmt.Errorf("%s has no desktop session for -gui yet", o.name)
 	case *gui:
 		remote = fmt.Sprintf(o.guest.gui, shellQuote(script))
 	case o.guest.powershell:
-		remote = encodeUserPowerShell(script)
+		remote = encodeUserPowerShell(userScript(script))
 	default:
 		remote = script
 	}
-	// The guest enforces the timeout of a -gui command; this one only
-	// catches a guest that stops answering.
+	// Windows enforces the timeout of a -gui command in the guest, so it
+	// can stop the task and report its output; the host only catches a
+	// guest that stops answering.
 	limit := *timeout
-	if *gui {
+	if *gui && o.guest.powershell {
 		limit += 30 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
@@ -125,6 +126,10 @@ func (e *env) vmRun(args []string) error {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
+// userScript makes a PowerShell script of vm run end with its exit N, or
+// else with the exit code of its last native command, with and without -gui.
+func userScript(script string) string { return script + "\nexit $LASTEXITCODE" }
+
 // windowsGUI returns a PowerShell script that runs command as its own
 // script in the test user's desktop session through a one-time scheduled
 // task, then prints its output and exits with its exit code. The task runs
@@ -134,14 +139,27 @@ func windowsGUI(command string, timeout time.Duration) string {
 	_, _ = rand.Read(b)
 	id := hex.EncodeToString(b)
 	user := base64.StdEncoding.EncodeToString([]byte(command))
+	// The task runs run.ps1, which starts user.ps1 with its output going
+	// straight to files, so a killed script keeps what it wrote so far.
+	run := base64.StdEncoding.EncodeToString([]byte(`$out = Join-Path $PSScriptRoot 'out.txt'
+$err = Join-Path $PSScriptRoot 'err.txt'
+$arguments = '-NoProfile -NonInteractive -File "{0}"' -f (Join-Path $PSScriptRoot 'user.ps1')
+$p = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList $arguments -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -Wait -PassThru
+Set-Content (Join-Path $PSScriptRoot 'exit.txt') ([string]$p.ExitCode)`))
 	return fmt.Sprintf(`$dir = Join-Path $env:TEMP 'tfsaz-gui-%[1]s'
 $name = 'tfsaz-gui-%[1]s'
 $pwsh = 'C:\Program Files\PowerShell\7\pwsh.exe'
 New-Item -ItemType Directory -Force $dir | Out-Null
+[IO.File]::WriteAllText((Join-Path $dir 'run.ps1'), [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('%[4]s')))
+function Write-Streams {
+	foreach ($stream in 'out', 'err') {
+		$text = Get-Content -Raw "$dir\$stream.txt" -ErrorAction SilentlyContinue
+		if ($text -and $stream -eq 'out') { [Console]::Out.Write($text) }
+		if ($text -and $stream -eq 'err') { [Console]::Error.Write($text) }
+	}
+}
 [IO.File]::WriteAllText((Join-Path $dir 'user.ps1'), [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('%[2]s')))
-$inner = "& '$pwsh' -NoProfile -NonInteractive -File '$dir\user.ps1' > '$dir\out.txt' 2> '$dir\err.txt'; Set-Content '$dir\exit.txt' ([string]`+"`"+`$LASTEXITCODE)"
-$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))
-$action = New-ScheduledTaskAction -Execute $pwsh -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand $encoded"
+$action = New-ScheduledTaskAction -Execute $pwsh -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -File ""$dir\run.ps1"""
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Force | Out-Null
 try {
@@ -154,21 +172,18 @@ try {
 			# started, such as a native program, go with its process tree.
 			Get-CimInstance Win32_Process | Where-Object CommandLine -like "*$dir*" |
 				ForEach-Object { taskkill.exe /T /F /PID $_.ProcessId 2>&1 | Out-Null }
+			Write-Streams
 			[Console]::Error.WriteLine('tfsaz-live: timed out')
 			exit 124
 		}
 		Start-Sleep -Milliseconds 200
 	}
-	foreach ($stream in 'out', 'err') {
-		$text = Get-Content -Raw "$dir\$stream.txt" -ErrorAction SilentlyContinue
-		if ($text -and $stream -eq 'out') { [Console]::Out.Write($text) }
-		if ($text -and $stream -eq 'err') { [Console]::Error.Write($text) }
-	}
+	Write-Streams
 	exit [int](Get-Content "$dir\exit.txt")
 } finally {
 	Unregister-ScheduledTask -TaskName $name -Confirm:$false
 	Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
-}`, id, user, int(timeout.Seconds()))
+}`, id, user, int(timeout.Seconds()), run)
 }
 
 // scpArgs returns scp's arguments for one copy; remote is a path in the

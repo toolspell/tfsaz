@@ -167,7 +167,11 @@ func (q qemu) start(name, logFile string) error {
 		case <-time.After(200 * time.Millisecond):
 		}
 		if q.pid(name) != 0 {
-			return q.setVNC(name)
+			if err := q.setVNC(name); err != nil {
+				// A VM whose start failed must not keep running.
+				return errors.Join(err, q.stop(name))
+			}
+			return nil
 		}
 	}
 	return fmt.Errorf("qemu-system-aarch64 did not start %s within 10s; see %s", name, logFile)
