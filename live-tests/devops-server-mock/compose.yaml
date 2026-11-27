@@ -9,3 +9,25 @@ services:
     ports:
       - "8080:8080"
       - "2222:2222"
+    dns: 172.30.53.53
+    networks:
+      livetest:
+        ipv4_address: 172.30.53.10
+
+  dns:
+    image: coredns/coredns:1.12.1
+    command: ["-conf", "/etc/coredns/Corefile"]
+    volumes:
+      - ./dns/Corefile:/etc/coredns/Corefile:ro
+    ports:
+      - "${MOCK_DNS_PORT:-53}:53/udp"
+      - "${MOCK_DNS_PORT:-53}:53/tcp"
+    networks:
+      livetest:
+        ipv4_address: 172.30.53.53
+
+networks:
+  livetest:
+    ipam:
+      config:
+        - subnet: 172.30.53.0/24
