@@ -17,7 +17,11 @@ case "${1:-}" in
 add)
 	[ $# -eq 4 ] || { echo "usage: peer add NAME PUBLIC_KEY ADDRESS" >&2; exit 2; }
 	apply "$3" "$4"
-	printf '%s %s\n' "$3" "$4" >"$dir/$2"
+	if ! printf '%s %s\n' "$3" "$4" >"$dir/$2"; then
+		wg set wg0 peer "$3" remove
+		ip route del "$4/32" dev wg0 2>/dev/null || true
+		exit 1
+	fi
 	;;
 remove)
 	[ $# -eq 2 ] || { echo "usage: peer remove NAME" >&2; exit 2; }
