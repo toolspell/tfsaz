@@ -229,7 +229,7 @@ func TestVNCFrame(t *testing.T) {
 
 // fakeVNCServer speaks the server side of RFB 3.8 with VNC authentication.
 // It answers the first request with a new size only, as Apple's server
-// does, and the second with raw pixels.
+// does, then sends a stale frame and the current one.
 func fakeVNCServer(conn net.Conn) error {
 	read := func(n int) ([]byte, error) {
 		b := make([]byte, n)
@@ -283,8 +283,16 @@ func fakeVNCServer(conn net.Conn) error {
 	if _, err := read(10); err != nil {
 		return err
 	}
-	pixels := []byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 0, 1, 2, 3, 0, 4, 5, 6, 0}
-	_, err = conn.Write(pixels)
+	// A stale first frame, and after the next request the current one.
+	stale := []byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 0, 9, 9, 9, 0, 9, 9, 9, 0}
+	if _, err := conn.Write(stale); err != nil {
+		return err
+	}
+	if _, err := read(10); err != nil {
+		return err
+	}
+	current := []byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 0, 1, 2, 3, 0, 4, 5, 6, 0}
+	_, err = conn.Write(current)
 	return err
 }
 

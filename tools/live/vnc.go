@@ -153,8 +153,10 @@ func vncFrame(r io.Reader, w io.Writer, password string) (*image.RGBA, error) {
 		return nil, err
 	}
 	// Apple's server first reports a placeholder size and sends the real
-	// one as a desktop-size rectangle before any pixels.
+	// one as a desktop-size rectangle before any pixels, and its first full
+	// frame after connecting can still be black; the second one is current.
 	img := image.NewRGBA(image.Rect(0, 0, int(init.Width), int(init.Height)))
+	frames := 0
 	for range 50 {
 		var kind uint8
 		if err := binary.Read(r, binary.BigEndian, &kind); err != nil {
@@ -167,9 +169,11 @@ func vncFrame(r io.Reader, w io.Writer, password string) (*image.RGBA, error) {
 				return nil, err
 			}
 			if size != (image.Point{}) {
-				img = image.NewRGBA(image.Rectangle{Max: size})
+				img, frames = image.NewRGBA(image.Rectangle{Max: size}), 0
 			} else if covered >= img.Bounds().Dx()*img.Bounds().Dy() {
-				return img, nil
+				if frames++; frames == 2 {
+					return img, nil
+				}
 			}
 			bounds := img.Bounds()
 			if _, err := w.Write(vncUpdateRequest(uint16(bounds.Dx()), uint16(bounds.Dy()))); err != nil {
