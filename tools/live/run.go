@@ -68,7 +68,7 @@ func (e *env) vmRun(args []string) error {
 	case *gui:
 		remote = fmt.Sprintf(o.guest.gui, shellQuote(script))
 	case o.guest.powershell:
-		remote = encodeUserPowerShell(userScript(script))
+		remote = encodeScript(userScript(script))
 	default:
 		remote = script
 	}
@@ -128,12 +128,13 @@ func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''
 
 // userScript gives a PowerShell script of vm run its exit code, with and
 // without -gui: its own exit N, else 0 when the last statement succeeded,
-// else 1 when the script recorded an error (a failed cmdlet), else the exit
-// code of the failed native command. For an exact native exit code after
-// handled errors, end the script with exit $LASTEXITCODE.
+// else 1 when the script recorded an error (a failed cmdlet; $Error starts
+// empty in the new pwsh), else the exit code of the failed native command.
+// For an exact native exit code after handled errors, end the script with
+// exit $LASTEXITCODE. Nothing comes before the script, which may start with
+// using or param.
 func userScript(script string) string {
-	return "$tfsazLiveErrors = $Error.Count\n" + script +
-		"\nif ($?) { exit 0 }; if ($Error.Count -gt $tfsazLiveErrors -or -not $LASTEXITCODE) { exit 1 }; exit $LASTEXITCODE"
+	return script + "\nif ($?) { exit 0 }; if ($Error.Count -or -not $LASTEXITCODE) { exit 1 }; exit $LASTEXITCODE"
 }
 
 // windowsGUI returns a PowerShell script that runs command as its own

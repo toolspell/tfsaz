@@ -114,15 +114,15 @@ func newSSHKey(path, comment string) error {
 // line to its default shell, which splits and strips double quotes. The
 // tool's scripts stop at the first error.
 func encodePowerShell(script string) string {
-	return encodeUserPowerShell("$ErrorActionPreference = 'Stop'\n" + script)
+	return encodeScript("$ProgressPreference = 'SilentlyContinue'; $ErrorActionPreference = 'Stop'\n" + script)
 }
 
-// encodeUserPowerShell wraps a script of vm run with PowerShell's default
-// error handling. Without -OutputFormat Text, an encoded command writes its
-// errors as CLIXML. The SSH shell, itself PowerShell 7, reports only
-// success or failure of a command unless told to pass on its exit code.
-func encodeUserPowerShell(script string) string {
-	script = "$ProgressPreference = 'SilentlyContinue'\n" + script
+// encodeScript wraps a PowerShell script as it is, for vm run: a script may
+// start with using or param, which must come first. Without -OutputFormat
+// Text, an encoded command writes its errors as CLIXML. The SSH shell,
+// itself PowerShell 7, reports only success or failure of a command unless
+// told to pass on its exit code.
+func encodeScript(script string) string {
 	units := utf16.Encode([]rune(script))
 	raw := make([]byte, 2*len(units))
 	for i, u := range units {
