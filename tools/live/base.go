@@ -66,10 +66,13 @@ func (e *env) buildBase(o osDef, force bool) error {
 	if err != nil {
 		return err
 	}
-	key := e.baseKey(o)
+	// The new key replaces the base's key only with the base itself, so a
+	// failed rebuild leaves the old base usable.
+	key := e.path("keys", o.name+"-build", "id_ed25519")
 	if err := os.MkdirAll(filepath.Dir(key), 0o700); err != nil {
 		return err
 	}
+	defer func() { _ = os.RemoveAll(filepath.Dir(key)) }()
 	if err := newSSHKey(key, "tfsaz-live "+o.base()); err != nil {
 		return err
 	}
@@ -101,6 +104,13 @@ func (e *env) buildBase(o osDef, force bool) error {
 		return err
 	}
 	if _, err := t.run("rename", o.build(), o.base()); err != nil {
+		return err
+	}
+	baseKeys := filepath.Dir(e.baseKey(o))
+	if err := os.RemoveAll(baseKeys); err != nil {
+		return err
+	}
+	if err := os.Rename(filepath.Dir(key), baseKeys); err != nil {
 		return err
 	}
 	step("built %s", o.base())

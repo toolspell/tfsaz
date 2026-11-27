@@ -238,11 +238,12 @@ func (e *env) vmDown(name string) error {
 		return fmt.Errorf("%s is not a clone name (tfsaz-OS-SUFFIX)", name)
 	}
 	step("removing %s", name)
-	return errors.Join(
-		e.tart().remove(name),
-		e.removePeer(name),
-		os.RemoveAll(e.runDir(name)),
-	)
+	// Keep the peer and the run directory with the clone's key while the VM
+	// still exists, so it stays reachable and vm down can be retried.
+	if err := e.tart().remove(name); err != nil {
+		return fmt.Errorf("%w; kept %s and the router peer", err, e.runDir(name))
+	}
+	return errors.Join(e.removePeer(name), os.RemoveAll(e.runDir(name)))
 }
 
 // clones lists clone names known to Tart, the run directories or the router.
