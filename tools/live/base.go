@@ -230,16 +230,26 @@ func (e *env) updateBase(o osDef) error {
 	}
 	step("upgrading packages")
 	if _, err := login.run(nil, "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update && apt-get -y -o DPkg::Lock::Timeout=600 full-upgrade && apt-get -y autoremove'"); err != nil {
-		return errors.Join(err, t.stop(o.base()))
+		return errors.Join(err, e.shutdownBase(o, login))
 	}
 	if _, err := login.run(prepare, "sudo sh -eu -s"); err != nil {
-		return errors.Join(err, t.stop(o.base()))
+		return errors.Join(err, e.shutdownBase(o, login))
 	}
-	_, _ = login.run(nil, "sudo systemctl poweroff")
 	step("updated %s", o.base())
-	if err := t.waitStopped(o.base(), 2*time.Minute); err != nil {
+	if err := e.shutdownBase(o, login); err != nil {
 		// prepare-base.sh ended with sync, so a stop now loses nothing.
 		return t.stop(o.base())
+	}
+	return nil
+}
+
+// shutdownBase shuts the base down from inside and waits for it. A base
+// that keeps running is left running: a stop without a shutdown can lose
+// writes, and every clone copies the base.
+func (e *env) shutdownBase(o osDef, login sshTarget) error {
+	_, _ = login.run(nil, "sudo systemctl poweroff")
+	if err := e.tart().waitStopped(o.base(), 2*time.Minute); err != nil {
+		return fmt.Errorf("%w; check it, then stop it with TART_HOME=%s tart stop %s", err, e.tart().home, o.base())
 	}
 	return nil
 }

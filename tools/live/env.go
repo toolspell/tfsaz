@@ -104,9 +104,11 @@ const prefix = "tfsaz-"
 func (o osDef) base() string  { return prefix + o.name + "-base" }
 func (o osDef) build() string { return prefix + o.name + "-build" }
 
-// isClone reports whether a VM name is a clone of o's base.
+// isClone reports whether a VM name is a clone of o's base: its suffix is
+// one vm up accepts, so no clone name leads out of the runs directory.
 func (o osDef) isClone(name string) bool {
-	return strings.HasPrefix(name, prefix+o.name+"-") && name != o.base() && name != o.build()
+	suffix, ok := strings.CutPrefix(name, prefix+o.name+"-")
+	return ok && suffixPattern.MatchString(suffix) && suffix != "base" && suffix != "build"
 }
 
 // osOfVM returns the OS of a clone name such as tfsaz-ubuntu-a1b2c3.

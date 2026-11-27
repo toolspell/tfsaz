@@ -57,6 +57,9 @@ func TestCloneNames(t *testing.T) {
 		{"tfsaz-ubuntu-a1b2c3", true},
 		{"tfsaz-ubuntu-base", false},
 		{"tfsaz-ubuntu-build", false},
+		{"tfsaz-ubuntu-", false},
+		{"tfsaz-ubuntu-/../..", false},
+		{"tfsaz-ubuntu-a/b", false},
 		{"tfsaz-windows-x", false}, // not set up yet
 		{"ubuntu-a1b2c3", false},
 	} {
