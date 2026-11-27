@@ -362,3 +362,28 @@ func TestShellQuote(t *testing.T) {
 		}
 	}
 }
+
+func TestT3Installer(t *testing.T) {
+	for _, tc := range []struct{ os, tag, manifest, file string }{
+		{"macos", "v0.1.13-nightly.20261125.5258", "nightly-mac.yml", "T3-Code-0.1.13-nightly.20261125.5258-arm64.zip"},
+		{"ubuntu", "v0.1.13-nightly.20261125.5258", "nightly-linux-arm64.yml", "T3-Code-0.1.13-nightly.20261125.5258-arm64.deb"},
+		{"windows", "v0.1.12", "latest.yml", "T3-Code-0.1.12-arm64.exe"},
+	} {
+		manifest, file, err := t3Installer(tc.os, tc.tag)
+		if err != nil || manifest != tc.manifest || file != tc.file {
+			t.Errorf("t3Installer(%s, %s) = %q, %q, %v", tc.os, tc.tag, manifest, file, err)
+		}
+	}
+}
+
+func TestManifestSHA512(t *testing.T) {
+	manifest := "version: 1\nfiles:\n  - url: a-arm64.zip\n    sha512: AAA==\n    size: 1\n  - url: a-x64.zip\n    sha512: BBB==\npath: a-arm64.zip\nsha512: AAA==\n"
+	for file, want := range map[string]string{"a-arm64.zip": "AAA==", "a-x64.zip": "BBB=="} {
+		if got, err := manifestSHA512(strings.NewReader(manifest), file); err != nil || got != want {
+			t.Errorf("manifestSHA512(%s) = %q, %v; want %q", file, got, err, want)
+		}
+	}
+	if _, err := manifestSHA512(strings.NewReader(manifest), "missing.zip"); err == nil {
+		t.Error("manifestSHA512 found a file the manifest does not list")
+	}
+}
