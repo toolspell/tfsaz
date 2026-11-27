@@ -303,3 +303,62 @@ func TestAgentFileLines(t *testing.T) {
 		t.Errorf("agent-facing files over %d lines; split or trim them:\n%s", maxAgentFileLines, strings.Join(problems, "\n"))
 	}
 }
+
+var t3PinPattern = regexp.MustCompile(`name:\s*"t3code",[^}]*?tag:\s*"([^"]+)"`)
+
+var t3PinDocs = []string{"README.md", "docs/internals/t3-compatibility.md", "docs/user/t3-features.md", "docs/user/az-compatibility.md"}
+
+// missingT3Pin returns the docs whose content lacks the pinned T3 tag.
+func missingT3Pin(tag string, docs map[string]string) []string {
+	var missing []string
+	for _, file := range slices.Sorted(maps.Keys(docs)) {
+		if !strings.Contains(docs[file], tag) {
+			missing = append(missing, file)
+		}
+	}
+	return missing
+}
+
+// TestT3PinInDocs keeps the pages that state which T3 revision TFSaz follows
+// in step with the pin in tools/syncrepos/main.go.
+func TestT3PinInDocs(t *testing.T) {
+	src, err := os.ReadFile(filepath.FromSlash("tools/syncrepos/main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := t3PinPattern.FindSubmatch(src)
+	if m == nil {
+		t.Fatal("no t3code tag found in tools/syncrepos/main.go")
+	}
+	tag := string(m[1])
+	docs := map[string]string{}
+	for _, file := range t3PinDocs {
+		data, err := os.ReadFile(filepath.FromSlash(file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		docs[file] = string(data)
+	}
+	if missing := missingT3Pin(tag, docs); len(missing) > 0 {
+		t.Errorf("these files do not name the T3 pin %s from tools/syncrepos/main.go; update them (update-references skill, step 3.2):\n%s", tag, strings.Join(missing, "\n"))
+	}
+}
+
+func TestMissingT3Pin(t *testing.T) {
+	const tag = "v1.2.3-nightly.1"
+	for _, tc := range []struct {
+		name string
+		docs map[string]string
+		want []string
+	}{
+		{"all name the pin", map[string]string{"a.md": "at " + tag, "b.md": tag}, nil},
+		{"one lacks it", map[string]string{"a.md": "at " + tag, "b.md": "v1.2.2-nightly.9"}, []string{"b.md"}},
+		{"all lack it", map[string]string{"b.md": "", "a.md": "c478fde9fe"}, []string{"a.md", "b.md"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := missingT3Pin(tag, tc.docs); !slices.Equal(got, tc.want) {
+				t.Errorf("missingT3Pin() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
