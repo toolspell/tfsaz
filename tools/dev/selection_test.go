@@ -64,10 +64,14 @@ var selectionCases = []selectionCase{
 	{"internal non-Go file", []string{"internal/az/embedded.json"}, all, 3, true, false},
 	{"internal nested Go file", []string{"internal/az/sub/x.go"}, all, 3, true, false},
 	{"root Go file", []string{"main.go", "repo_checks_test.go"}, all, 3, true, false},
-	{"go.mod", []string{"go.mod"}, all, 3, true, false},
+	{"go.mod", []string{"go.mod"}, all, 3, true, true},
 	{"go.sum", []string{"go.sum"}, all, 3, true, false},
 
-	{"tools/dev", []string{"tools/dev/selection.go", "tools/dev/testdata/x.json"}, all, 3, true, true},
+	{"tools/dev", []string{"tools/dev/selection.go"}, all, 3, true, true},
+	{"tools/dev fixture", []string{"tools/dev/testdata/x.json"}, all, 3, true, true},
+	{"workflow fixture", []string{".github/workflows/testdata/x.yml"}, all, 3, true, true},
+	{"unknown file under tools", []string{"tools/ci-env.sh"}, all, 3, true, true},
+	{"unknown file in a removed tools directory", []string{"tools/old/main.go"}, all, 3, true, true},
 	{"workflows", []string{".github/workflows/test.yml", ".github/workflows/labels.yml"}, all, 3, true, true},
 
 	{"tools/syncrepos", []string{"tools/syncrepos/main.go"}, toolsPkgs, 1, true, false},
@@ -128,8 +132,7 @@ type gitFixture struct {
 func newGitFixture(t *testing.T) *gitFixture {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	isolateGit(t)
 	t.Chdir(dir)
 	f := &gitFixture{t: t, dir: dir}
 	f.git("init", "--quiet", "--initial-branch=main")

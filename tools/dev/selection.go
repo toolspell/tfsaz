@@ -86,6 +86,9 @@ func classify(f string, pkgDirs []string) class {
 		// The mock's own gates run in the Mock job; tools/live's tests read
 		// live-tests/.
 		return class{packages: []string{".", "./tools/live"}, shards: 1, mock: true}
+	case strings.HasPrefix(f, "tools/dev/"), strings.HasPrefix(f, ".github/workflows/"):
+		full.mock = true
+		return full
 	case inTestdata:
 		dir := packageOf(f, pkgDirs)
 		if dir == "" && strings.HasPrefix(f, "testdata/") {
@@ -100,13 +103,14 @@ func classify(f string, pkgDirs []string) class {
 			c.shards = windowsShards
 		}
 		return c
-	case strings.HasPrefix(f, "internal/"), f == "go.mod", f == "go.sum",
-		!strings.Contains(f, "/") && strings.HasSuffix(f, ".go"):
-		return full
-	case strings.HasPrefix(f, "tools/dev/"), strings.HasPrefix(f, ".github/workflows/"):
+	case f == "go.mod":
+		// Its go line is the Go version every job, Mock included, sets up.
 		full.mock = true
 		return full
-	case strings.HasPrefix(f, "tools/"), strings.HasPrefix(f, "live-tests/harness/"):
+	case strings.HasPrefix(f, "internal/"), f == "go.sum",
+		!strings.Contains(f, "/") && strings.HasSuffix(f, ".go"):
+		return full
+	case strings.HasPrefix(packageOf(f, pkgDirs), "tools/"), strings.HasPrefix(f, "live-tests/harness/"):
 		return class{packages: []string{".", "./tools/...", "./live-tests/harness/..."}, shards: 1, goGates: true}
 	case strings.HasPrefix(f, "live-tests/"):
 		return class{packages: []string{".", "./tools/live"}, shards: 1}
