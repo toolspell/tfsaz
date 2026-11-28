@@ -58,6 +58,7 @@ func TestLiveHelp(t *testing.T) {
 		{"image", " <action>", nil},
 		{"image key", " IMAGE", nil},
 		{"image context", " IMAGE DIR", nil},
+		{"image verify", " IMAGE DIGEST", nil},
 		{"clean", "", nil},
 		{"status", "", nil},
 	}
@@ -172,6 +173,7 @@ func TestLiveUsageErrors(t *testing.T) {
 		{"image key coredns", "image key IMAGE", "unknown image"},
 		{"image context mock", "image context IMAGE DIR", "missing DIR"},
 		{"image context mock dir extra", "image context IMAGE DIR", "unexpected operand"},
+		{"image verify router", "image verify IMAGE DIGEST", "missing DIGEST"},
 		{"clean extra", "clean", "unexpected operand"},
 		{"status extra", "status", "unexpected operand"},
 	} {
