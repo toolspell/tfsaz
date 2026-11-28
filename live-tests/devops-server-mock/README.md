@@ -7,7 +7,7 @@ A small stand-in for an Azure DevOps Server 2022.2 testbed, for live tests of TF
 - Git over HTTP (Basic authentication with the PAT, any user name) and over SSH (public key, any user name);
 - plain HTML pages at the URLs a browser opens: repository, PR, commit, work item and build.
 
-It speaks plain HTTP on port 8080 and SSH on port 2222. Hostnames, HTTPS and certificates are out of scope for now; response URLs use the host the client sent.
+It speaks plain HTTP on port 8080 and SSH on port 2222. HTTPS and certificates are out of scope for now; response URLs use the host the client sent. A DNS sinkhole beside it gives the mock the hostname `devops.mock.test` and makes leaks visible ([DNS sinkhole](#dns-sinkhole)).
 
 ## Run
 
@@ -19,10 +19,34 @@ docker compose up -d --build
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `MOCK_PAT` | `mock-pat` | The only PAT the mock accepts. Its permissions are not checked. |
+| `MOCK_DNS_PORT` | `53` | Host port of the DNS sinkhole, UDP and TCP. VMs need `53`; another port only suits local checks such as `dig -p`. |
+| `MOCK_ADDRESS` | `172.30.53.10` | The address the sinkhole returns for `devops.mock.test`. |
 
 On every start the mock generates a fresh SSH host key and client key and writes them to `keys/` (gitignored): `client_ed25519`, `client_ed25519.pub` and `known_hosts`. SSH accepts only that client key. No personal key is used or needed.
 
 State lives in memory and in bare repositories inside the container. `docker compose restart` starts from the seed again, with new keys. Every request is logged.
+
+## DNS sinkhole
+
+The `dns` service (CoreDNS, configured in `dns/Corefile`) is the resolver for the test clients. The compose network has fixed addresses: the resolver is `172.30.53.53`, the mock `172.30.53.10`.
+
+| Name | Answer | Meaning |
+| --- | --- | --- |
+| `devops.mock.test` | `MOCK_ADDRESS` | The mock |
+| `*.visualstudio.com`, `dev.azure.com` | NXDOMAIN | TFSaz's hosts-file entries must answer these on the client. A query that reaches the sinkhole is a leak. |
+| Anything else | NXDOMAIN | Test runs stay offline. |
+
+Every query is logged with the client's address. To find leaks:
+
+```sh
+docker compose logs dns | grep -E 'visualstudio\.com|dev\.azure\.com'
+```
+
+The other answers are NXDOMAIN rather than REFUSED because Docker's resolver retries a refusal for 10 seconds before it gives up.
+
+Containers on the compose network use the sinkhole through `dns:`. VMs point their resolver at the host's port 53: OS resolver settings take only an address, not a port, so keep `MOCK_DNS_PORT` at `53` for VMs. They cannot reach the compose network, so for VM clients set `MOCK_ADDRESS` to the host address the VMs reach, where the mock's ports 8080 and 2222 are published. Containers on the compose network reach that address too. The test machine must not reach any other resolver, or a lookup that bypasses the hosts file goes unnoticed.
+
+Test browsers keep their default settings, as users have them. In this offline test bed, DNS-over-HTTPS (secure DNS) providers are unreachable, so browsers fall back to the system resolver: the hosts file first, then the sinkhole. A later browser test case runs once with DNS over HTTPS forced on, to find out whether an alias host leaks past TFSaz's hosts lines.
 
 ## Seed
 
