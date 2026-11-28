@@ -48,7 +48,31 @@ func changeSelection(base string, pkgDirs func() ([]string, error)) (selection, 
 	if err != nil {
 		return everything(), err.Error()
 	}
-	return selectFor(files, dirs), fmt.Sprintf("%d changed files since %s", len(files), short(sha))
+	return selectFor(files, dirs, gitVersions(sha)), fmt.Sprintf("%d changed files since %s", len(files), short(sha))
+}
+
+// gitVersions reads files at base and at HEAD from the clone.
+func gitVersions(base string) fileVersions {
+	return func(file string) ([]byte, bool, []byte, bool, error) {
+		b, bOK, err := gitBlob(base, file)
+		if err != nil {
+			return nil, false, nil, false, err
+		}
+		h, hOK, err := gitBlob("HEAD", file)
+		return b, bOK, h, hOK, err
+	}
+}
+
+// gitBlob returns a file's content at rev, or ok false when rev lacks it.
+func gitBlob(rev, file string) ([]byte, bool, error) {
+	if _, err := git("cat-file", "-e", rev+":"+file); err != nil {
+		if _, err := git("rev-parse", "--verify", "--quiet", rev+"^{commit}"); err != nil {
+			return nil, false, err
+		}
+		return nil, false, nil
+	}
+	out, err := git("cat-file", "blob", rev+":"+file)
+	return []byte(out), err == nil, err
 }
 
 // ciChanges writes the Changes job's outputs: tests and mock (true|false),
@@ -66,8 +90,8 @@ func ciChanges(base string) bool {
 		fmt.Fprintln(os.Stderr, "ci-changes:", err)
 		return false
 	}
-	fmt.Fprintf(os.Stderr, "ci-changes: %s; tests: %s on %d Windows shards; Go gates: %v; mock: %v\n",
-		why, or(strings.Join(s.packages, " "), "none"), s.shards, s.goGates, s.mock)
+	fmt.Fprintf(os.Stderr, "ci-changes: %s; tests: %s on %s, %d Windows shards; Go gates: %v; mock: %v\n",
+		why, or(strings.Join(s.packages, " "), "none"), or(strings.Join(s.oses, " "), "no OS"), s.shards, s.goGates, s.mock)
 	lines := fmt.Sprintf("tests=%v\nmock=%v\npackages=%s\nmatrix=%s\n", s.tests(), s.mock, strings.Join(s.packages, " "), matrix)
 	fmt.Print(lines)
 	if out := os.Getenv("GITHUB_OUTPUT"); out != "" {
