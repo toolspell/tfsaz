@@ -1,0 +1,11 @@
+services:
+  devops-server-mock:
+    build: .
+    environment:
+      MOCK_PAT: ${MOCK_PAT:-mock-pat}
+    volumes:
+      # The mock writes a fresh SSH client key and known_hosts here on start.
+      - ./keys:/keys
+    ports:
+      - "8080:8080"
+      - "2222:2222"
