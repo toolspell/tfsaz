@@ -23,3 +23,5 @@ func TestFixture9(t *testing.T) {}
 func TestFixture10(t *testing.T) {}
 
 func TestFixture11(t *testing.T) {}
+
+func TestFixture12(t *testing.T) {}
