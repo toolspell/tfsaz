@@ -48,6 +48,10 @@ type req struct {
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.journaled(w, r, s.serveCollection)
+}
+
+func (s *server) journaled(w http.ResponseWriter, r *http.Request, serve func(http.ResponseWriter, *http.Request)) {
 	entry := newRequestEntry(r, s.cfg.pat)
 	response := &journalResponse{ResponseWriter: w}
 	defer func() {
@@ -57,7 +61,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.journal.record(entry)
 	}()
-	s.serveCollection(response, r)
+	serve(response, r)
 }
 
 func (s *server) serveCollection(w http.ResponseWriter, r *http.Request) {
