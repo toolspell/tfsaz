@@ -236,7 +236,7 @@ Pin every workflow action to a full commit SHA with a `# vX.Y.Z` comment (`TestP
 
 `.github/workflows/actions.lock` records the exact commit of every action each workflow uses, including the actions those actions use (for example `oven-sh/setup-bun` under `claude-code-action`). With the repository policy "Require lockfile" on, GitHub refuses a run whose action is not in the lockfile or has a different commit. Dependabot updates the entries in the same PR as the pin. The SHA pins stay in the workflow files as the second layer.
 
-- When you add or bump an action, regenerate the lockfile in the same commit: `gh actions-lock --no-narrow --no-interactive` (extension v0.5.1, `gh extension install github/gh-actions-lock`). Check without writing: `gh actions-lock --verify --no-interactive`; offline: `--verify-local`.
+- When you add or bump an action, or add, rename or delete a workflow file (the lockfile keys on the file path), regenerate the lockfile in the same commit: `gh actions-lock --no-narrow --no-interactive` (extension v0.5.1, `gh extension install github/gh-actions-lock`). Check without writing: `gh actions-lock --verify --no-interactive`; offline: `--verify-local`.
 - Check that the run left the workflow files alone (`git diff .github/workflows/*.yml`). Without `--no-narrow` on a first run the tool rewrote the SHA pins to tag refs, which `TestPinnedActions` rejects.
 - To revert: turn off "Require lockfile" (Settings, Actions, Policies) and delete `actions.lock`. The SHA pins keep working.
 
