@@ -1,5 +1,5 @@
-# Change detection, the whole-tree checks on Linux, the native test matrix on macOS, Windows and
-# Ubuntu, and one roll-up job, Check, for a ruleset to require. The roll-up pattern is adapted from
+# Change detection, the whole-tree checks on Linux, the live-test mock module's checks, the native
+# test matrix on macOS, Windows and Ubuntu, and one roll-up job, Check, for a ruleset to require. The roll-up pattern is adapted from
 # T3 Code's CI (MIT), by way of Toolspell. docs/operations/development.md#ci describes the layout.
 name: CI
 
@@ -37,6 +37,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       tests: ${{ steps.changes.outputs.tests }}
+      mock: ${{ steps.changes.outputs.mock }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -76,16 +77,16 @@ jobs:
           path: |
             ${{ steps.go.outputs.GOCACHE }}
             ${{ steps.go.outputs.GOMODCACHE }}
-          key: go-checks-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum', 'live-tests/devops-server-mock/go.sum', 'tools/*/go.sum') }}
+          key: go-checks-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/*/go.sum') }}
           restore-keys: go-checks-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
       - id: lint-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/golangci-lint
-          key: golangci-lint-${{ steps.go.outputs.go-version }}-${{ hashFiles('.golangci.yml', 'go.sum', 'live-tests/devops-server-mock/go.sum', 'tools/golangci-lint/go.sum') }}
+          key: golangci-lint-${{ steps.go.outputs.go-version }}-${{ hashFiles('.golangci.yml', 'go.sum', 'tools/golangci-lint/go.sum') }}
           restore-keys: golangci-lint-${{ steps.go.outputs.go-version }}-
       # vet, golangci-lint, govulncheck and deadcode run once per GOOS (darwin, linux, windows) in
-      # the root module and in the live-test mock's module.
+      # the root module; the mock job covers the live-test mock's module.
       - run: go run ./tools/dev ci-checks
       - if: env.SAVE_CACHE == 'true' && steps.go-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -99,6 +100,42 @@ jobs:
         with:
           path: ~/.cache/golangci-lint
           key: ${{ steps.lint-cache.outputs.cache-primary-key }}
+
+  # The live-test mock's own module: race tests, then vet, golangci-lint, govulncheck and deadcode
+  # per GOOS, and go mod tidy -diff. Merge queue groups and pushes to main run it on every change.
+  mock:
+    needs: changes
+    if: needs.changes.outputs.mock == 'true' || github.event_name == 'merge_group' || github.event_name == 'push'
+    name: Mock
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.go.outputs.GOCACHE }}
+            ${{ steps.go.outputs.GOMODCACHE }}
+          key: go-mock-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('live-tests/devops-server-mock/go.sum', 'tools/*/go.sum') }}
+          restore-keys: go-mock-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
+      - run: go run ./tools/dev ci-mock
+      - if: env.SAVE_CACHE == 'true' && steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.go.outputs.GOCACHE }}
+            ${{ steps.go.outputs.GOMODCACHE }}
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
   test:
     needs: changes
@@ -134,7 +171,7 @@ jobs:
           path: |
             ${{ steps.go.outputs.GOCACHE }}
             ${{ steps.go.outputs.GOMODCACHE }}
-          key: go-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum', 'live-tests/devops-server-mock/go.sum') }}
+          key: go-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}
           restore-keys: go-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
       - run: go run ./tools/dev ci-test -shard ${{ matrix.shard }}
       # The Windows shards share one key; the first to finish saves it.
@@ -149,16 +186,19 @@ jobs:
   check:
     name: Check
     if: ${{ always() }}
-    needs: [changes, checks, test]
+    needs: [changes, checks, mock, test]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Every job passed, or the tests were skipped because no code changed
+      - name: Every job passed, or was skipped because no file it checks changed
         env:
           RESULTS: ${{ toJSON(needs) }}
           TESTS_NEEDED: ${{ needs.changes.outputs.tests }}
+          MOCK_NEEDED: ${{ needs.changes.outputs.mock }}
+          MOCK_ALWAYS: ${{ github.event_name == 'merge_group' || github.event_name == 'push' }}
         run: |
           echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$RESULTS" | jq -e --arg tests "$TESTS_NEEDED" '
+          echo "$RESULTS" | jq -e --arg tests "$TESTS_NEEDED" --arg mock "$MOCK_NEEDED" --arg always "$MOCK_ALWAYS" '
             .changes.result == "success" and .checks.result == "success"
-            and (.test.result == "success" or (.test.result == "skipped" and $tests == "false"))'
+            and (.test.result == "success" or (.test.result == "skipped" and $tests == "false"))
+            and (.mock.result == "success" or (.mock.result == "skipped" and $mock == "false" and $always == "false"))'

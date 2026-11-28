@@ -66,7 +66,7 @@ A test points T3 at it by writing T3's own user configuration before T3 starts; 
 
 ## Checks
 
-The mock is a Go module of its own. `go run ./tools/dev check` and `ready` cover it like the root module, and so does CI: [Checks](../../docs/operations/development.md#checks).
+The mock is a Go module of its own. `go run ./tools/dev check` and `ready` cover it like the root module: [Checks](../../docs/operations/development.md#checks). In CI the Mock job runs its race tests, Go gates and `go mod tidy -diff` when a file of the module changes, and on every merge queue group and push to `main`: [CI](../../docs/operations/development.md#ci).
 
 ## Examples
 

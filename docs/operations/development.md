@@ -114,21 +114,23 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 
 | Job | Runner | What it does |
 | --- | --- | --- |
-| Changes | ubuntu-24.04 | `go run ./tools/dev ci-changes`: whether the test matrix must run ([path filter](#path-filter)). |
-| Checks | ubuntu-24.04 | `go run ./tools/dev ci-checks`: the whole-tree checks of `ready` without the tests, plus the [repo checks](#repo-checks). |
-| test | macOS, Windows (three runners), Ubuntu | `go run ./tools/dev ci-test`: `go test -race -count=1 ./...` in each [code module](#checks) with the Go version in `go.mod`, the oldest supported. Skipped when only non-code files changed. Windows splits the tests into [shards](#test-shards). |
-| Check | ubuntu-24.04 | Roll-up: passes when every job passed, or `test` was skipped because Changes found no code change. Fails on anything else. |
+| Changes | ubuntu-24.04 | `go run ./tools/dev ci-changes`: whether the test matrix and Mock must run ([path filter](#path-filter)). |
+| Checks | ubuntu-24.04 | `go run ./tools/dev ci-checks`: the whole-tree checks of `ready` for the root module without the tests, plus the [repo checks](#repo-checks). |
+| Mock | ubuntu-24.04 | `go run ./tools/dev ci-mock`: the live-test mock module's `go test -race`, its Go gates and report per system, and its `go mod tidy -diff`. Runs when a file it checks changed, and always on merge queue groups and pushes to `main`. |
+| test | macOS, Windows (three runners), Ubuntu | `go run ./tools/dev ci-test`: `go test -race -count=1 ./...` in the root module with the Go version in `go.mod`, the oldest supported. Skipped when only non-code files changed. Windows splits the tests into [shards](#test-shards). |
+| Check | ubuntu-24.04 | Roll-up: passes when every job passed, or `test` or Mock was skipped because Changes found no change it checks. Fails on anything else. |
 
 ### Test shards
 
-The tests of a package run one after another, and Windows runs the Git-heavy setup and preserve tests about five times slower than Ubuntu: about 157 s for `internal/az`, against 78 s on macOS and 28 s on Ubuntu. Windows therefore runs on three runners, `ci-test -shard 1/3` to `3/3`. Each lists the top-level tests of every package with `go test -race -list`, sorts the names and takes every third one, so each test runs in exactly one shard. The mock module's tests take seconds and run whole in the first shard. A new test needs no entry anywhere.
+The tests of a package run one after another, and Windows runs the Git-heavy setup and preserve tests about five times slower than Ubuntu: about 157 s for `internal/az`, against 78 s on macOS and 28 s on Ubuntu. Windows therefore runs on three runners, `ci-test -shard 1/3` to `3/3`. Each lists the top-level tests of every root module package with `go test -race -list`, sorts the names and takes every third one, so each test runs in exactly one shard. The mock module's tests run in the Mock job, not in a shard. A new test needs no entry anywhere.
 
 Three shards keep the Windows runners at about macOS's duration. More would shorten nothing, and a CI run already uses up to seven runners at once against the free plan's 20.
 
 ### Gates and reports
 
-- **Gates** (Checks): gofmt; `go vet`, golangci-lint and govulncheck for darwin, linux and windows in each code module; `go mod tidy -diff` for every module; actionlint; gitleaks over the full history; the repo checks. The test matrix gates too.
-- **Report** that never fails a run: deadcode for each system.
+- **Gates** (Checks): gofmt; `go vet`, golangci-lint and govulncheck for darwin, linux and windows in the root module; `go mod tidy -diff` for the root and tool modules; actionlint; gitleaks over the full history; the repo checks. The test matrix gates too.
+- **Gates** (Mock): the same `go vet`, golangci-lint and govulncheck per system, `go mod tidy -diff` and `go test -race` for the live-test mock's module.
+- **Report** that never fails a run: deadcode for each system, in Checks and Mock.
 - TFSaz has no cgo code, so vet, lint and govulncheck with `GOOS` set on Linux see what native runs would see. Only the tests need the three runners.
 - Checks and the test matrix run on the Go version in `go.mod`: govulncheck judges the standard library of the Go it runs on, and that version is the minimum every build uses.
 - All three systems need the race detector; Windows x64 needs a compatible MinGW-w64 C compiler on PATH, which GitHub's runner has. [Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements)
@@ -149,6 +151,8 @@ The workflow also passes the base to `ci-checks`, which ignores it: every gate t
 ### Path filter
 
 `ci-changes` lists the files changed since the [change base](#change-base). The test matrix is skipped only when every file is outside the code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the review bot files `.macroscope/` and `.coderabbit.config.ts`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml`, `.golangci.yml` and the tool modules `tools/<tool>/`. Any other file runs the matrix, including every workflow and file types nobody listed yet. Without a base, or when the diff fails, the matrix runs and the log says why. The list is `testIrrelevant` in `tools/dev/ci.go`.
+
+Mock runs when a file under `live-tests/devops-server-mock/`, `tools/dev/` or `.github/workflows/` changed, other than the non-code files above, or a file in none of the known classes (`mockInput` in `tools/dev/ci.go`); the root module's code and fixtures, the other live-test files and the non-code files above skip it. Merge queue groups and pushes to `main` run it on every change, so a lint config or tool pin change is checked there.
 
 Checks always runs, so a docs-only change still gets the doc link, em dash and pinned-action checks. Skipping the matrix saves the slowest jobs, the macOS and Windows runs, on changes that cannot affect them.
 
