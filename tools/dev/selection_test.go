@@ -31,7 +31,11 @@ type selectionCase struct {
 	mock     bool
 }
 
-// selectionCases has one case per contract row, in the contract's order.
+// contractRows is how many of selectionCases are the one-per-row cases.
+const contractRows = 8
+
+// selectionCases has one case per contract row, in the contract's order,
+// then the cases for every path class and union.
 var selectionCases = []selectionCase{
 	{"non-code", []string{"README.md", "docs/user/install.md", ".agents/context-budget.json", ".github/dependabot.yml"}, nil, 0, false, false},
 	{"lint config and tool pins", []string{".golangci.yml", "tools/golangci-lint/go.sum"}, nil, 0, true, false},
@@ -131,6 +135,9 @@ type gitFixture struct {
 
 func newGitFixture(t *testing.T) *gitFixture {
 	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
 	dir := t.TempDir()
 	isolateGit(t)
 	t.Chdir(dir)
@@ -188,7 +195,9 @@ func (f *gitFixture) changes(base string, files ...string) (selection, string) {
 }
 
 func TestChangeSelection(t *testing.T) {
-	for _, tc := range selectionCases {
+	// One case per contract row through a real diff; TestSelectFor covers
+	// the rest without a fixture.
+	for _, tc := range selectionCases[:contractRows] {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newGitFixture(t)
 			got, why := f.changes(f.base, tc.files...)
