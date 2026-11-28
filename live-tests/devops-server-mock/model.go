@@ -244,12 +244,16 @@ func splitCollectionPath(path string) (virtualDir string, segments []string) {
 
 func (s *server) links(r *http.Request, virtualDir string, c *collection) links {
 	host := r.Host
-	if h, _, err := net.SplitHostPort(host); err == nil {
+	sshPort := s.cfg.sshPort
+	if h, port, err := net.SplitHostPort(host); err == nil {
 		host = h
+		if s.cfg.publishedSSH != "" && (port == s.cfg.publishedHTTP || port == s.cfg.publishedHTTPS) {
+			sshPort = s.cfg.publishedSSH
+		}
 	}
 	return links{
 		origin: requestScheme(r) + "://" + r.Host, virtualDir: virtualDir, c: c,
-		ssh: net.JoinHostPort(strings.Trim(host, "[]"), s.cfg.sshPort),
+		ssh: net.JoinHostPort(strings.Trim(host, "[]"), sshPort),
 	}
 }
 

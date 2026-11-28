@@ -59,10 +59,26 @@ func run(call liveInvocation, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	return e.runCommand(call, stdout, ci != "")
+}
+
+func (e *env) runCommand(call liveInvocation, stdout io.Writer, inCI bool) error {
 	command, action, _ := strings.Cut(call.path, " ")
+	if locksInstance(command, action) {
+		unlock, err := e.lockInstance()
+		if err != nil {
+			return err
+		}
+		defer unlock()
+	}
+	if usesInstanceNetwork(command) {
+		if err := e.loadNetwork(); err != nil {
+			return err
+		}
+	}
 	switch command {
 	case "doctor":
-		return e.doctor(call.install || call.yes, ci != "")
+		return e.doctor(call.install || call.yes, inCI)
 	case "services":
 		return e.services(action)
 	case "mock":
@@ -75,10 +91,16 @@ func run(call liveInvocation, stdout io.Writer) error {
 		return e.setup(call.args[0])
 	case "verify":
 		return e.verify(call.args[0])
+	case "up":
+		return e.up(call.args, stdout)
 	case "clean":
-		return e.clean()
+		return e.removeClones()
+	case "down":
+		return e.down()
+	case "prune":
+		return e.prune()
 	case "status":
-		return e.status()
+		return e.status(stdout)
 	}
 	return fmt.Errorf("unknown command %q", command)
 }
@@ -98,6 +120,28 @@ func ciReadOnly(call liveInvocation) bool {
 		return true
 	case "doctor":
 		return !call.install && !call.yes
+	}
+	return false
+}
+
+func usesInstanceNetwork(command string) bool {
+	switch command {
+	case "up", "down", "clean", "setup", "verify", "services", "mock", "vm":
+		return true
+	}
+	return false
+}
+
+func locksInstance(command, action string) bool {
+	switch command {
+	case "up", "down", "clean", "setup", "verify":
+		return true
+	case "services":
+		return action == "up" || action == "down"
+	case "mock":
+		return action == "reset"
+	case "vm":
+		return action == "up" || action == "down" || action == "start" || action == "stop"
 	}
 	return false
 }

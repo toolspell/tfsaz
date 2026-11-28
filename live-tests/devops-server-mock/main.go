@@ -15,6 +15,7 @@ import (
 type config struct {
 	httpAddr, httpsAddr, httpsAltAddr, adminAddr, llmAddr string
 	sshAddr, sshPort, data, pat, keysDir                  string
+	publishedHTTP, publishedHTTPS, publishedSSH           string
 }
 
 func env(name, fallback string) string {
@@ -26,16 +27,19 @@ func env(name, fallback string) string {
 
 func main() {
 	cfg := config{
-		httpAddr:     env("MOCK_HTTP_ADDR", ":8080"),
-		httpsAddr:    env("MOCK_HTTPS_ADDR", ":443"),
-		httpsAltAddr: env("MOCK_HTTPS_ALT_ADDR", ":8443"),
-		adminAddr:    env("MOCK_ADMIN_ADDR", ":19090"),
-		llmAddr:      env("MOCK_LLM_ADDR", ":80"),
-		sshAddr:      env("MOCK_SSH_ADDR", ":2222"),
-		sshPort:      env("MOCK_SSH_PORT", "2222"),
-		data:         env("MOCK_DATA", "/data"),
-		pat:          os.Getenv("MOCK_PAT"),
-		keysDir:      env("MOCK_KEYS_DIR", "/keys"),
+		httpAddr:       env("MOCK_HTTP_ADDR", ":8080"),
+		httpsAddr:      env("MOCK_HTTPS_ADDR", ":443"),
+		httpsAltAddr:   env("MOCK_HTTPS_ALT_ADDR", ":8443"),
+		adminAddr:      env("MOCK_ADMIN_ADDR", ":19090"),
+		llmAddr:        env("MOCK_LLM_ADDR", ":80"),
+		sshAddr:        env("MOCK_SSH_ADDR", ":2222"),
+		sshPort:        env("MOCK_SSH_PORT", "2222"),
+		publishedHTTP:  os.Getenv("MOCK_PUBLISHED_HTTP_PORT"),
+		publishedHTTPS: os.Getenv("MOCK_PUBLISHED_HTTPS_PORT"),
+		publishedSSH:   os.Getenv("MOCK_PUBLISHED_SSH_PORT"),
+		data:           env("MOCK_DATA", "/data"),
+		pat:            os.Getenv("MOCK_PAT"),
+		keysDir:        env("MOCK_KEYS_DIR", "/keys"),
 	}
 	if cfg.pat == "" {
 		log.Fatal("set MOCK_PAT to the PAT the mock accepts")

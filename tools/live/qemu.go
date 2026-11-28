@@ -113,6 +113,11 @@ func (q qemu) clone(o osDef, name string) (err error) {
 // live-tests/vms/windows/windows.pkr.hcl installed Windows on. SSH reaches
 // it on a new loopback port each time.
 func (q qemu) start(name, logFile string) error {
+	unlock, err := acquireLock(filepath.Join(q.home, "start.lock"), false)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	dir := q.dir(name)
 	code, _, err := qemuFirmware()
 	if err != nil {

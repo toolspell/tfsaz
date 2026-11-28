@@ -54,6 +54,10 @@ func TestCIGuard(t *testing.T) {
 				blocked bool
 			}{
 				{"help", false},
+				{"up", true},
+				{"up ubuntu macos windows", true},
+				{"down", true},
+				{"prune", true},
 				{"status", false},
 				{"doctor", false},
 				{"doctor -install=false -yes=false", false},
@@ -69,19 +73,19 @@ func TestCIGuard(t *testing.T) {
 				{"base update macos", true},
 				{"base rm windows", true},
 				{"vm list -json", false},
-				{"vm vnc tfsaz-ubuntu-demo", false},
+				{"vm vnc tfsaz-live-first-ubuntu-demo", false},
 				{"vm up ubuntu", true},
-				{"vm ssh tfsaz-ubuntu-demo", true},
-				{"vm run tfsaz-ubuntu-demo -- uname", true},
-				{"vm push tfsaz-ubuntu-demo LOCAL REMOTE", true},
-				{"vm pull tfsaz-ubuntu-demo REMOTE LOCAL", true},
-				{"vm screenshot tfsaz-ubuntu-demo FILE", true},
-				{"vm forward tfsaz-ubuntu-demo 9222", true},
-				{"vm t3 install tfsaz-ubuntu-demo", true},
-				{"vm t3 start tfsaz-ubuntu-demo", true},
-				{"vm stop tfsaz-ubuntu-demo", true},
-				{"vm start tfsaz-ubuntu-demo", true},
-				{"vm down tfsaz-ubuntu-demo", true},
+				{"vm ssh tfsaz-live-first-ubuntu-demo", true},
+				{"vm run tfsaz-live-first-ubuntu-demo -- uname", true},
+				{"vm push tfsaz-live-first-ubuntu-demo LOCAL REMOTE", true},
+				{"vm pull tfsaz-live-first-ubuntu-demo REMOTE LOCAL", true},
+				{"vm screenshot tfsaz-live-first-ubuntu-demo FILE", true},
+				{"vm forward tfsaz-live-first-ubuntu-demo 9222", true},
+				{"vm t3 install tfsaz-live-first-ubuntu-demo", true},
+				{"vm t3 start tfsaz-live-first-ubuntu-demo", true},
+				{"vm stop tfsaz-live-first-ubuntu-demo", true},
+				{"vm start tfsaz-live-first-ubuntu-demo", true},
+				{"vm down tfsaz-live-first-ubuntu-demo", true},
 				{"setup ubuntu", true},
 				{"verify macos", true},
 				{"clean", true},
@@ -113,10 +117,31 @@ func TestCIGuard(t *testing.T) {
 			}
 		})
 	}
+	t.Run("read-only diagnostics do not create state", func(t *testing.T) {
+		if err := os.Unsetenv("GIT_DIR"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := exec.LookPath("git"); err != nil {
+			t.Skip("git unavailable")
+		}
+		home := filepath.Join(t.TempDir(), "state")
+		t.Setenv("CI", "true")
+		t.Setenv("TFSAZ_LIVE_HOME", home)
+		t.Setenv("TFSAZ_LIVE_INSTANCE", "first")
+		var stdout, stderr bytes.Buffer
+		if code := liveMain([]string{"services", "status"}, &stdout, &stderr); code != 0 {
+			t.Fatalf("exit %d, stderr %q", code, stderr.String())
+		}
+		if _, err := os.Stat(home); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("state directory exists or could not be checked: %v", err)
+		}
+	})
 }
 
 func TestFreeAddress(t *testing.T) {
+	bed := slotNetwork(0)
 	addr := netip.MustParseAddr
+	firstVMAddr, lastVMAddr := bed.address(129), bed.address(254)
 	all := make(map[netip.Addr]bool)
 	for a := firstVMAddr; a.Compare(lastVMAddr) <= 0; a = a.Next() {
 		all[a] = true
@@ -132,7 +157,7 @@ func TestFreeAddress(t *testing.T) {
 		{"full", all, "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := freeAddress(tc.used)
+			got, err := bed.freeAddress(tc.used)
 			if (err != nil) != tc.wantErr || (!tc.wantErr && got.String() != tc.want) {
 				t.Fatalf("freeAddress = %v, %v; want %s", got, err, tc.want)
 			}
@@ -157,25 +182,135 @@ func TestVersionLess(t *testing.T) {
 }
 
 func TestCloneNames(t *testing.T) {
+	e := &env{instance: "first"}
+	ubuntu := oses[0]
 	for _, tc := range []struct {
-		name  string
-		clone bool
+		name       string
+		own        bool
+		ubuntuBase bool
 	}{
-		{"tfsaz-ubuntu-a1b2c3", true},
-		{"tfsaz-ubuntu-base", false},
-		{"tfsaz-ubuntu-build", false},
-		{"tfsaz-ubuntu-", false},
-		{"tfsaz-ubuntu-/../..", false},
-		{"tfsaz-ubuntu-a/b", false},
-		{"tfsaz-macos-a1b2c3", true},
-		{"tfsaz-macos-base", false},
-		{"tfsaz-windows-x", true},
-		{"tfsaz-windows-build", false},
-		{"ubuntu-a1b2c3", false},
+		{"tfsaz-live-first-ubuntu-a1b2c3", true, true},
+		{"tfsaz-live-first-ubuntu-verify-a1b2c3", true, true},
+		{"tfsaz-live-second-ubuntu-a1b2c3", false, true},
+		{"tfsaz-live-firstextra-ubuntu-a1b2c3", false, true},
+		{"tfsaz-live-first-macos-up", true, false},
+		{"tfsaz-live-first-windows-up", true, false},
+		{"tfsaz-live-first-other-up", false, false},
+		{"tfsaz-live-first-ubuntu-base", false, false},
+		{"tfsaz-live-first-ubuntu-", false, false},
+		{"tfsaz-live-first-ubuntu-/../..", false, false},
+		{"tfsaz-live-first-ubuntu-a/b", false, false},
+		{"tfsaz-ubuntu-legacy", false, true},
+		{"tfsaz-ubuntu-base", false, false},
+		{"tfsaz-ubuntu-build", false, false},
 	} {
-		if _, got := osOfVM(tc.name); got != tc.clone {
-			t.Errorf("osOfVM(%s) = %v", tc.name, got)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			got := e.ownClones(map[string]bool{tc.name: true})
+			if (len(got) == 1) != tc.own || (len(got) == 1 && got[0] != tc.name) {
+				t.Errorf("ownClones = %v; want own %t", got, tc.own)
+			}
+			if got := ubuntu.isClone(tc.name); got != tc.ubuntuBase {
+				t.Errorf("ubuntu base dependency = %t; want %t", got, tc.ubuntuBase)
+			}
+		})
+	}
+}
+
+func TestInstanceID(t *testing.T) {
+	root := t.TempDir()
+	first, err := instanceID(root, "")
+	if err != nil || len(first) != 12 || !instancePattern.MatchString(first) {
+		t.Fatalf("default instance ID = %q, %v", first, err)
+	}
+	for _, tc := range []struct {
+		name, root, override, sameAs string
+		wantErr                      bool
+	}{
+		{name: "stable", root: root + string(filepath.Separator) + ".", sameAs: first},
+		{name: "different worktree", root: t.TempDir()},
+		{name: "override", root: root, override: "myworktree", sameAs: "myworktree"},
+		{name: "uppercase", root: root, override: "MyWorktree", wantErr: true},
+		{name: "path traversal", root: root, override: "../elsewhere", wantErr: true},
+		{name: "too long", root: root, override: strings.Repeat("a", 17), wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := instanceID(tc.root, tc.override)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("instanceID = %q, %v; want error %t", got, err, tc.wantErr)
+			}
+			if !tc.wantErr && (tc.sameAs != "" && got != tc.sameAs || tc.sameAs == "" && got == first) {
+				t.Errorf("instanceID = %q; expected %q or a distinct worktree ID", got, tc.sameAs)
+			}
+		})
+	}
+}
+
+func TestBedNetworkConfig(t *testing.T) {
+	home := t.TempDir()
+	for _, tc := range []struct {
+		instance, subnet, mockIP, routerIP, httpPort, httpsPort, sshPort, journalPort, wireguardPort string
+		slot                                                                                         int
+	}{
+		{"first", "172.30.53.0/24", "172.30.53.10", "172.30.53.2", "8080", "8443", "2222", "19090", "51820", 0},
+		{"second", "172.30.54.0/24", "172.30.54.10", "172.30.54.2", "8081", "8444", "2223", "19091", "51821", 1},
+	} {
+		t.Run(tc.instance, func(t *testing.T) {
+			network := slotNetwork(tc.slot)
+			e := &env{home: home, bed: "../../live-tests", instance: tc.instance, network: &network}
+			if err := e.prepareBed(); err != nil {
+				t.Fatal(err)
+			}
+			config, err := os.ReadFile(e.instancePath("Corefile"))
+			if err != nil || strings.Count(string(config), "IN A "+tc.mockIP) != 2 || strings.Contains(string(config), "${mock_ip}") {
+				t.Fatalf("Corefile = %q, %v; want two records for %s", config, err, tc.mockIP)
+			}
+			ipPrefix := strings.TrimSuffix(tc.subnet, "0/24")
+			t.Run("WireGuard", func(t *testing.T) {
+				checkWGConfig(t, network, ipPrefix+"129", tc.routerIP, tc.wireguardPort)
+			})
+			for key, value := range map[string]string{
+				"CONTAINER_SUBNET": ipPrefix + "0/25", "VM_SUBNET": ipPrefix + "128/25", "GATEWAY": ipPrefix + "1", "DNS_IP": ipPrefix + "53",
+				"PROJECT": "tfsaz-live-" + tc.instance, "STATE": filepath.ToSlash(filepath.Join(home, "instances", tc.instance)),
+				"SUBNET": tc.subnet, "ROUTER_IP": tc.routerIP, "MOCK_IP": tc.mockIP, "HTTP_PORT": tc.httpPort,
+				"HTTPS_PORT": tc.httpsPort, "SSH_PORT": tc.sshPort, "JOURNAL_PORT": tc.journalPort, "WIREGUARD_PORT": tc.wireguardPort,
+			} {
+				want := "TFSAZ_LIVE_" + key + "=" + value
+				if !slices.Contains(network.composeEnv(e.project(), e.instancePath()), want) {
+					t.Errorf("Compose environment missing %q", want)
+				}
+			}
+			if got, want := network.journalURL(), "http://127.0.0.1:"+tc.journalPort+"/requests"; got != want {
+				t.Errorf("journal URL = %q; want %q", got, want)
+			}
+			if got, want := e.cloneName(oses[0], "up"), "tfsaz-live-"+tc.instance+"-ubuntu-up"; got != want {
+				t.Errorf("clone name = %q; want %q", got, want)
+			}
+		})
+	}
+}
+
+func checkWGConfig(t *testing.T, network bedNetwork, address, routerIP, wireguardPort string) {
+	t.Helper()
+	for _, tc := range []struct {
+		name                 string
+		guest                guest
+		key, dns, allowedIPs string
+	}{
+		{"ubuntu", ubuntuGuest, "private-key /etc/wireguard/private.key", "resolvectl dns %i " + routerIP, "0.0.0.0/0"},
+		{"macos", macosGuest, "private-key /etc/wireguard/private.key", "DNS = " + routerIP, "0.0.0.0/0"},
+		{"windows", windowsGuest, "PrivateKey = __PRIVATE_KEY__", "DNS = " + routerIP, "0.0.0.0/1, 128.0.0.0/1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := network.wgConfig(netip.MustParseAddr(address), "ROUTER", "192.168.64.1", tc.guest)
+			for _, want := range []string{
+				tc.key, "Address = " + address + "/32", tc.dns,
+				"PublicKey = ROUTER", "Endpoint = 192.168.64.1:" + wireguardPort, "AllowedIPs = " + tc.allowedIPs + "\n",
+			} {
+				if !strings.Contains(config, want) {
+					t.Errorf("config misses %q:\n%s", want, config)
+				}
+			}
+		})
 	}
 }
 
@@ -189,8 +324,9 @@ func TestCloneResources(t *testing.T) {
 		{"windows", []string{"-smp", "2", "-m", "6G"}},
 	} {
 		t.Run(tc.os, func(t *testing.T) {
-			name := prefix + tc.os + "-resources"
-			o, ok := osOfVM(name)
+			e := &env{instance: "first"}
+			name := "tfsaz-live-first-" + tc.os + "-resources"
+			o, ok := e.osOfVM(name)
 			if !ok {
 				t.Fatalf("no guest OS for %s", name)
 			}
@@ -208,64 +344,130 @@ func TestCloneResources(t *testing.T) {
 			}
 		})
 	}
+	t.Run("macOS host capacity", checkMacOSCapacityCases)
 }
 
-func TestWGConfig(t *testing.T) {
+func checkMacOSCapacityCases(t *testing.T) {
+	mac := oses[1]
+	first := vmEntry{Name: "tfsaz-live-first-macos-up", Running: true}
+	second := vmEntry{Name: "tfsaz-live-second-macos-a1b2c3", State: "running"}
 	for _, tc := range []struct {
-		name                 string
-		guest                guest
-		key, dns, allowedIPs string
+		name string
+		vms  []vmEntry
+		full bool
 	}{
-		{"ubuntu", ubuntuGuest, "private-key /etc/wireguard/private.key", "resolvectl dns %i 172.30.53.2", "0.0.0.0/0"},
-		{"macos", macosGuest, "private-key /etc/wireguard/private.key", "DNS = 172.30.53.2", "0.0.0.0/0"},
-		{"windows", windowsGuest, "PrivateKey = __PRIVATE_KEY__", "DNS = 172.30.53.2", "0.0.0.0/1, 128.0.0.0/1"},
+		{"second slot available", []vmEntry{first, {Name: second.Name, State: "stopped"}}, false},
+		{"two worktrees", []vmEntry{first, second}, true},
+		{"base build counts", []vmEntry{first, {Name: mac.build(), Running: true}}, true},
+		{"legacy VM counts", []vmEntry{second, {Name: "tfsaz-macos-legacy", Running: true}}, true},
+		{"other guest OS", []vmEntry{first, {Name: "tfsaz-live-second-ubuntu-up", Running: true}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			config := wgConfig(netip.MustParseAddr("172.30.53.129"), "ROUTER", "192.168.64.1", tc.guest)
-			for _, want := range []string{
-				tc.key, "Address = 172.30.53.129/32", tc.dns,
-				"PublicKey = ROUTER", "Endpoint = 192.168.64.1:51820", "AllowedIPs = " + tc.allowedIPs + "\n",
-			} {
-				if !strings.Contains(config, want) {
-					t.Errorf("config misses %q:\n%s", want, config)
-				}
+			if err := checkMacOSCapacity(mac, tc.vms); (err != nil) != tc.full {
+				t.Errorf("macOS capacity = %v; want full %t", err, tc.full)
 			}
 		})
 	}
 }
 
-func TestPeersSkipsStagingFiles(t *testing.T) {
-	e := &env{home: t.TempDir()}
-	dir := e.path("router", "peers")
+func TestRouterPeers(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		check func(*testing.T)
+	}{
+		{"ignore staging files", checkPeerStagingFiles},
+		{"remove peer", checkRemovePeer},
+	} {
+		t.Run(tc.name, tc.check)
+	}
+}
+
+func checkPeerStagingFiles(t *testing.T) {
+	e := &env{home: t.TempDir(), instance: "first"}
+	dir := e.instancePath("router", "peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	for name, record := range map[string]string{
-		"tfsaz-ubuntu-a":  "KEY 172.30.53.129\n",
-		".tfsaz-ubuntu-b": "KEY 172.30.53.130\n", // peer.sh renames it into place
+		"tfsaz-live-first-ubuntu-a":  "KEY 172.30.53.129\n",
+		".tfsaz-live-first-ubuntu-b": "KEY 172.30.53.130\n", // peer.sh renames it into place
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(record), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	peers, err := e.peers()
-	if err != nil || len(peers) != 1 || peers["tfsaz-ubuntu-a"].String() != "172.30.53.129" {
-		t.Fatalf("peers = %v, %v; want only tfsaz-ubuntu-a", peers, err)
+	if err != nil || len(peers) != 1 || peers["tfsaz-live-first-ubuntu-a"].String() != "172.30.53.129" {
+		t.Fatalf("peers = %v, %v; want only tfsaz-live-first-ubuntu-a", peers, err)
+	}
+}
+
+func checkRemovePeer(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		psOut   string
+		psErr   error
+		wantCmd bool
+	}{
+		{name: "running router", psOut: "router-id", wantCmd: true},
+		{name: "stopped router"},
+		{name: "Docker stopped", psErr: errors.New("Docker engine stopped")},
+		{name: "Docker stopped with partial output", psOut: "router-id", psErr: errors.New("Docker engine stopped")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			network := slotNetwork(0)
+			e := &env{home: t.TempDir(), instance: "first", network: &network}
+			name := e.cloneName(oses[0], "abc123")
+			peer := e.instancePath("router", "peers", name)
+			putLiveFile(t, peer)
+			warnings := captureLiveStderr(t)
+			oldOutput, oldCmd := output, cmd
+			t.Cleanup(func() { output, cmd = oldOutput, oldCmd })
+			queries, updates := 0, 0
+			output = func(_ []string, bin string, args ...string) (string, error) {
+				if bin != "docker" || !slices.Equal(args, e.composeArgs([]string{"ps", "--status", "running", "-q", "router"})) {
+					t.Fatalf("unexpected command: %s %q", bin, args)
+				}
+				queries++
+				return tc.psOut, tc.psErr
+			}
+			cmd = func(_ string, _ []string, bin string, args ...string) error {
+				if bin != "docker" || !slices.Equal(args, e.composeArgs([]string{"exec", "-T", "router", "peer", "remove", name})) {
+					t.Fatalf("unexpected command: %s %q", bin, args)
+				}
+				updates++
+				return os.Remove(peer)
+			}
+			for range 2 {
+				if err := e.removePeer(name); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := os.Stat(peer); !os.IsNotExist(err) {
+				t.Errorf("peer file remained: %v", err)
+			}
+			if queries != 1 || (updates == 1) != tc.wantCmd {
+				t.Errorf("router queried %d times, updated %d times", queries, updates)
+			}
+			if got := strings.Contains(readLiveFile(t, warnings), "the router was not updated"); got != (tc.psErr != nil) {
+				t.Errorf("unexpected warning: %s", readLiveFile(t, warnings))
+			}
+		})
 	}
 }
 
 func TestLoadVMStaysInRuns(t *testing.T) {
-	e := &env{home: t.TempDir()}
+	e := &env{home: t.TempDir(), instance: "first"}
 	if err := os.WriteFile(e.path("vm.json"), []byte(`{"name":"outside"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if info, err := e.loadVM("tfsaz-ubuntu-/../.."); err == nil {
+	if info, err := e.loadVM("tfsaz-live-first-ubuntu-/../.."); err == nil {
 		t.Fatalf("loadVM read %+v outside runs", info)
 	}
 }
 
 func TestLoadVMMetadataError(t *testing.T) {
-	const name = "tfsaz-ubuntu-demo"
+	const name = "tfsaz-live-first-ubuntu-demo"
 	for _, tc := range []struct{ kind, want string }{
 		{"missing", "no clone"},
 		{"unreadable", "read metadata"},
@@ -273,7 +475,7 @@ func TestLoadVMMetadataError(t *testing.T) {
 		{"malformed", "decode metadata"},
 	} {
 		t.Run(tc.kind, func(t *testing.T) {
-			e := &env{home: t.TempDir()}
+			e := &env{home: t.TempDir(), instance: "first"}
 			file := filepath.Join(e.runDir(name), "vm.json")
 			switch tc.kind {
 			case "unreadable":
@@ -316,12 +518,12 @@ func TestMockJournalError(t *testing.T) {
 }
 
 func TestMockRequestsVMFilter(t *testing.T) {
-	e := &env{home: t.TempDir()}
-	info := vmInfo{Name: "tfsaz-ubuntu-a", IP: "192.0.2.1", BedAddress: "172.30.53.129"}
+	e := &env{home: t.TempDir(), instance: "first"}
+	info := vmInfo{Name: "tfsaz-live-first-ubuntu-a", OS: "ubuntu", IP: "192.0.2.1", BedAddress: "172.30.53.129"}
 	if err := os.MkdirAll(e.runDir(info.Name), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.saveVM(info); err != nil {
+	if err := e.saveVM(info); err != nil {
 		t.Fatal(err)
 	}
 	admin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -340,7 +542,48 @@ func TestMockRequestsVMFilter(t *testing.T) {
 	}
 }
 
-func TestSensitiveSSHError(t *testing.T) {
+func TestSSHTarget(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		check func(*testing.T)
+	}{
+		{"forward arguments", checkSSHForwardArgs},
+		{"sensitive error", checkSensitiveSSHError},
+	} {
+		t.Run(tc.name, tc.check)
+	}
+}
+
+func checkSSHForwardArgs(t *testing.T) {
+	const ssh = "/usr/bin/ssh"
+	for _, tc := range []struct {
+		name string
+		host string
+		port int
+		peer []string
+	}{
+		{"default SSH port", "192.0.2.1", 0, []string{"tester@192.0.2.1"}},
+		{"forwarded SSH port", "127.0.0.1", 22222, []string{"-p", "22222", "tester@127.0.0.1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			target := sshTarget{user: "tester", host: tc.host, port: tc.port, key: "id_ed25519", knownHosts: "known_hosts"}
+			want := append([]string{
+				ssh, "-N", "-n", "-o", "ExitOnForwardFailure=yes",
+				"-o", "ForkAfterAuthentication=no", "-S", "none",
+				"-L", "127.0.0.1:19222:127.0.0.1:9222",
+				"-i", "id_ed25519", "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
+				"-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=known_hosts",
+				"-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR",
+				"-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3",
+			}, tc.peer...)
+			if got := target.forwardArgs(ssh, "19222", "9222"); !slices.Equal(got, want) {
+				t.Errorf("forwardArgs = %q; want %q", got, want)
+			}
+		})
+	}
+}
+
+func checkSensitiveSSHError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake SSH executable uses a sh script")
 	}
@@ -520,7 +763,19 @@ func fakeVNCServer(conn net.Conn, frames [][]byte) error {
 	return err
 }
 
-func TestTartVNC(t *testing.T) {
+func TestTartStartupLog(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		check func(*testing.T)
+	}{
+		{"VNC address and password", checkTartVNC},
+		{"archive on boot failure", checkFailedVMUpLogs},
+	} {
+		t.Run(tc.name, tc.check)
+	}
+}
+
+func checkTartVNC(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "tart.log")
 	content := "VNC server is running at vnc://:old@127.0.0.1:5000\nguest has stopped the virtual machine\n" +
 		"VNC server is running at vnc://:new-pw@127.0.0.1:5001\n"
@@ -540,6 +795,72 @@ func TestTartVNC(t *testing.T) {
 	var parseErr *neturl.Error
 	if !errors.As(err, &parseErr) || !strings.Contains(err.Error(), log) || strings.Contains(err.Error(), value) {
 		t.Fatalf("got %v, want the log path and the wrapped parser error without the password", err)
+	}
+}
+
+func checkFailedVMUpLogs(t *testing.T) {
+	for _, archiveOK := range []bool{true, false} {
+		name := "archive available"
+		if !archiveOK {
+			name = "archive blocked"
+		}
+		t.Run(name, func(t *testing.T) { checkFailedVMUpCleanup(t, archiveOK) })
+	}
+}
+
+func checkFailedVMUpCleanup(t *testing.T, archiveOK bool) {
+	t.Helper()
+	e := &env{home: t.TempDir(), instance: "first"}
+	o := oses[1]
+	name := e.cloneName(o, "up")
+	logFile := filepath.Join(e.runDir(name), "tart.log")
+	putLiveFile(t, filepath.Join(e.runDir(name), "id_ed25519"))
+	putLiveFile(t, filepath.Join(e.tart().home, "test"))
+	oldOutput := output
+	t.Cleanup(func() { output = oldOutput })
+	deleted := false
+	output = func(_ []string, bin string, args ...string) (string, error) {
+		if bin != "tart" {
+			t.Fatalf("unexpected command: %s %q", bin, args)
+		}
+		switch strings.Join(args, " ") {
+		case "list --source local --format json":
+			return `[{"Name":"` + name + `","State":"stopped"}]`, nil
+		case "stop " + name + " --timeout 30":
+			return "", nil
+		case "delete " + name:
+			deleted = true
+			return "", nil
+		}
+		t.Fatalf("unexpected Tart command: %q", args)
+		return "", nil
+	}
+	const body = "old line\n2\n3\n4\n5\nVNC server is running at vnc://:secret@127.0.0.1:5900\nVM failed to boot\n"
+	if err := os.WriteFile(logFile, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cause := errors.New("VM did not start")
+	kept := e.instancePath("failed-starts", name+".log")
+	if !archiveOK {
+		putLiveFile(t, filepath.Dir(kept))
+	}
+	err := e.cleanupFailedVM(o, name, cause)
+	if archiveOK {
+		if got := readLiveFile(t, kept); got != body || !strings.Contains(err.Error(), kept) {
+			t.Errorf("kept log = %q; startup error = %v", got, err)
+		}
+	} else if !strings.Contains(err.Error(), "save startup log") {
+		t.Errorf("archive error missing from %v", err)
+	}
+	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "VM failed to boot") ||
+		strings.Contains(err.Error(), "old line") || strings.Contains(err.Error(), "secret") {
+		t.Errorf("startup error = %v", err)
+	}
+	if _, err := os.Stat(e.runDir(name)); !os.IsNotExist(err) {
+		t.Errorf("failed clone's run directory remains: %v", err)
+	}
+	if !deleted {
+		t.Error("failed clone was not deleted")
 	}
 }
 
@@ -640,3 +961,5 @@ func TestDownload(t *testing.T) {
 		})
 	}
 }
+
+func freeHostPorts(bedPorts) error { return nil }

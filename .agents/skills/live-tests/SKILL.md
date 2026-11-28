@@ -24,10 +24,10 @@ Run only the relevant cases. Read [Live tests](../../../docs/operations/live-tes
 
 From the repository root, prefix each command below with `go run ./tools/live`. On a host with the base already built:
 
-1. Run `services up`, then `vm up OS`. Take `NAME` from the JSON output.
+1. Run `up OS...` to start this worktree's services and one clone per selected guest. Take `NAME` from the `vms` array and any host ports you need from `ports`. Use `vm up OS` for an additional clone.
 2. For T3 cases, run `vm t3 install NAME` and `vm t3 start NAME`. Follow the [Playwright steps](../../../docs/operations/live-tests.md#drive-t3-with-playwright) to drive the UI.
 3. Run the case with `vm run NAME [-json] [-gui] -- CMD...`. Use `-json` for scripted checks or `-gui` for commands that need the desktop session. Target the Azure DevOps Server mock.
 4. Inspect traffic with `mock requests -vm NAME`. Capture UI evidence with `vm screenshot NAME FILE` when relevant.
-5. Stop your forwards, then run `vm down NAME` and `services down` when the bed is no longer needed. On a shared host, leave other runs and the services they use alone.
+5. Stop your forwards, then run `down` to delete this worktree's clones, remove its services and locally built images, and free its slot. To delete just this worktree's clones, use `clean`. To retain clones for a rerun, stop them with `vm stop NAME` and run `services down`. Repeat `up OS...` to resume its clones. Check `status` for orphaned slots and use `prune` to remove instances whose worktree paths are missing.
 
 Follow the [runbook's agent instructions](../../../docs/operations/live-tests.md#for-agents) for retained clones, cleanup, and dated verification records.

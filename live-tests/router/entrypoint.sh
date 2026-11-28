@@ -18,9 +18,9 @@ ip link set wg0 up
 peer load
 
 # The host's loopback publication does not restrict direct access from VMs.
-iptables -A FORWARD -i wg0 -d 172.30.53.10 -p tcp --dport 19090 -j REJECT
+iptables -A FORWARD -i wg0 -d "${MOCK_IP:?}" -p tcp --dport 19090 -j REJECT
 
 # Internet traffic leaves with the router's address, so Docker's NAT accepts it.
 iptables -t nat -A POSTROUTING -s "${VM_SUBNET:?}" ! -d "${BED_SUBNET:?}" -o eth0 -j MASQUERADE
 
-exec dnsmasq --keep-in-foreground --conf-file=/etc/router/dnsmasq.conf
+exec dnsmasq --keep-in-foreground --conf-file=/etc/router/dnsmasq.conf --server="/mock.test/${DNS_IP:?}"

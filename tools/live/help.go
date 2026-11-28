@@ -18,17 +18,20 @@ type commandHelp struct {
 
 var liveCommands = []commandHelp{
 	{"", "", "<command>", "Build and run the TFSaz live-test bed."},
+	{"up", "", "[OS...]", "Start this instance and print its subnet, host ports and clones as JSON. With OS arguments, boot or reuse one clone per OS in parallel. OS is ubuntu, macos or windows."},
+	{"down", "", "", "Delete this instance's clones, remove its services and locally built images, and release its slot."},
+	{"prune", "", "", "Remove instances whose worktree paths are missing and release their slots."},
 	{"setup", "OS", "", "Install missing host tools, start services, build the base if missing, then run verify. OS is ubuntu, macos or windows."},
 	{"verify", "OS", "", "Boot a throwaway clone, check the mock, router and internet access, then remove the clone. OS is ubuntu, macos or windows."},
 	{"doctor", "", "[-install] [-yes]", "Check host tools and offer to install missing ones with Homebrew."},
 	{"services", "", "<action>", "Manage the mock, DNS sinkhole and VM router in Docker."},
-	{"services up", "", "", "Start the testbed services and wait for the router key."},
-	{"services down", "", "", "Stop and remove the testbed services."},
-	{"services status", "", "", "Show the status of the testbed services."},
+	{"services up", "", "", "Start this instance's testbed services and wait for the router and mock."},
+	{"services down", "", "", "Stop and remove this instance's testbed services, including their locally built images, keeping its slot and keys."},
+	{"services status", "", "", "Show this instance's service status, subnet and published ports."},
 	{"mock", "", "<action>", "Inspect the Azure DevOps Server mock."},
-	{"mock ca", "", "", "Print the path to the mock CA certificate."},
-	{"mock requests", "", "[-vm NAME] [-json]", "Read the mock's request journal."},
-	{"mock reset", "", "", "Clear the mock's request journal."},
+	{"mock ca", "", "", "Print the path to this instance's mock CA certificate."},
+	{"mock requests", "", "[-vm NAME] [-json]", "Read this instance's mock request journal."},
+	{"mock reset", "", "", "Clear this instance's mock request journal."},
 	{"base", "", "<action>", "Manage base VMs. Base commands refuse while clones exist."},
 	{"base build", "OS", "[-force]", "Build a base VM from scratch. OS is ubuntu, macos or windows. Remove existing clones first."},
 	{"base update", "OS", "", "Upgrade packages in a base VM in place. OS is ubuntu or macos. Remove existing clones first."},
@@ -47,10 +50,10 @@ var liveCommands = []commandHelp{
 	{"vm t3 start", "NAME", "[-port P]", "Start T3 Code in the desktop session. Wait up to a minute for its debugging port to answer, then print the URL in the clone."},
 	{"vm stop", "NAME", "[-force]", "Shut down a clone and keep it for later."},
 	{"vm start", "NAME", "", "Boot a stopped clone and print its updated details as JSON."},
-	{"vm down", "NAME", "", "Stop and delete a clone and its router peer."},
-	{"vm list", "", "[-json]", "List clones and their status."},
-	{"clean", "", "", "Delete every clone and its router peer."},
-	{"status", "", "", "Show testbed services, base VMs and clones."},
+	{"vm down", "NAME", "", "Stop and delete a clone and its router peer. Accepts legacy clone names."},
+	{"vm list", "", "[-json]", "List this instance's clones and shared legacy clones with their status."},
+	{"clean", "", "", "Delete this instance's clones and router peers, leaving its services and slot in place."},
+	{"status", "", "", "Show shared base VMs, this instance's services and clones, and orphaned slots."},
 }
 
 func (h commandHelp) synopsis() string {
@@ -73,7 +76,7 @@ func (h commandHelp) printHelp(out io.Writer, flags *flag.FlagSet) {
 			}
 		}
 		_, _ = fmt.Fprintln(out, "\nRun go run ./tools/live help CMD [SUB...] for details.")
-		_, _ = fmt.Fprintln(out, "State lives in $TFSAZ_LIVE_HOME (default ~/.tfsaz-live), linked as live-tests/.state.")
+		_, _ = fmt.Fprintln(out, "State lives in $TFSAZ_LIVE_HOME (default ~/.tfsaz-live). $TFSAZ_LIVE_INSTANCE overrides the worktree ID.")
 	case h.group():
 		_, _ = fmt.Fprintln(out, "\nActions:")
 		for _, c := range liveCommands[1:] {
@@ -110,7 +113,7 @@ func (c *liveInvocation) flagSet() *flag.FlagSet {
 	case "base build":
 		flags.BoolVar(&c.force, "force", false, "Replace an existing base VM.")
 	case "vm up":
-		flags.StringVar(&c.suffix, "name", "", "Clone suffix in tfsaz-OS-SUFFIX. Use 1 to 20 lowercase letters, digits or dashes, starting with a letter or digit. The suffixes base and build are reserved. Defaults to six random hex digits.")
+		flags.StringVar(&c.suffix, "name", "", "Clone suffix in tfsaz-live-ID-OS-SUFFIX. Use 1 to 20 lowercase letters, digits or dashes, starting with a letter or digit. The suffixes base, build and up are reserved. Defaults to six random hex digits.")
 	case "vm stop":
 		flags.BoolVar(&c.force, "force", false, "Stop without shutting down the guest. This can lose unwritten changes.")
 	case "vm t3 start":
@@ -145,6 +148,15 @@ func (c *liveInvocation) readArgs(args []string, flags *flag.FlagSet) error {
 	if err := flags.Parse(before); err != nil {
 		return err
 	}
+	if c.path == "up" {
+		c.args = flags.Args()
+		for _, name := range c.args {
+			if _, ok := guestOS(name); !ok {
+				return unknownOS(name)
+			}
+		}
+		return nil
+	}
 	if len(c.args) < len(operands) {
 		return fmt.Errorf("missing %s", operands[len(c.args)])
 	}
@@ -168,23 +180,28 @@ func (c *liveInvocation) validate(operands []string) error {
 		case "OS":
 			o, ok := guestOS(c.args[0])
 			if !ok {
-				return fmt.Errorf("unknown OS %q; use ubuntu, macos or windows", c.args[0])
+				return unknownOS(c.args[0])
 			}
 			if c.path == "base update" && o.guest.update == "" {
 				return fmt.Errorf("base update supports ubuntu and macos; rebuild %s with base build %s -force", o.name, o.name)
 			}
 		case "NAME":
-			if _, ok := osOfVM(c.args[0]); !ok {
-				return fmt.Errorf("invalid clone name %q; use tfsaz-OS-SUFFIX from vm list", c.args[0])
+			_, _, modern := parseCloneName(c.args[0])
+			_, legacy := legacyCloneOS(c.args[0])
+			if !modern && (c.path != "vm down" || !legacy) {
+				return fmt.Errorf("invalid clone name %q; use tfsaz-live-ID-OS-SUFFIX from vm list", c.args[0])
 			}
 		}
 	}
 	switch c.path {
 	case "mock requests":
-		if _, ok := osOfVM(c.vm); c.vm != "" && !ok {
-			return fmt.Errorf("invalid clone name %q in -vm; use tfsaz-OS-SUFFIX from vm list", c.vm)
+		if _, _, ok := parseCloneName(c.vm); c.vm != "" && !ok {
+			return fmt.Errorf("invalid clone name %q in -vm; use tfsaz-live-ID-OS-SUFFIX from vm list", c.vm)
 		}
 	case "vm up":
+		if c.suffix == upSuffix {
+			return fmt.Errorf("-name up is reserved for go run ./tools/live up")
+		}
 		if c.suffix != "" && !validSuffix(c.suffix) {
 			return fmt.Errorf("invalid -name suffix %q; use 1 to 20 lowercase letters, digits or dashes starting with a letter or digit, excluding base and build", c.suffix)
 		}

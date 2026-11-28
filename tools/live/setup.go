@@ -24,16 +24,27 @@ func (e *env) setup(osName string) error {
 	if err := e.services("up"); err != nil {
 		return err
 	}
+	if err := e.ensureBase(o); err != nil {
+		return err
+	}
+	return e.verify(o.name)
+}
+
+func (e *env) ensureBase(o osDef) error {
+	unlock, err := e.lockBase(o, false)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	exists, err := e.vms(o).exists(o.base())
 	if err != nil {
 		return err
 	}
 	if exists {
 		step("%s exists; %s", o.base(), baseHint(o))
-	} else if err := e.base("build", o.name, false); err != nil {
-		return err
+		return nil
 	}
-	return e.verify(o.name)
+	return e.changeBase(o, "build", false)
 }
 
 // verify boots a throwaway clone and checks what live tests rely on: the
@@ -63,7 +74,7 @@ func (e *env) verify(osName string) (err error) {
 		sensitive     bool
 	}
 	checks := []check{
-		{"the VM resolves devops.mock.test to the mock", o.guest.resolves, false},
+		{"the VM resolves devops.mock.test to the mock", fmt.Sprintf(o.guest.resolves, e.network.address(10)), false},
 		{"the mock's REST API answers through the router", fmt.Sprintf(o.guest.rest, pat), true},
 		{"traffic to the internet goes through the tunnel", o.guest.tunneled, false},
 		{"the VM reaches the internet", o.guest.internet, false},

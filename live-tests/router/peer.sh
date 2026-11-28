@@ -42,6 +42,8 @@ add)
 	;;
 remove)
 	[ $# -eq 2 ] || { echo "usage: peer remove NAME" >&2; exit 2; }
+	exec 9>"$dir/.lock"
+	flock 9
 	[ -f "$dir/$2" ] || exit 0
 	if read -r key address <"$dir/$2" && [ -n "$key" ]; then
 		wg set wg0 peer "$key" remove

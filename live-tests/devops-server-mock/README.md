@@ -8,18 +8,18 @@ A small stand-in for an Azure DevOps Server 2022.2 testbed, for live tests of TF
 - plain HTML pages at the URLs a browser opens: repository, PR, commit, work item and build;
 - a fake OpenAI-compatible text generator (see [Text generator](#text-generator)).
 
-Collections work at both `/DefaultCollection` and `/tfs/DefaultCollection`. REST and web URLs and HTTP or HTTPS clone URLs use the request's scheme, host, port and collection path. SSH clone URLs use the request host and collection path with the SSH port. The catalog serves the recorded relative route templates and identifies its request URL in `Content-Location`. See the [live-test bed's network table](../../docs/operations/live-tests.md#network) for addresses and ports.
+Collections work at both `/DefaultCollection` and `/tfs/DefaultCollection`. REST and web URLs and HTTP or HTTPS clone URLs use the request's scheme, host, port and collection path. SSH clone URLs use the request host and collection path with the guest or published SSH port, based on the request port. The catalog serves the recorded relative route templates and identifies its request URL in `Content-Location`. See the [live-test bed's network table](../../docs/operations/live-tests.md#network) for addresses and ports.
 
 ## Run
 
-`go run ./tools/live services up` starts it with the rest of the test bed.
+`go run ./tools/live up` starts it with the rest of this worktree's test bed.
 
 | Variable | Compose default | Meaning |
 | --- | --- | --- |
 | `MOCK_PAT` | `mock-pat` | The only PAT the mock accepts. Its permissions are not checked. |
 | `MOCK_LLM_ADDR` | `:80` | Address of the plain-HTTP text generator. |
 
-On every start the mock generates a fresh CA and TLS leaf for `devops.mock.test`. The TLS private keys stay in memory. The mock writes the public CA certificate as `ca.pem` in the gitignored `keys/` directory. It also generates SSH keys and writes `client_ed25519`, `client_ed25519.pub` and `known_hosts` there. SSH accepts only that client key.
+On every start the mock generates a fresh CA and TLS leaf for `devops.mock.test`. The TLS private keys stay in memory. The mock writes the public CA certificate as `ca.pem` in the instance's `mock-keys/` directory. It also generates SSH keys and writes `client_ed25519`, `client_ed25519.pub` and `known_hosts` there. SSH accepts only that client key.
 
 State lives in memory and in bare repositories inside the container. A restart starts from the seed with new keys and an empty journal. See the [request journal commands](../../docs/operations/live-tests.md#request-journal).
 
@@ -66,17 +66,19 @@ A test points T3 at it by writing T3's own user configuration before T3 starts; 
 
 ## Examples
 
-From the repository root with the mock running:
+From the repository root, substitute the instance's published HTTP, HTTPS and SSH ports in these examples:
 
 ```sh
 IP=127.0.0.1
-keys="$PWD/live-tests/devops-server-mock/keys"
-curl --cacert "$(go run ./tools/live mock ca)" --resolve "devops.mock.test:8443:$IP" \
-  -u :mock-pat 'https://devops.mock.test:8443/tfs/DefaultCollection/_apis/projects?api-version=7.1'
-curl -u :mock-pat "http://$IP:8080/DefaultCollection/_apis/git/pullrequests/1?api-version=7.1"
-git clone "http://user:mock-pat@$IP:8080/DefaultCollection/Mock%20Project/_git/api"
+http_port=8080 https_port=8443 ssh_port=2222
+ca=$(go run ./tools/live mock ca)
+keys=$(dirname "$ca")
+curl --cacert "$ca" --resolve "devops.mock.test:$https_port:$IP" \
+  -u :mock-pat "https://devops.mock.test:$https_port/tfs/DefaultCollection/_apis/projects?api-version=7.1"
+curl -u :mock-pat "http://$IP:$http_port/DefaultCollection/_apis/git/pullrequests/1?api-version=7.1"
+git clone "http://user:mock-pat@$IP:$http_port/DefaultCollection/Mock%20Project/_git/api"
 GIT_SSH_COMMAND="ssh -i \"$keys/client_ed25519\" -o IdentitiesOnly=yes -o UserKnownHostsFile=\"$keys/known_hosts\"" \
-  git clone "ssh://$IP:2222/Second%20Collection/Demo%20Project/_git/api"
+  git clone "ssh://$IP:$ssh_port/Second%20Collection/Demo%20Project/_git/api"
 ```
 
 ## Known differences from the server

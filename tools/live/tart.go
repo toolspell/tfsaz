@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -21,6 +22,11 @@ func (t tart) env() []string { return []string{"TART_HOME=" + t.home} }
 func (t tart) run(args ...string) (string, error) { return output(t.env(), "tart", args...) }
 
 func (t tart) list() ([]vmEntry, error) {
+	if _, err := os.Stat(t.home); errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
 	out, err := t.run("list", "--source", "local", "--format", "json")
 	if err != nil {
 		return nil, err
@@ -42,9 +48,13 @@ func (e *env) macosSlot(o osDef) error {
 	if err != nil {
 		return err
 	}
+	return checkMacOSCapacity(o, vms)
+}
+
+func checkMacOSCapacity(o osDef, vms []vmEntry) error {
 	var running []string
 	for _, vm := range vms {
-		if vm.Running && strings.HasPrefix(vm.Name, prefix+o.name+"-") {
+		if vm.isRunning() && (o.isClone(vm.Name) || vm.Name == o.base() || vm.Name == o.build()) {
 			running = append(running, vm.Name)
 		}
 	}
@@ -54,12 +64,27 @@ func (e *env) macosSlot(o osDef) error {
 	return nil
 }
 
+func (e *env) lockMacOSBoot(o osDef) (func(), error) {
+	if o.macos == 0 {
+		return func() {}, nil
+	}
+	return acquireLock(e.path("macos-boot.lock"), false)
+}
+
 // start boots a VM headless in the background; Tart's output goes to logFile.
 // The VM keeps running after this process exits.
 func (t tart) start(name, logFile string) error {
-	log, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	c, err := t.startCommand(name, logFile)
 	if err != nil {
 		return err
+	}
+	return c.Process.Release()
+}
+
+func (t tart) startCommand(name, logFile string, inherited ...*os.File) (*exec.Cmd, error) {
+	log, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil, err
 	}
 	defer func() { _ = log.Close() }()
 	// Virtualization.framework's VNC server serves screenshots; with
@@ -67,11 +92,12 @@ func (t tart) start(name, logFile string) error {
 	c := exec.Command("tart", "run", "--no-graphics", "--vnc-experimental", name)
 	c.Env = append(os.Environ(), t.env()...)
 	c.Stdout, c.Stderr = log, log
+	c.ExtraFiles = inherited
 	detach(c)
 	if err := c.Start(); err != nil {
-		return err
+		return nil, err
 	}
-	return c.Process.Release()
+	return c, nil
 }
 
 func (t tart) address(name string, wait time.Duration) (string, int, error) {

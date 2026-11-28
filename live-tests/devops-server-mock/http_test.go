@@ -13,13 +13,15 @@ func TestCollectionURLs(t *testing.T) {
 	mockProject := &project{ID: "project-id", Name: "Mock Project"}
 	mockRepo := &repo{ID: "repo-id", Name: "web app", Project: mockProject}
 	coll := &collection{Name: "DefaultCollection", Projects: []*project{mockProject}, Repos: []*repo{mockRepo}}
-	s := &server{cfg: config{sshPort: "2222", pat: "test"}, collections: []*collection{coll}, viewer: &identity{}}
+	s := &server{cfg: config{sshPort: "2222", publishedHTTP: "8081", publishedHTTPS: "8444", publishedSSH: "2223", pat: "test"}, collections: []*collection{coll}, viewer: &identity{}}
 	for _, tc := range []struct {
-		name, origin, virtualDir, sshHost string
+		name, origin, virtualDir, sshAddr string
 	}{
-		{"HTTP", "http://devops.mock.test:8080", "", "devops.mock.test"},
-		{"HTTPS", "https://devops.mock.test", "", "devops.mock.test"},
-		{"HTTPS with virtual directory", "https://other.mock.test:8443", "/tfs", "other.mock.test"},
+		{"HTTP", "http://devops.mock.test:8080", "", "devops.mock.test:2222"},
+		{"HTTPS", "https://devops.mock.test", "", "devops.mock.test:2222"},
+		{"HTTPS with virtual directory", "https://other.mock.test:8443", "/tfs", "other.mock.test:2222"},
+		{"published HTTP", "http://127.0.0.1:8081", "", "127.0.0.1:2223"},
+		{"published HTTPS", "https://devops.mock.test:8444", "", "devops.mock.test:2223"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			base := tc.origin + tc.virtualDir + "/DefaultCollection"
@@ -39,7 +41,7 @@ func TestCollectionURLs(t *testing.T) {
 			if got, want := links.gitWeb(mockRepo), base+"/Mock%20Project/_git/web%20app"; got != want {
 				t.Errorf("clone URL = %q; want %q", got, want)
 			}
-			if got, want := links.gitSSH(mockRepo), "ssh://"+tc.sshHost+":2222"+tc.virtualDir+"/DefaultCollection/Mock%20Project/_git/web%20app"; got != want {
+			if got, want := links.gitSSH(mockRepo), "ssh://"+tc.sshAddr+tc.virtualDir+"/DefaultCollection/Mock%20Project/_git/web%20app"; got != want {
 				t.Errorf("SSH clone URL = %q; want %q", got, want)
 			} else if s.repoForSSHPath(tc.virtualDir+"/DefaultCollection/Mock%20Project/_git/web%20app") != mockRepo {
 				t.Error("SSH lookup did not find the repository")

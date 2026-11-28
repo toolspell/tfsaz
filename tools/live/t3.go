@@ -177,7 +177,7 @@ func (e *env) vmT3Install(name string) error {
 	if err != nil {
 		return err
 	}
-	o, _ := osOfVM(name)
+	o, _ := e.osOfVM(name)
 	tag, local, err := e.ensureT3(o.name)
 	if err != nil {
 		return err
@@ -204,7 +204,7 @@ func (e *env) vmT3Start(name string, port int) error {
 	if err != nil {
 		return err
 	}
-	o, _ := osOfVM(name)
+	o, _ := e.osOfVM(name)
 	tag, err := e.t3Pin()
 	if err != nil {
 		return err

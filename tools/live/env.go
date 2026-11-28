@@ -12,12 +12,12 @@ import (
 	"strings"
 )
 
-// env holds the paths every command uses. bed/.state links to home for
-// VM disks, ISOs, and VM and router keys.
 type env struct {
-	root string // repository root
-	bed  string // live-tests
-	home string // $TFSAZ_LIVE_HOME or ~/.tfsaz-live
+	root     string
+	bed      string
+	home     string
+	instance string
+	network  *bedNetwork
 }
 
 func newEnv() (*env, error) {
@@ -25,7 +25,14 @@ func newEnv() (*env, error) {
 	if err != nil {
 		return nil, errors.New("run from inside the TFSaz repository")
 	}
-	root := strings.TrimSpace(string(out))
+	root, err := filepath.EvalSymlinks(strings.TrimSuffix(strings.TrimSuffix(string(out), "\n"), "\r"))
+	if err != nil {
+		return nil, err
+	}
+	instance, err := instanceID(root, os.Getenv("TFSAZ_LIVE_INSTANCE"))
+	if err != nil {
+		return nil, err
+	}
 	home := os.Getenv("TFSAZ_LIVE_HOME")
 	if home == "" {
 		userHome, err := os.UserHomeDir()
@@ -37,31 +44,15 @@ func newEnv() (*env, error) {
 	if !filepath.IsAbs(home) {
 		return nil, errors.New("TFSAZ_LIVE_HOME must be an absolute path")
 	}
-	return &env{root: root, bed: filepath.Join(root, "live-tests"), home: home}, nil
+	return &env{root: root, bed: filepath.Join(root, "live-tests"), home: home, instance: instance}, nil
 }
 
 func (e *env) path(parts ...string) string {
 	return filepath.Join(append([]string{e.home}, parts...)...)
 }
 
-// ensureHome creates the state directory and the live-tests/.state link to it.
-func (e *env) ensureHome() error {
-	if err := os.MkdirAll(e.path("router", "peers"), 0o700); err != nil {
-		return err
-	}
-	link := filepath.Join(e.bed, ".state")
-	target, err := os.Readlink(link)
-	switch {
-	case err == nil && target == e.home:
-		return nil
-	case err == nil:
-		if err := os.Remove(link); err != nil {
-			return err
-		}
-	case !errors.Is(err, os.ErrNotExist):
-		return fmt.Errorf("%s exists and is not a link; move it away", link)
-	}
-	return os.Symlink(e.home, link)
+func (e *env) instancePath(parts ...string) string {
+	return e.path(append([]string{"instances", e.instance}, parts...)...)
 }
 
 // requireMac stops commands that need Tart on hosts it does not support.
@@ -102,7 +93,7 @@ func guestOS(name string) (osDef, bool) {
 func lookupOS(name string) (osDef, error) {
 	o, ok := guestOS(name)
 	if !ok {
-		return o, fmt.Errorf("unknown OS %q; use ubuntu, macos or windows", name)
+		return o, unknownOS(name)
 	}
 	if o.macos > 0 {
 		// Virtualization.framework runs no macOS guest newer than its host.
@@ -115,31 +106,41 @@ func lookupOS(name string) (osDef, error) {
 	return o, nil
 }
 
+func unknownOS(name string) error {
+	return fmt.Errorf("unknown OS %q; use ubuntu, macos or windows", name)
+}
+
 const prefix = "tfsaz-"
 
 func (o osDef) base() string  { return prefix + o.name + "-base" }
 func (o osDef) build() string { return prefix + o.name + "-build" }
 
-// isClone reports whether a VM name is a clone of o's base: its suffix is
-// one vm up accepts, so no clone name leads out of the runs directory.
 func (o osDef) isClone(name string) bool {
-	suffix, ok := strings.CutPrefix(name, prefix+o.name+"-")
-	return ok && validSuffix(suffix)
+	if _, cloneOS, ok := parseCloneName(name); ok {
+		return cloneOS.name == o.name
+	}
+	legacy, ok := legacyCloneOS(name)
+	return ok && legacy.name == o.name
 }
 
-// osOfVM returns the OS of a clone name such as tfsaz-ubuntu-a1b2c3.
-func osOfVM(name string) (osDef, bool) {
-	for _, o := range oses {
-		if o.isClone(name) {
-			return o, true
-		}
+func legacyCloneOS(name string) (osDef, bool) {
+	rest, ok := strings.CutPrefix(name, prefix)
+	if !ok {
+		return osDef{}, false
 	}
-	return osDef{}, false
+	osName, suffix, _ := strings.Cut(rest, "-")
+	o, ok := guestOS(osName)
+	return o, ok && validSuffix(suffix)
+}
+
+func (e *env) osOfVM(name string) (osDef, bool) {
+	id, o, ok := parseCloneName(name)
+	return o, ok && id == e.instance
 }
 
 // cmd runs a command with output passed through, for long steps whose
 // progress the caller should see.
-func cmd(dir string, extraEnv []string, name string, args ...string) error {
+var cmd = func(dir string, extraEnv []string, name string, args ...string) error {
 	c := exec.Command(name, args...)
 	c.Dir = dir
 	c.Env = append(os.Environ(), extraEnv...)
@@ -148,7 +149,7 @@ func cmd(dir string, extraEnv []string, name string, args ...string) error {
 }
 
 // output runs a command and returns its trimmed stdout; errors carry stderr.
-func output(extraEnv []string, name string, args ...string) (string, error) {
+var output = func(extraEnv []string, name string, args ...string) (string, error) {
 	c := exec.Command(name, args...)
 	c.Env = append(os.Environ(), extraEnv...)
 	var stdout, stderr bytes.Buffer

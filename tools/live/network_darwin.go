@@ -1,0 +1,62 @@
+package main
+
+import (
+	"fmt"
+	"net"
+	"net/netip"
+
+	"golang.org/x/net/route"
+	"golang.org/x/sys/unix"
+)
+
+func hostRoutes(interfaces []net.Interface) ([]existingNetwork, error) {
+	rib, err := route.FetchRIB(unix.AF_INET, route.RIBTypeRoute, 0)
+	if err != nil {
+		return nil, err
+	}
+	messages, err := route.ParseRIB(route.RIBTypeRoute, rib)
+	if err != nil {
+		return nil, err
+	}
+	return parseRouteMessages(messages, interfaces)
+}
+
+func parseRouteMessages(messages []route.Message, interfaces []net.Interface) ([]existingNetwork, error) {
+	names := make(map[int]string, len(interfaces))
+	for _, iface := range interfaces {
+		names[iface.Index] = iface.Name
+	}
+	var routes []existingNetwork
+	for _, msg := range messages {
+		m, ok := msg.(*route.RouteMessage)
+		if !ok || len(m.Addrs) <= unix.RTAX_NETMASK {
+			continue
+		}
+		dst, ok := m.Addrs[unix.RTAX_DST].(*route.Inet4Addr)
+		if !ok {
+			continue
+		}
+		bits := 32
+		if mask, ok := m.Addrs[unix.RTAX_NETMASK].(*route.Inet4Addr); ok {
+			var size int
+			bits, size = net.IPMask(mask.IP[:]).Size()
+			if size != 32 {
+				return nil, fmt.Errorf("invalid route mask for %s", netip.AddrFrom4(dst.IP))
+			}
+		} else if m.Flags&unix.RTF_HOST == 0 {
+			if dst.IP != [4]byte{} {
+				return nil, fmt.Errorf("missing route mask for %s", netip.AddrFrom4(dst.IP))
+			}
+			continue
+		}
+		if bits >= 8 {
+			p := netip.PrefixFrom(netip.AddrFrom4(dst.IP), bits).Masked()
+			n := existingNetwork{prefix: p, source: "host route"}
+			if m.Flags&unix.RTF_GATEWAY == 0 {
+				n.interfaceName = names[m.Index]
+			}
+			routes = append(routes, n)
+		}
+	}
+	return routes, nil
+}

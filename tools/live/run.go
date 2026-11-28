@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -34,7 +35,7 @@ func (e *env) vmRun(name string, command []string, asJSON, gui bool, timeout tim
 	if err != nil {
 		return err
 	}
-	o, _ := osOfVM(name)
+	o, _ := e.osOfVM(name)
 	script := strings.Join(command, " ")
 	login := info.login()
 	var remote string
@@ -218,13 +219,18 @@ func (e *env) vmForward(name, localPort, remotePort string) error {
 	if err != nil {
 		return err
 	}
-	login := info.login()
-	sshArgs := append([]string{"-N", "-o", "ExitOnForwardFailure=yes",
-		"-L", "127.0.0.1:" + localPort + ":127.0.0.1:" + remotePort}, login.args()...)
+	ssh, err := exec.LookPath("ssh")
+	if err != nil {
+		return err
+	}
 	step("forwarding 127.0.0.1:%s to %s port %s until stopped", localPort, name, remotePort)
-	c := exec.Command("ssh", sshArgs...)
-	c.Stdout, c.Stderr = os.Stdout, os.Stderr
-	return c.Run()
+	return syscall.Exec(ssh, info.login().forwardArgs(ssh, localPort, remotePort), os.Environ())
+}
+
+func (t sshTarget) forwardArgs(ssh, localPort, remotePort string) []string {
+	return append([]string{ssh, "-N", "-n", "-o", "ExitOnForwardFailure=yes",
+		"-o", "ForkAfterAuthentication=no", "-S", "none",
+		"-L", "127.0.0.1:" + localPort + ":127.0.0.1:" + remotePort}, t.args()...)
 }
 
 // vmVNC prints the VNC address of a clone's screen, served by the
@@ -233,7 +239,7 @@ func (e *env) vmVNC(name string) error {
 	if _, err := e.loadVM(name); err != nil {
 		return err
 	}
-	o, _ := osOfVM(name)
+	o, _ := e.osOfVM(name)
 	address, err := e.vms(o).vnc(name, filepath.Join(e.runDir(name), o.provider+".log"))
 	if err == nil {
 		fmt.Println(address)
@@ -250,6 +256,6 @@ func (e *env) vmScreenshot(name, file string) error {
 	if _, err := e.loadVM(name); err != nil {
 		return err
 	}
-	o, _ := osOfVM(name)
+	o, _ := e.osOfVM(name)
 	return e.vms(o).screenshot(name, filepath.Join(e.runDir(name), o.provider+".log"), file)
 }
