@@ -68,7 +68,7 @@ macOS, Linux and Windows are fully supported at feature parity. Platform-specifi
 2. **Writing the real keyring.** `init`, `devops login` and `profile logout` write or delete OS keyring entries (`tfsaz` or `tfsaz/v2/<hash>`). Tests inject the in-memory store through `app{store: ...}`; never use `systemStore` in a test. Only `TestStockT3Adapter` touches the real keyring, with a random entry it removes. Trap: a test that runs a built TFSaz binary cannot inject a store; build it with `-tags tfsaztest` (as `managerTestRepo` in `setup_manager_test.go` does), or it uses the system keyring.
 3. **Running `route setup` or `route restore` on this machine.** They edit the system hosts file (no override exists), trust stores (login keychain, Windows user Root store, NSS databases), launchd LaunchAgents, systemd units with an nftables table via sudo, or a scheduled task, and write `~/.tfsaz/route-recovery`. Tests replace `runRouteSystemCommand` and set a temp `HOME`, `USERPROFILE` and `TFSAZ_CONFIG`. Keep it that way.
 4. **Rewriting real checkouts.** `repo setup` and `repo restore` change `remote.origin.*` and `core.sshCommand` of the target clone and register it. Run them only on throwaway clones in temp directories, with `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM` isolating Git. Never point them at this worktree or the developer's clones.
-5. **Live gates.** `TFSAZ_LIVE_LAUNCHD` (`1` or `443`), `TFSAZ_LIVE_TASK_SCHEDULER` and `TFSAZ_T3_ROOT` change real OS state. Set them only on a disposable test session and only when asked. The live testbed is shared: use it only on the maintainer's instruction.
+5. **Live gates.** `TFSAZ_LIVE_LAUNCHD` (`1` or `443`), `TFSAZ_LIVE_TASK_SCHEDULER` and `TFSAZ_T3_ROOT` change real OS state. Set them only on a disposable test session and only when asked. Use the shared Azure DevOps Server testbed only on the maintainer's instruction.
 6. **Live-test VMs on the wrong host.** `tools/live` starts VMs, containers and networks. Use it only on a Mac the maintainer approved, with one `TFSAZ_LIVE_HOME` for all worktrees; run `go run ./tools/live down` in each when done.
 
 ## Where code lives
@@ -84,7 +84,7 @@ macOS, Linux and Windows are fully supported at feature parity. Platform-specifi
   - `t3_test.go`: the stock T3 adapter test. `testdata/`: fixtures.
 - `.github/workflows/test.yml`: [CI](docs/operations/development.md#ci).
 - `tools/dev`: the `check`, `ready`, `staged`, `setup` and `ci-local` (act) commands, plus `ci-changes` and `ci-checks` for CI. `tools/<tool>/go.mod`: one module per pinned dev tool. `.githooks/pre-commit`: the commit hook. `tools/syncrepos`: syncs the reference checkouts.
-- `live-tests/`, `tools/live`: live-test VMs. To run them, use skill `live-tests`; before you change them, read [Live tests](docs/operations/live-tests.md).
+- `live-tests/`, `tools/live`: live-test VMs and their local test bed. Big picture: [overview](docs/operations/live-tests-overview.md). To run them, use skill `live-tests`; before you change them, read [internals](docs/operations/live-tests-internals.md).
 - `.agents/skills/`: agent skills, linked as `.claude/skills`.
 - `.reference-apps/<name>`: gitignored, pinned sparse checkouts of T3 Code, Azure CLI, the Azure DevOps CLI extension and knack, synced with `go run ./tools/syncrepos [--repo <name>]`. Read reference code only there, never from another checkout or installation on this machine, which may be a fork or at another revision. Never edit or import from it.
 

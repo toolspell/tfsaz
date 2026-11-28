@@ -43,7 +43,7 @@ Every test runs against temporary state, never the developer's configuration, ke
 
 - Strip identities, internal URLs and secrets from fixtures in `internal/az/testdata/` and from test code.
 - Keep offline fixture results separate from live results. Dated records go to [`docs/verification/`](../verification/), one file per kind.
-- Live tests stay opt-in. A test that changes real OS state or needs a real client skips unless its variable is set (`TFSAZ_LIVE_LAUNCHD`, `TFSAZ_LIVE_TASK_SCHEDULER`, `TFSAZ_T3_ROOT`), and its variable is documented in [Development](../operations/development.md#opt-in-live-system-tests).
+- Live tests stay opt-in. A test that changes real OS state, needs a real client or needs the live-test VMs skips unless its variable is set, and the variable is listed in [Development](../operations/development.md#opt-in-live-system-tests).
 - Write automated tests that need a whole machine with the [Go live-test harness](../operations/live-tests.md#write-a-live-test) and run them in disposable VMs against the Azure DevOps Server mock.
-- When a live test needs a PAT, request it through T3's secret input. Use a disposable credential for revocation tests.
+- When a live test needs a PAT, request it through T3's secret input. Use a disposable credential for revocation tests. The one exception is the live-test mock: its PAT (`MOCK_PAT`) and the keys and certificates it generates are public test values, not credentials.
 - After a live or manual run, return the machine or session to a clean state as soon as the state is no longer needed ([AGENTS.md rule](../../AGENTS.md#reversible-and-verifiable-system-changes)). [Return to a clean state](../operations/development.md#return-to-a-clean-state) lists the undo and check per kind of change.

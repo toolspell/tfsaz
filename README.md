@@ -38,7 +38,7 @@ Early alpha. Version 0.1.0, no release and no prebuilt binaries yet: build it fr
 | --- | --- |
 | Server | On-premises Azure DevOps Server only. Live-tested against Azure DevOps Server 2022.2; earlier versions are unverified. Azure DevOps Services (cloud) sign-in is out of scope. |
 | Authentication | PAT only, stored in the OS keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service). |
-| T3 Code | The `az` calls follow T3's stock Azure DevOps adapter at revision `c478fde9fe`; the adapter is unchanged up to `v0.1.13-nightly.20261125.5258`. Live tests used T3 Code `v0.1.12-nightly.20261125.5230`. Other T3 versions may call `az` differently. |
+| T3 Code | The `az` calls follow T3's stock Azure DevOps adapter at revision `c478fde9fe`; the adapter is unchanged up to `v0.1.13-nightly.20261125.5258`. Live tests against the real server used T3 Code `v0.1.12-nightly.20261125.5230`; the live-test VMs install the pinned tag. Other T3 versions may call `az` differently. |
 | Operating systems | macOS, Windows and Linux. Tested on macOS ARM64, Windows 11 x64 and Ubuntu 26.04 ARM64. |
 | Scope of `az` | Only the subset T3 uses, plus generic REST calls. No `az login` for Azure cloud and no extension installation. Keep Microsoft's Azure CLI in a separate directory if you also need it. |
 | Install location | TFSaz runs on the machine that runs the T3 backend, which is the T3 server for a remote web client. |
