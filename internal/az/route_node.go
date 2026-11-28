@@ -29,6 +29,11 @@ const socket = tls.connect({
   rejectUnauthorized: true,
   checkServerIdentity: (_, certificate) => tls.checkServerIdentity(servername || host, certificate),
 });
+const deadline = setTimeout(() => {
+  process.exitCode = 13;
+  socket.destroy();
+}, 10000);
+socket.once('close', () => clearTimeout(deadline));
 socket.once('secureConnect', () => {
   process.exitCode = socket.authorized ? 0 : 10;
   if (socket.authorized) process.stdout.write('verified\n');
@@ -74,7 +79,7 @@ func verifyRouteNode(ctx context.Context, cfg config, out io.Writer) error {
 }
 
 func checkNodeTLS(ctx context.Context, node, host, port string) error {
-	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	output, err := exec.CommandContext(probeCtx, node, "-e", routeNodeProbe, "--", host, port).Output()
 	if err == nil {
@@ -87,7 +92,7 @@ func checkNodeTLS(ctx context.Context, node, host, port string) error {
 		return ctx.Err()
 	}
 	if probeCtx.Err() != nil {
-		return errors.New("Node TLS connection timed out; check network reachability to the collection")
+		return errors.New("Node did not finish the TLS check within 30 seconds; check the runtime and its startup options")
 	}
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
@@ -98,6 +103,8 @@ func checkNodeTLS(ctx context.Context, node, host, port string) error {
 			return errors.New("Node could not connect to the collection; check DNS and network reachability")
 		case 12:
 			return errors.New("Node could not complete the TLS handshake; check the collection's HTTPS port and TLS settings")
+		case 13:
+			return errors.New("Node TLS connection timed out; check network reachability to the collection")
 		}
 	}
 	return errors.New("could not run the Node TLS check; check node on PATH and its startup options")
