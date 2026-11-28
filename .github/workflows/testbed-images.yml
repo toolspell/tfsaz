@@ -1,0 +1,71 @@
+# Builds the live-test bed's mock and router images on pull requests and in the merge queue, without
+# pushing, so a change that breaks an image fails before main publishes it. An image whose input key
+# (go run ./tools/live image key) is unchanged since the change base is skipped. The one job,
+# Test bed images, also reports success when it skips, so a ruleset can require it.
+# docs/operations/development.md#github-workflows describes it.
+name: Test bed images
+
+on:
+  pull_request:
+  merge_group:
+
+permissions: {}
+
+concurrency:
+  group: testbed-images-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Test bed images
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      # The change base as in CI: a pull request's merge commit has its base as the first parent; a
+      # merge queue group compares against the base it was built on.
+      BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.merge_group.base_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A merge queue group's base can be several commits back.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          # tools/live uses only the standard library.
+          cache: false
+      - run: go build -o "$RUNNER_TEMP/live" ./tools/live
+      # The head's tool computes both keys, so a change to the key itself also counts as a change.
+      # A base that has no key (for example before the test bed images existed) builds.
+      - name: Build changed images
+        run: |
+          live="$RUNNER_TEMP/live"
+          base_tree="$RUNNER_TEMP/base"
+          if ! git worktree add --quiet --detach "$base_tree" "$BASE"; then
+            echo "::notice::no base tree for $BASE, building every image"
+            base_tree=""
+          fi
+          for image in mock router; do
+            head_key=$("$live" image key "$image")
+            base_key=""
+            if [ -n "$base_tree" ]; then
+              base_key=$(cd "$base_tree" && "$live" image key "$image") || base_key=""
+            fi
+            if [ "$base_key" = "$head_key" ]; then
+              echo "$image: input key $head_key unchanged, skipped" | tee -a "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            context="$RUNNER_TEMP/context-$image"
+            key=$("$live" image context "$image" "$context")
+            tag="tfsaz-live-ci/$image:in-$key"
+            docker build --platform linux/arm64 --build-arg "TFSAZ_LIVE_INPUTS=$key" --tag "$tag" "$context"
+            label=$(docker image inspect --format '{{index .Config.Labels "org.toolspell.tfsaz-live.key"}}' "$tag")
+            if [ "$label" != "$key" ]; then
+              echo "::error::$image has key label '$label', want $key"
+              exit 1
+            fi
+            echo "$image: built for input key $key (base ${base_key:-none})" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
