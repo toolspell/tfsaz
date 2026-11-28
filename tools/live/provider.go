@@ -17,7 +17,7 @@ type vmEntry struct {
 // QEMU for Windows.
 type provider interface {
 	list() ([]vmEntry, error)
-	clone(base, name string) error
+	clone(o osDef, name string) error
 	start(name, logFile string) error
 	// address is where SSH reaches the VM from the host; port 0 is 22.
 	address(name string, wait time.Duration) (host string, port int, err error)

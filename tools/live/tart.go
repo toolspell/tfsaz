@@ -79,12 +79,18 @@ func (t tart) address(name string, wait time.Duration) (string, int, error) {
 	return ip, 0, err
 }
 
-func (t tart) clone(base, name string) error {
-	if _, err := t.run("clone", base, name); err != nil {
+func (t tart) clone(o osDef, name string) error {
+	if _, err := t.run("clone", o.base(), name); err != nil {
 		return err
 	}
-	_, err := t.run("set", name, "--display", fmt.Sprintf("%dx%dpx", displayWidth, displayHeight))
+	_, err := t.run(tartCloneSettings(o, name)...)
 	return err
+}
+
+func tartCloneSettings(o osDef, name string) []string {
+	return []string{"set", name,
+		"--cpu", strconv.Itoa(cloneCPUs), "--memory", strconv.Itoa(o.cloneMemoryMiB),
+		"--display", fmt.Sprintf("%dx%dpx", displayWidth, displayHeight)}
 }
 
 func (t tart) vnc(_, logFile string) (string, error) {

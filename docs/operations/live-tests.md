@@ -141,6 +141,23 @@ With `vm up OS -name SUFFIX`, the clone is named `tfsaz-OS-SUFFIX`. Use 1 to 20 
 
 Every clone's desktop is 1920x1080. Tart clones get it from `tart set NAME --display 1920x1080px` when `vm up` clones them; GNOME starts at 1280x720 and switches a few seconds after login, so an early screenshot of an Ubuntu clone can be smaller.
 
+### Resources
+
+| Guest | Clone RAM | Clone vCPUs |
+| --- | --- | --- |
+| Ubuntu | 4 GiB | 2 |
+| macOS | 6 GiB | 2 |
+| Windows | 6 GiB | 2 |
+
+`vm up` sets the Tart sizes when it clones the base; QEMU gets its size at every boot. Base builds keep 4 vCPUs and 4 GiB (Ubuntu) or 8 GiB (macOS, Windows). Guest memory is fixed: Tart attaches no balloon, and QEMU on macOS does not reliably return memory a balloon frees, so memory a guest touched stays charged to the host until the VM stops. Stop clones you do not use.
+
+To measure a clone, find its process (`qemu-system-aarch64` for Windows, `com.apple.Virtualization.VirtualMachine` for Tart) and sample it at idle and under load:
+
+```sh
+ps -axo pid,rss,pcpu,comm | grep -E 'Virtualization.VirtualMachine|qemu-system-aarch64'
+top -l 10 -s 1 -pid PID -stats pid,command,cpu,mem,rsize
+```
+
 ## Commands in a clone
 
 | Command | Effect |

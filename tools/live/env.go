@@ -74,16 +74,19 @@ func requireMac() error {
 
 // osDef describes one guest OS; its base definition is in live-tests/vms/<name>.
 type osDef struct {
-	name     string
-	provider string // tart or qemu
-	user     string
-	guest    guest
-	macos    int // for a macOS guest: its major version, which the host needs at least
+	name           string
+	provider       string // tart or qemu
+	user           string
+	guest          guest
+	macos          int // for a macOS guest: its major version, which the host needs at least
+	cloneMemoryMiB int // applied by Tart when it clones the base
 }
 
+const cloneCPUs = 2
+
 var oses = []osDef{
-	{name: "ubuntu", provider: "tart", user: "tester", guest: ubuntuGuest},
-	{name: "macos", provider: "tart", user: "admin", guest: macosGuest, macos: 27},
+	{name: "ubuntu", provider: "tart", user: "tester", guest: ubuntuGuest, cloneMemoryMiB: 4096},
+	{name: "macos", provider: "tart", user: "admin", guest: macosGuest, macos: 27, cloneMemoryMiB: 6144},
 	{name: "windows", provider: "qemu", user: "tester", guest: windowsGuest},
 }
 
