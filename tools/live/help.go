@@ -48,6 +48,8 @@ var liveCommands = []commandHelp{
 	{"vm t3", "", "<action>", "Install and start T3 Code in a clone."},
 	{"vm t3 install", "NAME", "", "Install T3 Code at the reference pin and print its release tag."},
 	{"vm t3 start", "NAME", "[-port P]", "Start T3 Code in the desktop session. Wait up to a minute for its debugging port to answer, then print the URL in the clone."},
+	{"vm browser", "", "<action>", "Manage browsers in a clone."},
+	{"vm browser start", "NAME BROWSER", "[-port P] [URL]", "Start Chrome or Edge in the desktop session and print its debugging URL in the clone. Use chrome on any guest or edge on Windows."},
 	{"vm stop", "NAME", "[-force]", "Shut down a clone and keep it for later."},
 	{"vm start", "NAME", "", "Boot a stopped clone and print its updated details as JSON."},
 	{"vm down", "NAME", "", "Stop and delete a clone and its router peer. Accepts legacy clone names."},
@@ -94,13 +96,13 @@ func (h commandHelp) printHelp(out io.Writer, flags *flag.FlagSet) {
 
 type liveInvocation struct {
 	commandHelp
-	args, guest           []string
-	asJSON, force, gui    bool
-	install, yes          bool
-	suffix, vm            string
-	localPort, remotePort string
-	port                  int
-	timeout               time.Duration
+	args, guest            []string
+	asJSON, force, gui     bool
+	install, yes           bool
+	suffix, vm, browserURL string
+	localPort, remotePort  string
+	port                   int
+	timeout                time.Duration
 }
 
 func (c *liveInvocation) flagSet() *flag.FlagSet {
@@ -116,8 +118,8 @@ func (c *liveInvocation) flagSet() *flag.FlagSet {
 		flags.StringVar(&c.suffix, "name", "", "Clone suffix in tfsaz-live-ID-OS-SUFFIX. Use 1 to 20 lowercase letters, digits or dashes, starting with a letter or digit. The suffixes base, build and up are reserved. Defaults to six random hex digits.")
 	case "vm stop":
 		flags.BoolVar(&c.force, "force", false, "Stop without shutting down the guest. This can lose unwritten changes.")
-	case "vm t3 start":
-		flags.IntVar(&c.port, "port", 9222, "Chrome debugging port inside the clone, from 1 to 65535.")
+	case "vm t3 start", "vm browser start":
+		flags.IntVar(&c.port, "port", 9222, "Debugging port inside the clone, from 1 to 65535.")
 	case "vm run":
 		flags.BoolVar(&c.asJSON, "json", false, "Print exit code, output and timing as JSON.")
 		flags.DurationVar(&c.timeout, "timeout", 10*time.Minute, "Stop waiting after this duration (for example 30s or 2m). The timeout exit code is 124.")
@@ -160,8 +162,13 @@ func (c *liveInvocation) readArgs(args []string, flags *flag.FlagSet) error {
 	if len(c.args) < len(operands) {
 		return fmt.Errorf("missing %s", operands[len(c.args)])
 	}
-	if flags.NArg() > 0 {
-		return fmt.Errorf("unexpected operand %q", flags.Arg(0))
+	allowed := 0
+	if c.path == "vm browser start" {
+		allowed = 1
+		c.browserURL = flags.Arg(0)
+	}
+	if flags.NArg() > allowed {
+		return fmt.Errorf("unexpected operand %q", flags.Arg(allowed))
 	}
 	if c.path == "vm run" {
 		if !hasGuest {
@@ -205,9 +212,21 @@ func (c *liveInvocation) validate(operands []string) error {
 		if c.suffix != "" && !validSuffix(c.suffix) {
 			return fmt.Errorf("invalid -name suffix %q; use 1 to 20 lowercase letters, digits or dashes starting with a letter or digit, excluding base and build", c.suffix)
 		}
-	case "vm t3 start":
+	case "vm t3 start", "vm browser start":
 		if !validPort(c.port) {
 			return fmt.Errorf("invalid port %d in -port; use 1 to 65535", c.port)
+		}
+		if c.path == "vm browser start" {
+			_, o, _ := parseCloneName(c.args[0])
+			switch c.args[1] {
+			case "chrome":
+			case "edge":
+				if o.name != "windows" {
+					return fmt.Errorf("only Windows clones come with Edge")
+				}
+			default:
+				return fmt.Errorf("unsupported browser %q. Use mock requests to check navigation for this browser", c.args[1])
+			}
 		}
 	case "vm forward":
 		local, remote, pair := strings.Cut(c.args[1], ":")

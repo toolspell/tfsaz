@@ -40,6 +40,7 @@ go run ./tools/live vm screenshot NAME FILE       # PNG of the clone's desktop
 go run ./tools/live vm vnc NAME                   # print a VNC URL for the clone
 go run ./tools/live vm t3 install NAME            # install the T3 Code desktop app of the reference pin
 go run ./tools/live vm t3 start NAME [-port P]    # start it for Playwright; see "Drive T3 with Playwright"
+go run ./tools/live vm browser start NAME chrome|edge [-port P] [URL]
 go run ./tools/live vm list -json
 go run ./tools/live vm stop NAME      # shut it down, keep it for later
 go run ./tools/live vm start NAME     # boot it again; prints its details as JSON
@@ -127,7 +128,7 @@ A base build downloads only what the cache lacks: an ISO matching `iso.json` (`c
 
 `base build ubuntu` checks the ISO, writes the autoinstall config with a new build key to a seed ISO, and runs Packer with the Tart plugin. The installer runs unattended and installs the server system; Packer answers its one autoinstall prompt. `provision.sh` then installs the desktop (`ubuntu-desktop-minimal`) on the booted system, where snapd runs (in the installer, its snaps such as Firefox never finish), logs `tester` in to GNOME at boot, gives `tester` a login keyring without a password, which stays unlocked as after a password login, removes the welcome wizard, turns off screen lock and blanking, and adds `secret-tool` for tests that check Secret Service entries. The last step, `prepare-base.sh`, removes what must differ per clone (SSH host keys, machine ID, interface-specific network config) and turns off Ubuntu's automatic updates, so clones do not run `apt` during tests. The build goes into `tfsaz-ubuntu-build` and replaces `tfsaz-ubuntu-base` only when it succeeded. It takes 15 to 45 minutes, depending on the Ubuntu archive's speed, and 9 GB.
 
-The base has one user, `tester`, with passwordless sudo, no password and no other login than the build key.
+The base has one user, `tester`, with passwordless sudo, no password and no other login than the build key. Firefox stays GNOME's default browser. Chrome comes from Google's apt repository with its signing key scoped to that repository.
 
 ### macOS
 
@@ -135,11 +136,16 @@ The base has one user, `tester`, with passwordless sudo, no password and no othe
 
 The guest needs a host with at least its macOS version, and macOS runs at most two macOS VMs at a time; the tool checks both. A newer macOS comes with a new pin in `image.json` and `base build macos -force`.
 
+Safari stays the default browser. Homebrew installs Chrome. Provisioning verifies Google's code signature before clearing Chrome's first-launch quarantine.
+
 ### Windows
 
 `base build windows` checks Microsoft's Windows 11 ARM64 ISO and the virtio-win ISO, writes `Autounattend.xml` with a new password for `tester` and `setup.ps1` with a new build key to a seed ISO, and runs Packer with the QEMU plugin. QEMU runs the VM with Apple's Hypervisor.framework and UEFI firmware from Homebrew's QEMU. The `virt` machine has no IDE or SATA, so the three ISOs are USB drives, and the disk is NVMe, for which Windows has an inbox driver. The VM has two display adapters: `ramfb`, which Windows' boot manager needs (its linear framebuffer tops out at 1024x768), and a virtio GPU at 1920x1080 for the desktop. Setup runs unattended: it skips the TPM, Secure Boot and online account checks, installs Windows 11 Pro with the generic install key (not activated), and logs `tester` in automatically. At first logon, `setup.ps1` installs the virtio network driver (NetKVM) and the virtio GPU driver (`viogpudo`) from the virtio-win ISO, shows only the GPU's display (Windows would keep `ramfb` at 800x600 as its main display, where new windows open), and installs OpenSSH Server with the build key as the only login. `provision.ps1` installs PowerShell 7 and WireGuard for Windows (each pinned by hash and checked for its publisher's signature) and turns off automatic updates and sleep. `prepare-base.ps1` deletes the SSH host keys, which sshd recreates per clone, makes PowerShell 7 the SSH shell and shuts the VM down. The build takes about 13 minutes and 16 GB.
 
 Windows has no update in place: `base update windows` refuses. A newer Windows comes with a new ISO pin in `iso.json` and `base build windows -force`.
+
+Edge stays the default browser. Provisioning verifies Google's Authenticode signature before installing Chrome from its ARM64 enterprise MSI.
+The `NoNewAppAlert` policy suppresses the app picker when a user opens a link after Chrome is installed.
 
 ### Commands
 
@@ -190,6 +196,7 @@ top -l 10 -s 1 -pid PID -stats pid,command,cpu,mem,rsize
 | `vm vnc NAME` | Prints `vnc://:PASSWORD@127.0.0.1:PORT` for a VNC client or an agent's VNC tool. The hypervisor serves it (Virtualization.framework for Tart, QEMU's own VNC server bound to the virtio GPU for Windows). Loopback only, a new random password per start; nothing runs in the guest for it. |
 | `vm t3 install NAME` | Installs the stock T3 Code desktop app at the tag that `tools/syncrepos` pins for `.reference-apps/t3code`, as its user would, and prints the tag. Clones start without T3, so a test can also cover a machine without it. The arm64 installer comes from T3's GitHub release, is checked against the SHA-512 in the release's electron-builder manifest and is cached in the state directory under `cache/t3/TAG/`. macOS: the app in `/Applications`. Ubuntu: the `.deb` through apt. Windows: the NSIS installer, silent, per user. About 10 seconds on macOS, 30 on Ubuntu and a minute on Windows. |
 | `vm t3 start NAME [-port P]` | Starts the installed T3 in the desktop session of the clone's test user with Chrome's debugging port P (1 to 65535, default 9222) on the clone's loopback. After launch it probes the port for up to a minute and prints its URL once T3 answers. When T3 already runs with that port, it only checks the port; when T3 runs without it, quit T3 first. Another app's debugging port on the same number does not count; pick another port. |
+| `vm browser start NAME BROWSER [-port P] [URL]` | Starts the browser in the test user's desktop session with a temporary profile per browser and port. Use `chrome` on any guest or `edge` on Windows. Opens URL if given, waits for that browser to answer on port P (1 to 65535, default 9222) and prints its loopback URL in the clone. |
 
 On Windows, the first start shows Windows Defender Firewall's prompt for T3, as on a user's machine. It is a system dialog in front of T3, not part of T3's page, so Playwright does not see it; a test that takes screenshots closes it first.
 
@@ -210,6 +217,14 @@ playwright-cli --session NAME detach
 Then stop the forward. A Playwright script attaches the same way, with `chromium.connectOverCDP('http://127.0.0.1:19222')`. Use a free host port per clone. `playwright-cli` keeps its files in `.playwright-cli/` in the current directory, so run it from a temporary directory, not the repository.
 
 T3 checks its update feed and offers a newer release. Do not accept it: tests run the pinned release.
+
+## Drive browsers
+
+Run `vm browser start NAME chrome` (or `edge` on Windows) with a clone name from this instance's `up` output or `vm list`. Follow [Drive T3 with Playwright](#drive-t3-with-playwright) to forward the port and attach from the host. Give apps in the same clone different guest ports when they run together and use a free host port for each forward. Node.js and Playwright run on the host.
+
+To verify a URL opened in the default browser, open a mock URL with `vm run NAME -gui` using `open` on macOS, `xdg-open` on Ubuntu or `Start-Process` on Windows. Check the path and user agent in `mock requests -vm NAME -json`. This also works with Safari and Firefox, which Playwright cannot attach to over CDP.
+
+On a fresh Windows clone, the app picker can appear because Chrome is newly installed. Edge is listed under **Default app**. Choose **Just once** to open the link with Edge.
 
 ## Network
 
