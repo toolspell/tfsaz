@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -241,7 +242,10 @@ func (h *Harness) cleanClone(t *testing.T, name string, created bool) {
 	if h.suite.keep && created {
 		t.Logf("keeping clone %s. Remove it with go run ./tools/live vm down %s", name, name)
 		if _, err := h.suite.run(ctx, 3*time.Minute, "vm", "stop", name); err != nil {
-			t.Error(err)
+			// A guest that no longer answers SSH keeps running after a graceful stop fails.
+			if _, forced := h.suite.run(ctx, time.Minute, "vm", "stop", name, "-force"); forced != nil {
+				t.Error(errors.Join(err, forced))
+			}
 		}
 		return
 	}
