@@ -48,8 +48,8 @@ func TestDeadcodeGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"tools/dev/testdata/deadcode/main.go:9: unmarked"}
+	want := []string{"tools/dev/testdata/deadcode/main.go:9: unmarked", "tools/dev/testdata/deadcode/other/other.go:5: Dead"}
 	if !slices.Equal(dead, want) {
-		t.Errorf("unallowed dead code %q, want %q: the marked function and the marked package pass", dead, want)
+		t.Errorf("unallowed dead code %q, want %q: the marked function and the marked package pass; a marker in an external test package covers nothing", dead, want)
 	}
 }

@@ -109,11 +109,13 @@ func (m markers) allowed(file string, line int) (bool, error) {
 			break
 		}
 	}
-	dir := filepath.Dir(file)
-	if allowed, ok := m.pkgs[dir]; ok {
+	// A directory can also hold an external test package (p_test); only the
+	// function's own package counts.
+	key := filepath.Dir(file) + "\x00" + f.Name.Name
+	if allowed, ok := m.pkgs[key]; ok {
 		return allowed, nil
 	}
-	names, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	names, err := filepath.Glob(filepath.Join(filepath.Dir(file), "*.go"))
 	if err != nil {
 		return false, err
 	}
@@ -123,9 +125,9 @@ func (m markers) allowed(file string, line int) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		allowed = allowed || hasMarker(pf.Doc)
+		allowed = allowed || pf.Name.Name == f.Name.Name && hasMarker(pf.Doc)
 	}
-	m.pkgs[dir] = allowed
+	m.pkgs[key] = allowed
 	return allowed, nil
 }
 
