@@ -54,17 +54,17 @@ flowchart TB
   subgraph inst["Instance tfsaz-live-ID, subnet 172.30.(53+slot).0/24"]
     direction TB
     clients["Clones<br/>Ubuntu, macOS, Windows"]
-    router["Router .2<br/>WireGuard, resolver for the VMs"]
+    router["Router .2<br/>WireGuard; DNS resolver for the VMs,<br/>logs every query"]
     mock["Mock .10<br/>devops.mock.test: REST, Git<br/>llm.mock.test: text generator"]
-    dns["DNS sinkhole .53<br/>mock.test names to the mock,<br/>others NXDOMAIN, logs queries"]
+    dns["DNS sinkhole .53<br/>answers mock.test names"]
     clients -- "WireGuard tunnel" --> router
     router --> mock
-    router --> dns
+    router -- "mock.test names" --> dns
   end
   internet["Internet"]
   host -- "SSH through the hypervisor's NAT" --> clients
   host -- "request journal" --> mock
-  router -- "Docker NAT, for now" --> internet
+  router -- "other names and traffic,<br/>Docker NAT, for now" --> internet
   classDef instance fill:#713f12,stroke:#facc15,color:#fff
   classDef bed fill:#4c1d95,stroke:#a78bfa,color:#fff
   class clients instance
