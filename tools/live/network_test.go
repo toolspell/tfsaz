@@ -10,7 +10,59 @@ import (
 	"testing"
 )
 
-func TestDockerNetworks(t *testing.T) {
+func TestLiveNetworks(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		check func(*testing.T)
+	}{
+		{"overlap", checkNetworkOverlap},
+		{"Docker networks", checkDockerNetworks},
+		{"host routes", checkHostRoutes},
+	} {
+		t.Run(tc.name, tc.check)
+	}
+}
+
+func checkNetworkOverlap(t *testing.T) {
+	subnet := slotNetwork(1).subnet
+	orbBridge := existingNetwork{prefix: subnet, source: "host interface bridge101", interfaceName: "bridge101", interfaceAddress: subnet.Addr()}
+	for _, tc := range []struct {
+		name, prefix, project, device string
+		wantConflict                  bool
+		orbStack                      bool
+	}{
+		{name: "parent route", prefix: "172.30.0.0/16", wantConflict: true},
+		{name: "host address", prefix: "172.30.54.100/32", wantConflict: true},
+		{name: "foreign Docker network", prefix: "172.30.54.0/24", project: "tfsaz-live-other", wantConflict: true},
+		{name: "Docker Desktop without a host bridge", prefix: "172.30.54.0/24", project: "tfsaz-live-first"},
+		{name: "wrong own subnet", prefix: "172.30.54.0/25", project: "tfsaz-live-first", wantConflict: true},
+		{name: "own bridge address", prefix: "172.30.54.1/32", device: "br-own"},
+		{name: "route on another interface", prefix: "172.30.54.1/32", device: "utun0", wantConflict: true},
+		{name: "OrbStack subnet route", prefix: "172.30.54.0/24", device: "bridge101", orbStack: true},
+		{name: "OrbStack neighbor route", prefix: "172.30.54.2/32", device: "bridge101", orbStack: true},
+		{name: "foreign exact route alongside OrbStack", prefix: "172.30.54.0/24", device: "utun0", orbStack: true, wantConflict: true},
+		{name: "foreign narrower route alongside OrbStack", prefix: "172.30.54.128/25", device: "utun0", orbStack: true, wantConflict: true},
+		{name: "foreign route via gateway on OrbStack bridge", prefix: "172.30.54.128/25", orbStack: true, wantConflict: true},
+		{name: "adjacent subnet", prefix: "172.30.55.0/24"},
+		{name: "IPv6", prefix: "fd00::/64"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			networks := []existingNetwork{
+				{prefix: subnet, source: "own Docker network", project: "tfsaz-live-first", interfaceName: "br-own"},
+				{prefix: netip.MustParsePrefix(tc.prefix), source: tc.name, project: tc.project, interfaceName: tc.device},
+			}
+			if tc.orbStack {
+				networks = append(networks, orbBridge)
+			}
+			got := overlappingNetwork(subnet, "tfsaz-live-first", networks)
+			if (got != "") != tc.wantConflict {
+				t.Errorf("overlap = %q; want conflict %t", got, tc.wantConflict)
+			}
+		})
+	}
+}
+
+func checkDockerNetworks(t *testing.T) {
 	for _, tc := range []struct {
 		name, json string
 		want       []existingNetwork
@@ -54,7 +106,60 @@ func TestDockerNetworks(t *testing.T) {
 	}
 }
 
-func TestLiveSlotHostPorts(t *testing.T) {
+func TestLiveSlots(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		check func(*testing.T)
+	}{
+		{"reservations", checkSlotReservations},
+		{"selection", checkSlotSelection},
+	} {
+		t.Run(tc.name, tc.check)
+	}
+}
+
+func checkSlotReservations(t *testing.T) {
+	home := t.TempDir()
+	first := &env{home: home, root: t.TempDir(), instance: "first"}
+	second := &env{home: home, root: t.TempDir(), instance: "second"}
+	conflict := []existingNetwork{{prefix: netip.MustParsePrefix("172.30.53.0/24"), source: "Docker network elsewhere"}}
+	for _, tc := range []struct {
+		name string
+		env  *env
+		want int
+	}{
+		{"skip overlapping slot", first, 1},
+		{"second instance has its own slot", second, 2},
+		{"reuse reservation", &env{home: home, root: first.root, instance: first.instance}, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.env.reserveNetwork(conflict, freeHostPorts); err != nil || *tc.env.network != slotNetwork(tc.want) {
+				t.Fatalf("reservation = %v, %v; want slot %d", tc.env.network, err, tc.want)
+			}
+		})
+	}
+	t.Run("reject a duplicate ID from another worktree", func(t *testing.T) {
+		other := &env{home: home, root: second.root, instance: first.instance}
+		if err := other.loadNetwork(); err == nil || !strings.Contains(err.Error(), first.root) {
+			t.Fatalf("loadNetwork = %v; want ownership error for %s", err, first.root)
+		}
+	})
+	t.Run("reclaim a released slot", func(t *testing.T) {
+		for _, e := range []*env{first, second} {
+			if err := e.releaseNetwork(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := second.reserveNetwork(conflict, freeHostPorts); err != nil || *second.network != slotNetwork(1) {
+			t.Fatalf("reservation = %v, %v; want slot 1", second.network, err)
+		}
+	})
+}
+
+func checkSlotSelection(t *testing.T) {
+	own := existingNetwork{prefix: slotNetwork(0).subnet, source: "Docker network tfsaz-live-first_bed", project: "tfsaz-live-first"}
+	route := existingNetwork{prefix: netip.MustParsePrefix("172.30.0.0/16"), source: "host route"}
+	reserved := slotRegistry{"first": {Slot: 0}}
 	busy := slotNetwork(0).ports
 	probe := func(ports bedPorts) error {
 		if ports == busy {
@@ -69,15 +174,24 @@ func TestLiveSlotHostPorts(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		slots     slotRegistry
+		networks  []existingNetwork
+		probe     func(bedPorts) error
 		want      int
 		wantError string
 	}{
-		{"skip busy slot", nil, 1, ""},
-		{"reserved busy port", slotRegistry{"first": {Slot: 0}}, 0, "lsof -nP -i :51820"},
-		{"all slots reserved", full, 0, "go run ./tools/live prune"},
+		{name: "existing project without reservation", networks: []existingNetwork{own}, wantError: "outside this reservation"},
+		{name: "reserved slot now overlaps a route", slots: reserved, networks: []existingNetwork{own, route}, wantError: "host route"},
+		{name: "all slots overlap a route", networks: []existingNetwork{route}, wantError: "no free live slot"},
+		{name: "skip busy slot", probe: probe, want: 1},
+		{name: "reserved busy port", slots: reserved, probe: probe, wantError: "lsof -nP -i :51820"},
+		{name: "all slots reserved", slots: full, probe: probe, wantError: "go run ./tools/live prune"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := selectSlot(tc.slots, "first", nil, probe)
+			probe := tc.probe
+			if probe == nil {
+				probe = freeHostPorts
+			}
+			got, err := selectSlot(tc.slots, "first", tc.networks, probe)
 			if tc.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
 					t.Errorf("selectSlot = %d, %v; want %q", got, err, tc.wantError)

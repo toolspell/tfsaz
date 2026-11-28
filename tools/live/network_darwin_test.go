@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func TestHostRoutes(t *testing.T) {
+func checkHostRoutes(t *testing.T) {
 	var messages []route.Message
 	for _, s := range []string{"0.0.0.0/0", "0.0.0.0/1", "128.0.0.0/1", "10.0.0.0/8", "172.30.54.1/24", "192.0.2.123/32"} {
 		p := netip.MustParsePrefix(s)

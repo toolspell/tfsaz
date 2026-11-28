@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestHostRoutes(t *testing.T) {
+func checkHostRoutes(t *testing.T) {
 	old := output
 	t.Cleanup(func() { output = old })
 	output = func(_ []string, bin string, args ...string) (string, error) {

@@ -11,7 +11,20 @@ import (
 	"github.com/gofrs/flock"
 )
 
-func TestMacOSBootWaitsForTartWithoutListingDisks(t *testing.T) {
+func TestMacOSBoot(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		check func(*testing.T)
+	}{
+		{"new VNC announcement", checkMacOSBootWaitsForTart},
+		{"startup timeout", checkMacOSBootTimeout},
+		{"lock inherited by Tart", checkMacOSBootLockInheritance},
+	} {
+		t.Run(tc.name, tc.check)
+	}
+}
+
+func checkMacOSBootWaitsForTart(t *testing.T) {
 	e := &env{home: t.TempDir(), instance: "first"}
 	o := oses[1]
 	name := e.cloneName(o, "up")
@@ -52,7 +65,7 @@ func TestMacOSBootWaitsForTartWithoutListingDisks(t *testing.T) {
 	}
 }
 
-func TestMacOSBootTimeoutStopsPendingTartBeforeUnlock(t *testing.T) {
+func checkMacOSBootTimeout(t *testing.T) {
 	e := &env{home: t.TempDir(), instance: "first"}
 	o := oses[1]
 	name := e.cloneName(o, "up")
@@ -115,7 +128,7 @@ func TestMacOSBootTimeoutStopsPendingTartBeforeUnlock(t *testing.T) {
 	}
 }
 
-func TestMacOSBootLockSurvivesLauncherExit(t *testing.T) {
+func checkMacOSBootLockInheritance(t *testing.T) {
 	bin := t.TempDir()
 	if err := os.WriteFile(filepath.Join(bin, "tart"), []byte("#!/bin/sh\nexec /bin/sleep 60\n"), 0o700); err != nil {
 		t.Fatal(err)

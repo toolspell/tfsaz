@@ -245,128 +245,7 @@ func TestInstanceID(t *testing.T) {
 	}
 }
 
-func TestLiveSlots(t *testing.T) {
-	home := t.TempDir()
-	first := &env{home: home, root: t.TempDir(), instance: "first"}
-	second := &env{home: home, root: t.TempDir(), instance: "second"}
-	conflict := []existingNetwork{{prefix: netip.MustParsePrefix("172.30.53.0/24"), source: "Docker network elsewhere"}}
-	for _, tc := range []struct {
-		name string
-		env  *env
-		want int
-	}{
-		{"skip overlapping slot", first, 1},
-		{"second instance has its own slot", second, 2},
-		{"reuse reservation", &env{home: home, root: first.root, instance: first.instance}, 1},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.env.reserveNetwork(conflict, freeHostPorts); err != nil || *tc.env.network != slotNetwork(tc.want) {
-				t.Fatalf("reservation = %v, %v; want slot %d", tc.env.network, err, tc.want)
-			}
-		})
-	}
-	t.Run("reject a duplicate ID from another worktree", func(t *testing.T) {
-		other := &env{home: home, root: second.root, instance: first.instance}
-		if err := other.loadNetwork(); err == nil || !strings.Contains(err.Error(), first.root) {
-			t.Fatalf("loadNetwork = %v; want ownership error for %s", err, first.root)
-		}
-	})
-	t.Run("reclaim a released slot", func(t *testing.T) {
-		for _, e := range []*env{first, second} {
-			if err := e.releaseNetwork(); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := second.reserveNetwork(conflict, freeHostPorts); err != nil || *second.network != slotNetwork(1) {
-			t.Fatalf("reservation = %v, %v; want slot 1", second.network, err)
-		}
-	})
-}
-
-func TestMacOSCapacity(t *testing.T) {
-	mac := oses[1]
-	first := vmEntry{Name: "tfsaz-live-first-macos-up", Running: true}
-	second := vmEntry{Name: "tfsaz-live-second-macos-a1b2c3", State: "running"}
-	for _, tc := range []struct {
-		name string
-		vms  []vmEntry
-		full bool
-	}{
-		{"second slot available", []vmEntry{first, {Name: second.Name, State: "stopped"}}, false},
-		{"two worktrees", []vmEntry{first, second}, true},
-		{"base build counts", []vmEntry{first, {Name: mac.build(), Running: true}}, true},
-		{"legacy VM counts", []vmEntry{second, {Name: "tfsaz-macos-legacy", Running: true}}, true},
-		{"other guest OS", []vmEntry{first, {Name: "tfsaz-live-second-ubuntu-up", Running: true}}, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if err := checkMacOSCapacity(mac, tc.vms); (err != nil) != tc.full {
-				t.Errorf("macOS capacity = %v; want full %t", err, tc.full)
-			}
-		})
-	}
-}
-
-func TestLiveNetworkOverlap(t *testing.T) {
-	subnet := slotNetwork(1).subnet
-	orbBridge := existingNetwork{prefix: subnet, source: "host interface bridge101", interfaceName: "bridge101", interfaceAddress: subnet.Addr()}
-	for _, tc := range []struct {
-		name, prefix, project, device string
-		wantConflict                  bool
-		orbStack                      bool
-	}{
-		{name: "parent route", prefix: "172.30.0.0/16", wantConflict: true},
-		{name: "host address", prefix: "172.30.54.100/32", wantConflict: true},
-		{name: "foreign Docker network", prefix: "172.30.54.0/24", project: "tfsaz-live-other", wantConflict: true},
-		{name: "Docker Desktop without a host bridge", prefix: "172.30.54.0/24", project: "tfsaz-live-first"},
-		{name: "wrong own subnet", prefix: "172.30.54.0/25", project: "tfsaz-live-first", wantConflict: true},
-		{name: "own bridge address", prefix: "172.30.54.1/32", device: "br-own"},
-		{name: "route on another interface", prefix: "172.30.54.1/32", device: "utun0", wantConflict: true},
-		{name: "OrbStack subnet route", prefix: "172.30.54.0/24", device: "bridge101", orbStack: true},
-		{name: "OrbStack neighbor route", prefix: "172.30.54.2/32", device: "bridge101", orbStack: true},
-		{name: "foreign exact route alongside OrbStack", prefix: "172.30.54.0/24", device: "utun0", orbStack: true, wantConflict: true},
-		{name: "foreign narrower route alongside OrbStack", prefix: "172.30.54.128/25", device: "utun0", orbStack: true, wantConflict: true},
-		{name: "foreign route via gateway on OrbStack bridge", prefix: "172.30.54.128/25", orbStack: true, wantConflict: true},
-		{name: "adjacent subnet", prefix: "172.30.55.0/24"},
-		{name: "IPv6", prefix: "fd00::/64"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			networks := []existingNetwork{
-				{prefix: subnet, source: "own Docker network", project: "tfsaz-live-first", interfaceName: "br-own"},
-				{prefix: netip.MustParsePrefix(tc.prefix), source: tc.name, project: tc.project, interfaceName: tc.device},
-			}
-			if tc.orbStack {
-				networks = append(networks, orbBridge)
-			}
-			got := overlappingNetwork(subnet, "tfsaz-live-first", networks)
-			if (got != "") != tc.wantConflict {
-				t.Errorf("overlap = %q; want conflict %t", got, tc.wantConflict)
-			}
-		})
-	}
-}
-
-func TestLiveSlotConflict(t *testing.T) {
-	own := existingNetwork{prefix: slotNetwork(0).subnet, source: "Docker network tfsaz-live-first_bed", project: "tfsaz-live-first"}
-	route := existingNetwork{prefix: netip.MustParsePrefix("172.30.0.0/16"), source: "host route"}
-	slots := slotRegistry{"first": {Slot: 0}}
-	for _, tc := range []struct {
-		name, want string
-		slots      slotRegistry
-		networks   []existingNetwork
-	}{
-		{"existing project without reservation", "outside this reservation", nil, []existingNetwork{own}},
-		{"reserved slot now overlaps a route", "host route", slots, []existingNetwork{own, route}},
-		{"all slots overlap a route", "no free live slot", nil, []existingNetwork{route}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if _, err := selectSlot(tc.slots, "first", tc.networks, freeHostPorts); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("selectSlot = %v; want %q", err, tc.want)
-			}
-		})
-	}
-}
-
-func TestLiveBedConfiguration(t *testing.T) {
+func TestBedNetworkConfig(t *testing.T) {
 	home := t.TempDir()
 	for _, tc := range []struct {
 		instance, subnet, mockIP, routerIP, httpPort, httpsPort, sshPort, journalPort, wireguardPort string
@@ -386,6 +265,9 @@ func TestLiveBedConfiguration(t *testing.T) {
 				t.Fatalf("Corefile = %q, %v; want two records for %s", config, err, tc.mockIP)
 			}
 			ipPrefix := strings.TrimSuffix(tc.subnet, "0/24")
+			t.Run("WireGuard", func(t *testing.T) {
+				checkWGConfig(t, network, ipPrefix+"129", tc.routerIP, tc.wireguardPort)
+			})
 			for key, value := range map[string]string{
 				"CONTAINER_SUBNET": ipPrefix + "0/25", "VM_SUBNET": ipPrefix + "128/25", "GATEWAY": ipPrefix + "1", "DNS_IP": ipPrefix + "53",
 				"PROJECT": "tfsaz-live-" + tc.instance, "STATE": filepath.ToSlash(filepath.Join(home, "instances", tc.instance)),
@@ -402,6 +284,31 @@ func TestLiveBedConfiguration(t *testing.T) {
 			}
 			if got, want := e.cloneName(oses[0], "up"), "tfsaz-live-"+tc.instance+"-ubuntu-up"; got != want {
 				t.Errorf("clone name = %q; want %q", got, want)
+			}
+		})
+	}
+}
+
+func checkWGConfig(t *testing.T, network bedNetwork, address, routerIP, wireguardPort string) {
+	t.Helper()
+	for _, tc := range []struct {
+		name                 string
+		guest                guest
+		key, dns, allowedIPs string
+	}{
+		{"ubuntu", ubuntuGuest, "private-key /etc/wireguard/private.key", "resolvectl dns %i " + routerIP, "0.0.0.0/0"},
+		{"macos", macosGuest, "private-key /etc/wireguard/private.key", "DNS = " + routerIP, "0.0.0.0/0"},
+		{"windows", windowsGuest, "PrivateKey = __PRIVATE_KEY__", "DNS = " + routerIP, "0.0.0.0/1, 128.0.0.0/1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := network.wgConfig(netip.MustParseAddr(address), "ROUTER", "192.168.64.1", tc.guest)
+			for _, want := range []string{
+				tc.key, "Address = " + address + "/32", tc.dns,
+				"PublicKey = ROUTER", "Endpoint = 192.168.64.1:" + wireguardPort, "AllowedIPs = " + tc.allowedIPs + "\n",
+			} {
+				if !strings.Contains(config, want) {
+					t.Errorf("config misses %q:\n%s", want, config)
+				}
 			}
 		})
 	}
@@ -437,33 +344,45 @@ func TestCloneResources(t *testing.T) {
 			}
 		})
 	}
+	t.Run("macOS host capacity", checkMacOSCapacityCases)
 }
 
-func TestWGConfig(t *testing.T) {
+func checkMacOSCapacityCases(t *testing.T) {
+	mac := oses[1]
+	first := vmEntry{Name: "tfsaz-live-first-macos-up", Running: true}
+	second := vmEntry{Name: "tfsaz-live-second-macos-a1b2c3", State: "running"}
 	for _, tc := range []struct {
-		name                 string
-		guest                guest
-		key, dns, allowedIPs string
+		name string
+		vms  []vmEntry
+		full bool
 	}{
-		{"ubuntu", ubuntuGuest, "private-key /etc/wireguard/private.key", "resolvectl dns %i 172.30.54.2", "0.0.0.0/0"},
-		{"macos", macosGuest, "private-key /etc/wireguard/private.key", "DNS = 172.30.54.2", "0.0.0.0/0"},
-		{"windows", windowsGuest, "PrivateKey = __PRIVATE_KEY__", "DNS = 172.30.54.2", "0.0.0.0/1, 128.0.0.0/1"},
+		{"second slot available", []vmEntry{first, {Name: second.Name, State: "stopped"}}, false},
+		{"two worktrees", []vmEntry{first, second}, true},
+		{"base build counts", []vmEntry{first, {Name: mac.build(), Running: true}}, true},
+		{"legacy VM counts", []vmEntry{second, {Name: "tfsaz-macos-legacy", Running: true}}, true},
+		{"other guest OS", []vmEntry{first, {Name: "tfsaz-live-second-ubuntu-up", Running: true}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			config := slotNetwork(1).wgConfig(netip.MustParseAddr("172.30.54.129"), "ROUTER", "192.168.64.1", tc.guest)
-			for _, want := range []string{
-				tc.key, "Address = 172.30.54.129/32", tc.dns,
-				"PublicKey = ROUTER", "Endpoint = 192.168.64.1:51821", "AllowedIPs = " + tc.allowedIPs + "\n",
-			} {
-				if !strings.Contains(config, want) {
-					t.Errorf("config misses %q:\n%s", want, config)
-				}
+			if err := checkMacOSCapacity(mac, tc.vms); (err != nil) != tc.full {
+				t.Errorf("macOS capacity = %v; want full %t", err, tc.full)
 			}
 		})
 	}
 }
 
-func TestPeersSkipsStagingFiles(t *testing.T) {
+func TestRouterPeers(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		check func(*testing.T)
+	}{
+		{"ignore staging files", checkPeerStagingFiles},
+		{"remove peer", checkRemovePeer},
+	} {
+		t.Run(tc.name, tc.check)
+	}
+}
+
+func checkPeerStagingFiles(t *testing.T) {
 	e := &env{home: t.TempDir(), instance: "first"}
 	dir := e.instancePath("router", "peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -480,6 +399,60 @@ func TestPeersSkipsStagingFiles(t *testing.T) {
 	peers, err := e.peers()
 	if err != nil || len(peers) != 1 || peers["tfsaz-live-first-ubuntu-a"].String() != "172.30.53.129" {
 		t.Fatalf("peers = %v, %v; want only tfsaz-live-first-ubuntu-a", peers, err)
+	}
+}
+
+func checkRemovePeer(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		psOut   string
+		psErr   error
+		wantCmd bool
+	}{
+		{name: "running router", psOut: "router-id", wantCmd: true},
+		{name: "stopped router"},
+		{name: "Docker stopped", psErr: errors.New("Docker engine stopped")},
+		{name: "Docker stopped with partial output", psOut: "router-id", psErr: errors.New("Docker engine stopped")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			network := slotNetwork(0)
+			e := &env{home: t.TempDir(), instance: "first", network: &network}
+			name := e.cloneName(oses[0], "abc123")
+			peer := e.instancePath("router", "peers", name)
+			putLiveFile(t, peer)
+			warnings := captureLiveStderr(t)
+			oldOutput, oldCmd := output, cmd
+			t.Cleanup(func() { output, cmd = oldOutput, oldCmd })
+			queries, updates := 0, 0
+			output = func(_ []string, bin string, args ...string) (string, error) {
+				if bin != "docker" || !slices.Equal(args, e.composeArgs([]string{"ps", "--status", "running", "-q", "router"})) {
+					t.Fatalf("unexpected command: %s %q", bin, args)
+				}
+				queries++
+				return tc.psOut, tc.psErr
+			}
+			cmd = func(_ string, _ []string, bin string, args ...string) error {
+				if bin != "docker" || !slices.Equal(args, e.composeArgs([]string{"exec", "-T", "router", "peer", "remove", name})) {
+					t.Fatalf("unexpected command: %s %q", bin, args)
+				}
+				updates++
+				return os.Remove(peer)
+			}
+			for range 2 {
+				if err := e.removePeer(name); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := os.Stat(peer); !os.IsNotExist(err) {
+				t.Errorf("peer file remained: %v", err)
+			}
+			if queries != 1 || (updates == 1) != tc.wantCmd {
+				t.Errorf("router queried %d times, updated %d times", queries, updates)
+			}
+			if got := strings.Contains(readLiveFile(t, warnings), "the router was not updated"); got != (tc.psErr != nil) {
+				t.Errorf("unexpected warning: %s", readLiveFile(t, warnings))
+			}
+		})
 	}
 }
 
@@ -569,7 +542,19 @@ func TestMockRequestsVMFilter(t *testing.T) {
 	}
 }
 
-func TestSSHForwardArgs(t *testing.T) {
+func TestSSHTarget(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		check func(*testing.T)
+	}{
+		{"forward arguments", checkSSHForwardArgs},
+		{"sensitive error", checkSensitiveSSHError},
+	} {
+		t.Run(tc.name, tc.check)
+	}
+}
+
+func checkSSHForwardArgs(t *testing.T) {
 	const ssh = "/usr/bin/ssh"
 	for _, tc := range []struct {
 		name string
@@ -598,7 +583,7 @@ func TestSSHForwardArgs(t *testing.T) {
 	}
 }
 
-func TestSensitiveSSHError(t *testing.T) {
+func checkSensitiveSSHError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake SSH executable uses a sh script")
 	}
@@ -778,7 +763,19 @@ func fakeVNCServer(conn net.Conn, frames [][]byte) error {
 	return err
 }
 
-func TestTartVNC(t *testing.T) {
+func TestTartStartupLog(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		check func(*testing.T)
+	}{
+		{"VNC address and password", checkTartVNC},
+		{"archive on boot failure", checkFailedVMUpLogs},
+	} {
+		t.Run(tc.name, tc.check)
+	}
+}
+
+func checkTartVNC(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "tart.log")
 	content := "VNC server is running at vnc://:old@127.0.0.1:5000\nguest has stopped the virtual machine\n" +
 		"VNC server is running at vnc://:new-pw@127.0.0.1:5001\n"
@@ -798,6 +795,72 @@ func TestTartVNC(t *testing.T) {
 	var parseErr *neturl.Error
 	if !errors.As(err, &parseErr) || !strings.Contains(err.Error(), log) || strings.Contains(err.Error(), value) {
 		t.Fatalf("got %v, want the log path and the wrapped parser error without the password", err)
+	}
+}
+
+func checkFailedVMUpLogs(t *testing.T) {
+	for _, archiveOK := range []bool{true, false} {
+		name := "archive available"
+		if !archiveOK {
+			name = "archive blocked"
+		}
+		t.Run(name, func(t *testing.T) { checkFailedVMUpCleanup(t, archiveOK) })
+	}
+}
+
+func checkFailedVMUpCleanup(t *testing.T, archiveOK bool) {
+	t.Helper()
+	e := &env{home: t.TempDir(), instance: "first"}
+	o := oses[1]
+	name := e.cloneName(o, "up")
+	logFile := filepath.Join(e.runDir(name), "tart.log")
+	putLiveFile(t, filepath.Join(e.runDir(name), "id_ed25519"))
+	putLiveFile(t, filepath.Join(e.tart().home, "test"))
+	oldOutput := output
+	t.Cleanup(func() { output = oldOutput })
+	deleted := false
+	output = func(_ []string, bin string, args ...string) (string, error) {
+		if bin != "tart" {
+			t.Fatalf("unexpected command: %s %q", bin, args)
+		}
+		switch strings.Join(args, " ") {
+		case "list --source local --format json":
+			return `[{"Name":"` + name + `","State":"stopped"}]`, nil
+		case "stop " + name + " --timeout 30":
+			return "", nil
+		case "delete " + name:
+			deleted = true
+			return "", nil
+		}
+		t.Fatalf("unexpected Tart command: %q", args)
+		return "", nil
+	}
+	const body = "old line\n2\n3\n4\n5\nVNC server is running at vnc://:secret@127.0.0.1:5900\nVM failed to boot\n"
+	if err := os.WriteFile(logFile, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cause := errors.New("VM did not start")
+	kept := e.instancePath("failed-starts", name+".log")
+	if !archiveOK {
+		putLiveFile(t, filepath.Dir(kept))
+	}
+	err := e.cleanupFailedVM(o, name, cause)
+	if archiveOK {
+		if got := readLiveFile(t, kept); got != body || !strings.Contains(err.Error(), kept) {
+			t.Errorf("kept log = %q; startup error = %v", got, err)
+		}
+	} else if !strings.Contains(err.Error(), "save startup log") {
+		t.Errorf("archive error missing from %v", err)
+	}
+	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "VM failed to boot") ||
+		strings.Contains(err.Error(), "old line") || strings.Contains(err.Error(), "secret") {
+		t.Errorf("startup error = %v", err)
+	}
+	if _, err := os.Stat(e.runDir(name)); !os.IsNotExist(err) {
+		t.Errorf("failed clone's run directory remains: %v", err)
+	}
+	if !deleted {
+		t.Error("failed clone was not deleted")
 	}
 }
 
