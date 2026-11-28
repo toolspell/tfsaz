@@ -302,3 +302,5 @@ func resolveHelp(args []string) (commandHelp, []string, bool, error) {
 }
 
 func isHelpFlag(arg string) bool { return arg == "-h" || arg == "--help" }
+
+// FAST A3 verification
