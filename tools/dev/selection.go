@@ -127,7 +127,8 @@ func pkgPattern(dir string) string {
 }
 
 // nonCode reports files no test, Go gate or mock check reads: the docs, agent
-// and review bot files, templates and repository settings. The root package's
+// and review bot files, templates and repository settings, and the actionlint
+// config, which only actionlint reads and Checks runs it on every change. The root package's
 // repo checks read them, and Checks runs those on every change. Markdown under
 // testdata/ is a fixture.
 func nonCode(f string) bool {
@@ -140,7 +141,7 @@ func nonCode(f string) bool {
 		}
 	}
 	switch f {
-	case ".claude", ".coderabbit.config.ts", ".github/pull_request_template.md", ".github/labels.json", ".github/dependabot.yml", ".gitleaks.toml":
+	case ".claude", ".coderabbit.config.ts", ".github/pull_request_template.md", ".github/labels.json", ".github/dependabot.yml", ".github/actionlint.yaml", ".gitleaks.toml":
 		return true
 	}
 	return strings.HasSuffix(f, ".md")

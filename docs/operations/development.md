@@ -154,7 +154,7 @@ The workflow also passes the base to `ci-checks`, which ignores it: every gate t
 
 | Changed paths | Test matrix packages | Windows shards | Mock |
 | --- | --- | --- | --- |
-| Non-code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the review bot files `.macroscope/` and `.coderabbit.config.ts`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml` | skipped | none | skipped |
+| Non-code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the review bot files `.macroscope/` and `.coderabbit.config.ts`, the issue and PR templates, `labels.json`, `dependabot.yml`, `actionlint.yaml` (Checks runs actionlint on every change), `.gitleaks.toml` | skipped | none | skipped |
 | `.golangci.yml`, the tool modules `tools/<tool>/` | skipped | none | skipped |
 | `internal/**`, root `*.go`, `go.sum` | `./...` | 3 | skipped |
 | `go.mod` | `./...` | 3 | runs: its `go` line is the Go version every job sets up |

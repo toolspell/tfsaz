@@ -37,7 +37,7 @@ const contractRows = 9
 // selectionCases has one case per contract row, in the contract's order,
 // then the cases for every path class and union.
 var selectionCases = []selectionCase{
-	{"non-code", []string{"README.md", "docs/user/install.md", ".agents/context-budget.json", ".github/dependabot.yml"}, nil, 0, false, false},
+	{"non-code", []string{"README.md", "docs/user/install.md", ".agents/context-budget.json", ".github/dependabot.yml", ".github/actionlint.yaml"}, nil, 0, false, false},
 	{"lint config and tool pins", []string{".golangci.yml", "tools/golangci-lint/go.sum"}, nil, 0, true, false},
 	{"root module code", []string{"internal/az/cli.go"}, all, 3, true, false},
 	{"CI tooling", []string{"tools/dev/ci.go"}, all, 3, true, true},
