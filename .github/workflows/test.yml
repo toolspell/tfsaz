@@ -88,8 +88,9 @@ jobs:
           key: golangci-lint-${{ steps.go.outputs.go-version }}-${{ hashFiles('.golangci.yml', 'go.sum', 'tools/golangci-lint/go.sum') }}
           restore-keys: golangci-lint-${{ steps.go.outputs.go-version }}-
       # vet, golangci-lint, govulncheck and deadcode run once per GOOS (darwin, linux, windows) in
-      # the root module; the mock job covers the live-test mock's module.
-      - run: go run ./tools/dev ci-checks
+      # the root module when a Go input changed since BASE; the mock job covers the live-test mock's
+      # module. A push to main runs govulncheck regardless.
+      - run: go run ./tools/dev ci-checks -base "$BASE"
       - if: env.SAVE_CACHE == 'true' && steps.go-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
