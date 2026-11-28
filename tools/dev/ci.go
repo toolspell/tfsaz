@@ -63,34 +63,18 @@ func osVersions(base string) fileVersions {
 }
 
 // gitVersions reads files at base and at HEAD from the clone. A file in a
-// directory whose Go files embed files on either side is test data there, so
-// it reads as an error and selects every OS.
+// directory where, on either side, a Go file embeds files or a Go file is a
+// symlink reads as an error and selects every OS: its bytes may also compile
+// or count as data under another name.
 func gitVersions(base string) fileVersions {
-	var embedDirs []string
-	embedErr := error(nil)
-	for _, rev := range []string{base, "HEAD"} {
-		raw, err := exec.Command("git", "grep", "-l", "-z", "--fixed-strings", "//go:embed", rev, "--", "*.go").Output()
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() == 1 {
-			continue // no match
-		}
-		if err != nil {
-			embedErr = fmt.Errorf("git grep //go:embed %s: %v", rev, err)
-			break
-		}
-		for _, f := range strings.Split(string(raw), "\x00") {
-			if _, name, ok := strings.Cut(f, ":"); ok {
-				embedDirs = append(embedDirs, path.Dir(name))
-			}
-		}
-	}
+	dirs, dirsErr := aliasDirs(base)
 	return func(file string) ([]byte, bool, []byte, bool, error) {
-		if embedErr != nil {
-			return nil, false, nil, false, embedErr
+		if dirsErr != nil {
+			return nil, false, nil, false, dirsErr
 		}
-		for _, dir := range embedDirs {
+		for _, dir := range dirs {
 			if dir == "." || strings.HasPrefix(file, dir+"/") {
-				return nil, false, nil, false, fmt.Errorf("%s: %s embeds files", file, dir)
+				return nil, false, nil, false, fmt.Errorf("%s: a Go file in %s embeds files or is a symlink", file, dir)
 			}
 		}
 		b, bOK, err := gitBlob(base, file)
@@ -100,6 +84,40 @@ func gitVersions(base string) fileVersions {
 		h, hOK, err := gitBlob("HEAD", file)
 		return b, bOK, h, hOK, err
 	}
+}
+
+// aliasDirs lists the directories that hold, at base or HEAD, a Go file with
+// a //go:embed directive or a Go file that is a symlink.
+func aliasDirs(base string) ([]string, error) {
+	var dirs []string
+	for _, rev := range []string{base, "HEAD"} {
+		raw, err := exec.Command("git", "grep", "-l", "-z", "--fixed-strings", "//go:embed", rev, "--", "*.go").Output()
+		var exit *exec.ExitError
+		switch {
+		case errors.As(err, &exit) && exit.ExitCode() == 1:
+			// no match
+		case err != nil:
+			return nil, fmt.Errorf("git grep //go:embed %s: %v", rev, err)
+		default:
+			for _, f := range strings.Split(string(raw), "\x00") {
+				if _, name, ok := strings.Cut(f, ":"); ok {
+					dirs = append(dirs, path.Dir(name))
+				}
+			}
+		}
+		// ls-tree takes path prefixes, not globs, so filter the names here.
+		entries, err := gitPaths("ls-tree", "-r", "-z", rev)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			// <mode> <type> <object>\t<path>
+			if meta, name, ok := strings.Cut(e, "\t"); ok && strings.HasPrefix(meta, "120000 ") && strings.HasSuffix(name, ".go") {
+				dirs = append(dirs, path.Dir(name))
+			}
+		}
+	}
+	return dirs, nil
 }
 
 // gitBlob returns a file's content at rev, or ok false when rev's tree has no
