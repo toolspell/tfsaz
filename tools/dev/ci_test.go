@@ -32,6 +32,32 @@ func TestTestsNeeded(t *testing.T) {
 	}
 }
 
+func TestMockNeeded(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		files []string
+		want  bool
+	}{
+		{"docs only", []string{"README.md", "docs/user/install.md"}, false},
+		{"mock README", []string{"live-tests/devops-server-mock/README.md"}, false},
+		{"mock code", []string{"live-tests/devops-server-mock/http.go"}, true},
+		{"mock data", []string{"live-tests/devops-server-mock/catalog.json"}, true},
+		{"root module code", []string{"internal/az/cli.go", "main.go", "go.mod", "go.sum"}, false},
+		{"root fixture", []string{"internal/az/testdata/repository.json"}, false},
+		{"other live-test files", []string{"live-tests/router/Dockerfile", "live-tests/harness/smoke_test.go", "tools/live/help.go"}, false},
+		{"lint config and tool pins", []string{".golangci.yml", "tools/golangci-lint/go.mod"}, false},
+		{"dev tool code", []string{"tools/dev/ci.go"}, true},
+		{"workflow", []string{".github/workflows/test.yml"}, true},
+		{"unknown file", []string{".gitignore"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mockNeeded(tc.files); got != tc.want {
+				t.Errorf("mockNeeded(%q) = %v, want %v", tc.files, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestShardTests(t *testing.T) {
 	out := "TestB\nExampleA\nBenchmarkX\nTestUTF8_é\nok  \tgithub.com/toolspell/tfsaz\t0.1s\nTestA\nFuzzC\nTestB\n?   \tgithub.com/toolspell/tfsaz/tools/x\t[no test files]\nok  \tgithub.com/toolspell/tfsaz/internal/az\t0.2s\n"
 	names := listedTests(out)

@@ -19,7 +19,7 @@ var targets = []string{"darwin", "linux", "windows"}
 // codeModules are the Go modules with code: the root and the live-test
 // mock, which has a module of its own. vet, lint, govulncheck, deadcode and the
 // tests run in each. The tool modules under tools/ hold only tool pins.
-var codeModules = []string{".", "live-tests/devops-server-mock"}
+var codeModules = []string{".", mockModule}
 
 // tools are the pinned check tools, each in its module directory under tools/.
 var tools = []string{"golangci-lint", "govulncheck", "deadcode", "actionlint", "gitleaks"}
@@ -93,13 +93,17 @@ func toolFor(dir, goos, name string, args ...string) func(*bytes.Buffer) error {
 	}
 }
 
-// eachTarget runs one step body per code module and supported system, one
-// after another, so parallel golangci-lint runs do not wait on each other's
-// lock.
-func eachTarget(body func(dir, goos string) func(*bytes.Buffer) error) func(*bytes.Buffer) error {
+// mockModule is the live-test mock's module, which CI checks in a job of its
+// own.
+const mockModule = "live-tests/devops-server-mock"
+
+// eachTarget runs one step body per given code module and supported system,
+// one after another, so parallel golangci-lint runs do not wait on each
+// other's lock.
+func eachTarget(modules []string, body func(dir, goos string) func(*bytes.Buffer) error) func(*bytes.Buffer) error {
 	return func(out *bytes.Buffer) error {
 		var failed []string
-		for _, m := range codeModules {
+		for _, m := range modules {
 			for _, goos := range targets {
 				name := goos
 				if m != "." {
