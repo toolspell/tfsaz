@@ -11,7 +11,7 @@
 | Command | What it runs | When |
 | --- | --- | --- |
 | `go run ./tools/dev check` | On the files changed since the merge base with `main`, uncommitted and untracked ones included: gofmt on changed Go files; `go vet` and golangci-lint on the whole tree for darwin, linux and windows; `go mod tidy -diff` for the touched modules; actionlint when a workflow changed; gitleaks on the branch's commits and uncommitted changes; `go test` on the root package and the changed packages, plus the mock module's tests when a file under it changed. | Before every commit. A few seconds; about 35 s more when `internal/az` changed. |
-| `go run ./tools/dev ready` | The whole tree: gofmt, `go vet`, golangci-lint and govulncheck for all three systems, `go mod tidy -diff` for every module, actionlint, gitleaks over the full history and uncommitted changes, `go test -race -count=1 ./...` in each code module. A report that never fails it: deadcode for all three systems. | Before a push. About 40 s. |
+| `go run ./tools/dev ready` | The whole tree: gofmt, `go vet`, golangci-lint and govulncheck for all three systems, `go mod tidy -diff` for every module, actionlint, gitleaks over the full history and uncommitted changes, deadcode for all three systems, `go test -race -count=1 ./...` in each code module. | Before a push. About 40 s. |
 | `go run ./tools/dev ci-local` | The [CI workflow](#ci) with act in Docker: the Linux jobs only. | Before a push that changes CI, or to reproduce a CI failure. A few minutes. |
 | Pre-commit hook | Staged content only: gofmt, gitleaks `--staged`, and the repo checks when any file is staged. | On `git commit`. About 1 s. |
 | `go test -count=1 ./internal/az -run 'TestName'` | Focused tests. `-run` takes a regular expression, so `'TestA\|TestB'` runs both. | While iterating. |
@@ -48,7 +48,7 @@ Pick a new mechanical guard by what it reads: a pattern inside one Go file belon
 
 actionlint checks the workflows. `.github/actionlint.yaml` holds its exceptions, each scoped to one file and message, with the reason in a comment.
 
-deadcode only reports. It lists, per system, functions that `main` cannot reach, including code that only tests call on that system. Delete such code or move it to the file of the system that uses it; a function kept on purpose says why in its comment, as `editRouteHosts` does for Linux.
+deadcode is a gate in `ready` and in CI (Checks and Mock, when a Go input changed), not in `check`, which stays fast. It fails on every function that `main` cannot reach on a system, including code that only tests call there. Delete such code or move it to the file of the system that uses it. A function kept on purpose carries `deadcode-allow: <reason>` in its doc comment, as `editRouteHosts` does for Linux; a package only tests import carries it in its package comment, as `live-tests/harness` does. The gate is `deadcodeGate` in `tools/dev/deadcode.go`.
 
 ## Pre-commit hook
 
@@ -115,7 +115,7 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 | Job | Runner | What it does |
 | --- | --- | --- |
 | Changes | ubuntu-24.04 | `go run ./tools/dev ci-changes`: whether the test matrix and Mock must run ([path filter](#path-filter)). |
-| Checks | ubuntu-24.04 | `go run ./tools/dev ci-checks`: the whole-tree checks of `ready` for the root module without the tests, plus the [repo checks](#repo-checks). Its Go gates run only when a Go input changed ([gates](#gates-and-reports)). |
+| Checks | ubuntu-24.04 | `go run ./tools/dev ci-checks`: the whole-tree checks of `ready` for the root module without the tests, plus the [repo checks](#repo-checks). Its Go gates run only when a Go input changed ([gates](#gates)). |
 | Mock | ubuntu-24.04 | `go run ./tools/dev ci-mock`: the live-test mock module's `go test -race`, its Go gates and report per system, and its `go mod tidy -diff`. Runs when a file it checks changed, and always on merge queue groups and pushes to `main`. |
 | test | macOS, Windows (one or three runners), Ubuntu | `go run ./tools/dev ci-test`: `go test -race -count=1` on the root module packages the [path filter](#path-filter) selects, with the Go version in `go.mod`, the oldest supported. Skipped when no selected package changed. Windows splits the tests into [shards](#test-shards) when `internal/az` runs. |
 | Check | ubuntu-24.04 | Roll-up: passes when every job passed, or `test` or Mock was skipped because Changes found no change it checks. Fails on anything else. |
@@ -126,11 +126,10 @@ The tests of a package run one after another, and Windows runs the Git-heavy set
 
 Three shards keep the Windows runners at about macOS's duration. More would shorten nothing, and a CI run already uses up to seven runners at once against the free plan's 20.
 
-### Gates and reports
+### Gates
 
-- **Gates** (Checks): actionlint, gitleaks over the full history and the repo checks on every run. The Go gates when a Go input changed ([path filter](#path-filter)): gofmt; `go vet`, golangci-lint and govulncheck for darwin, linux and windows in the root module; `go mod tidy -diff` for the root and tool modules. A push to `main` runs govulncheck regardless, so a new advisory still fails `main`. The test matrix gates too.
-- **Gates** (Mock): gofmt, the same `go vet`, golangci-lint and govulncheck per system, `go mod tidy -diff` and `go test -race` for the live-test mock's module.
-- **Report** that never fails a run: deadcode for each system, in Checks and Mock.
+- **Gates** (Checks): actionlint, gitleaks over the full history and the repo checks on every run. The Go gates when a Go input changed ([path filter](#path-filter)): gofmt; `go vet`, golangci-lint, govulncheck and [deadcode](#lint) for darwin, linux and windows in the root module; `go mod tidy -diff` for the root and tool modules. A push to `main` runs govulncheck regardless, so a new advisory still fails `main`. The test matrix gates too.
+- **Gates** (Mock): gofmt, the same `go vet`, golangci-lint, govulncheck and deadcode per system, `go mod tidy -diff` and `go test -race` for the live-test mock's module.
 - TFSaz has no cgo code, so vet, lint and govulncheck with `GOOS` set on Linux see what native runs would see. Only the tests need the three runners.
 - Checks and the test matrix run on the Go version in `go.mod`: govulncheck judges the standard library of the Go it runs on, and that version is the minimum every build uses.
 - All three systems need the race detector; Windows x64 needs a compatible MinGW-w64 C compiler on PATH, which GitHub's runner has. [Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements)

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -32,5 +34,22 @@ func TestShardTests(t *testing.T) {
 		if index != tc.index || total != tc.total || (err == nil) != tc.ok {
 			t.Errorf("parseShard(%q) = %d, %d, %v", tc.shard, index, total, err)
 		}
+	}
+}
+
+func TestDeadcodeGate(t *testing.T) {
+	t.Chdir("../..")
+	dir := filepath.Join("tools", "dev", "testdata", "deadcode")
+	var out bytes.Buffer
+	if err := toolFor(dir, "", "deadcode", "-json", "./...")(&out); err != nil {
+		t.Fatalf("deadcode: %v\n%s", err, out.String())
+	}
+	dead, err := unallowedDeadcode(dir, out.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"tools/dev/testdata/deadcode/main.go:9: unmarked", "tools/dev/testdata/deadcode/other/other.go:5: Dead"}
+	if !slices.Equal(dead, want) {
+		t.Errorf("unallowed dead code %q, want %q: the marked function and the marked package pass; a marker in an external test package covers nothing", dead, want)
 	}
 }

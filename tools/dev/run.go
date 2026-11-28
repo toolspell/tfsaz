@@ -33,11 +33,10 @@ func toolModules() []string { return append(slices.Clone(tools), "act") }
 // the agent context budget, agent file length, naming and the T3 pin in docs.
 const repoChecksRun = "TestDocLinks|TestNoEmDashInMarkdown|TestPinnedActions|TestAgentContextBudget|TestAgentFileLines|TestNaming|TestT3PinInDocs"
 
-// A step is one check. A gate fails the command; a report only prints.
+// A step is one check; a failing step fails the command.
 type step struct {
-	name   string
-	report bool
-	run    func(out *bytes.Buffer) error
+	name string
+	run  func(out *bytes.Buffer) error
 }
 
 func cmd(name string, args ...string) func(*bytes.Buffer) error {
@@ -137,7 +136,7 @@ type result struct {
 }
 
 // runSteps runs all steps in parallel and prints each as it finishes: a
-// passing gate as one line, a failing gate and every report with its output.
+// passing step as one line, a failing step with its output.
 func runSteps(title string, steps []step) bool {
 	if len(steps) == 0 {
 		fmt.Printf("%s: nothing to check.\n", title)
@@ -158,31 +157,21 @@ func runSteps(title string, steps []step) bool {
 	}
 	go func() { wg.Wait(); close(results) }()
 
-	var failed, reports []string
+	var failed []string
 	for r := range results {
 		status := "ok"
-		switch {
-		case r.report:
-			status = "report"
-			reports = append(reports, r.name)
-		case r.err != nil:
+		if r.err != nil {
 			status = "FAIL"
 			failed = append(failed, r.name)
 		}
 		fmt.Printf("%-6s %s (%.1fs)\n", status, r.name, r.duration.Seconds())
-		if r.report || r.err != nil {
+		if r.err != nil {
 			if text := strings.TrimRight(r.output, "\n"); text != "" {
 				fmt.Println(indent(text))
-			}
-			if r.report && r.err != nil {
-				fmt.Println(indent(fmt.Sprintf("(exit: %v)", r.err)))
 			}
 		}
 	}
 	fmt.Printf("%s: %d steps in %.1fs", title, len(steps), time.Since(started).Seconds())
-	if len(reports) > 0 {
-		fmt.Printf(", reports printed for %s", strings.Join(reports, ", "))
-	}
 	if len(failed) > 0 {
 		fmt.Printf(", FAILED: %s\n", strings.Join(failed, ", "))
 		return false

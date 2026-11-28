@@ -21,8 +21,10 @@ func routeHostsLines(id string, aliases []string) []string {
 // editRouteHosts drops this configuration's marked lines and, on install,
 // appends fresh ones. It keeps the file's line ending style. The Windows
 // elevated script implements the same algorithm. Linux runs only the shell
-// fragment routeHostsShell, whose tests check it against this function, so
-// deadcode lists it as unreachable there.
+// fragment routeHostsShell, whose tests check it against this function.
+//
+// deadcode-allow: unreachable on Linux, where it is the shell fragment's test
+// oracle.
 func editRouteHosts(content, id string, aliases []string, install bool) string {
 	var result strings.Builder
 	if install {
