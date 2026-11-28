@@ -16,7 +16,7 @@ permissions: {}
 # supersedes an older one. A job joins only when it is queued, not always in event order, so an
 # older push's job could cancel the newer one's and measure a stale diff.
 concurrency:
-  group: pr-size-${{ github.event.pull_request.number }}
+  group: pr-size-measure-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
