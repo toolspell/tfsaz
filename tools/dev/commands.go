@@ -24,16 +24,31 @@ func gitleaksArgs(verbose bool) []string {
 
 // lint fails on any golangci-lint finding in the tree. A deliberate exception
 // is a rule in .golangci.yml or a //nolint, each with its reason.
-func lint() step {
-	return step{name: "golangci-lint", run: eachTarget(func(dir, goos string) func(*bytes.Buffer) error {
+func lint(modules []string) step {
+	return step{name: "golangci-lint", run: eachTarget(modules, func(dir, goos string) func(*bytes.Buffer) error {
 		return toolFor(dir, goos, "golangci-lint", "run", "--allow-parallel-runners", "--max-issues-per-linter=0", "--max-same-issues=0", "./...")
 	})}
 }
 
-func vet() step {
-	return step{name: "go vet", run: eachTarget(func(dir, goos string) func(*bytes.Buffer) error {
+func vet(modules []string) step {
+	return step{name: "go vet", run: eachTarget(modules, func(dir, goos string) func(*bytes.Buffer) error {
 		return goEnv(dir, goos, "vet", "./...")
 	})}
+}
+
+// goGates are vet, golangci-lint, govulncheck and the deadcode report for
+// each of the given code modules and supported systems.
+func goGates(modules []string) []step {
+	return []step{
+		vet(modules),
+		{name: "govulncheck", run: eachTarget(modules, func(dir, goos string) func(*bytes.Buffer) error {
+			return toolFor(dir, goos, "govulncheck", "./...")
+		})},
+		lint(modules),
+		{name: "deadcode", report: true, run: eachTarget(modules, func(dir, goos string) func(*bytes.Buffer) error {
+			return toolFor(dir, goos, "deadcode", "./...")
+		})},
+	}
 }
 
 func tidy(modules []string) []step {
@@ -110,7 +125,7 @@ func check(base string) bool {
 		steps = append(steps, step{name: "gofmt", run: gofmtCheck(p.goFiles, readWorktree)})
 	}
 	if p.goChanged {
-		steps = append(steps, vet(), lint())
+		steps = append(steps, vet(codeModules), lint(codeModules))
 	}
 	steps = append(steps, tidy(p.modules)...)
 	if p.workflows {
@@ -128,7 +143,7 @@ func check(base string) bool {
 }
 
 func ready() bool {
-	steps, err := treeSteps(false)
+	steps, err := treeSteps(codeModules, false)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ready:", err)
 		return false
@@ -156,30 +171,24 @@ func modulePattern(m string) string {
 	return "./" + m + "/..."
 }
 
-// treeSteps are the whole-tree checks that ready and ci-checks share.
-func treeSteps(ci bool) ([]step, error) {
+// treeSteps are the whole-tree checks that ready and ci-checks share, with the
+// Go gates for the given code modules.
+func treeSteps(codeMods []string, ci bool) ([]step, error) {
 	goFiles, err := gitPaths("ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.go")
 	if err != nil {
 		return nil, err
 	}
 	goFiles = slices.DeleteFunc(goFiles, func(f string) bool { return !fileExists(f) })
-	modules := slices.Clone(codeModules)
+	modules := slices.Clone(codeMods)
 	for _, name := range toolModules() {
 		modules = append(modules, "tools/"+name)
 	}
 	steps := []step{
 		{name: "gofmt", run: gofmtCheck(goFiles, readWorktree)},
-		vet(),
 		actionlint(),
 		gitleaksChanges("", true, !ci),
-		{name: "govulncheck", run: eachTarget(func(dir, goos string) func(*bytes.Buffer) error {
-			return toolFor(dir, goos, "govulncheck", "./...")
-		})},
-		lint(),
-		{name: "deadcode", report: true, run: eachTarget(func(dir, goos string) func(*bytes.Buffer) error {
-			return toolFor(dir, goos, "deadcode", "./...")
-		})},
 	}
+	steps = append(steps, goGates(codeMods)...)
 	return append(steps, tidy(modules)...), nil
 }
 
