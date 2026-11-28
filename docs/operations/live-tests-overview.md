@@ -119,3 +119,5 @@ Details: [Write a live test](live-tests.md#write-a-live-test), [For agents](live
 ## What it covers today
 
 The mock stands in for Azure DevOps Server 2022.2; checks against a real server use the shared testbed ([#33](https://github.com/toolspell/tfsaz/issues/33), [#47](https://github.com/toolspell/tfsaz/issues/47)). The smoke test runs on all three guests ([record](../verification/live-vm-smoke-2026-11.md)). Still open: the full test suite in each guest's desktop session ([#48](https://github.com/toolspell/tfsaz/issues/48)), browser trust on each OS ([#39](https://github.com/toolspell/tfsaz/issues/39)), external links from T3 on Windows ([#42](https://github.com/toolspell/tfsaz/issues/42)), offline runs and a fake agent for T3's agent threads.
+
+Throwaway test line for FAST D3.
