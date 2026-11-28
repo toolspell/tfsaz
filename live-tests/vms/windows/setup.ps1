@@ -6,15 +6,28 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Start-Transcript -Path C:\Windows\Temp\tfsaz-setup.log
 
-# Windows has no inbox driver for QEMU's virtio network card; the virtio-win
-# ISO on another drive has it.
-$inf = Get-PSDrive -PSProvider FileSystem |
-    ForEach-Object { Join-Path $_.Root 'NetKVM\w11\ARM64\netkvm.inf' } |
-    Where-Object { Test-Path $_ } |
-    Select-Object -First 1
-if (-not $inf) { throw 'no drive has NetKVM\w11\ARM64\netkvm.inf' }
-pnputil.exe /add-driver $inf /install
-if ($LASTEXITCODE -notin 0, 3010) { throw "pnputil failed: $LASTEXITCODE" }
+# Windows has no inbox drivers for QEMU's virtio network card and GPU; the
+# virtio-win ISO on another drive has them. The GPU gives the desktop
+# 1920x1080, which ramfb, the boot display, cannot.
+foreach ($driver in 'NetKVM\w11\ARM64\netkvm.inf', 'viogpudo\w11\ARM64\viogpudo.inf') {
+    $inf = Get-PSDrive -PSProvider FileSystem |
+        ForEach-Object { Join-Path $_.Root $driver } |
+        Where-Object { Test-Path $_ } |
+        Select-Object -First 1
+    if (-not $inf) { throw "no drive has $driver" }
+    pnputil.exe /add-driver $inf /install
+    if ($LASTEXITCODE -notin 0, 3010) { throw "pnputil failed for ${driver}: $LASTEXITCODE" }
+}
+
+# Windows keeps ramfb, at 800x600, as its main display beside the GPU, so
+# windows open on a screen nobody sees. Show only the GPU's display; Windows
+# remembers that for this pair of displays.
+for ($try = 1; -not (Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like '*VirtIO*' -and $_.Status -eq 'OK' }); $try++) {
+    if ($try -ge 30) { throw 'the VirtIO GPU did not start' }
+    Start-Sleep -Seconds 2
+}
+Start-Sleep -Seconds 5
+DisplaySwitch.exe /internal
 
 # OpenSSH Server comes from Windows Update, so retry until the network is up.
 $name = (Get-WindowsCapability -Online -Name 'OpenSSH.Server*').Name

@@ -62,7 +62,9 @@ func (t tart) start(name, logFile string) error {
 		return err
 	}
 	defer func() { _ = log.Close() }()
-	c := exec.Command("tart", "run", "--no-graphics", name)
+	// Virtualization.framework's VNC server serves screenshots; with
+	// --no-graphics Tart only prints its address instead of opening it.
+	c := exec.Command("tart", "run", "--no-graphics", "--vnc-experimental", name)
 	c.Env = append(os.Environ(), t.env()...)
 	c.Stdout, c.Stderr = log, log
 	detach(c)
@@ -78,8 +80,27 @@ func (t tart) address(name string, wait time.Duration) (string, int, error) {
 }
 
 func (t tart) clone(base, name string) error {
-	_, err := t.run("clone", base, name)
+	if _, err := t.run("clone", base, name); err != nil {
+		return err
+	}
+	_, err := t.run("set", name, "--display", fmt.Sprintf("%dx%dpx", displayWidth, displayHeight))
 	return err
+}
+
+func (t tart) vnc(_, logFile string) (string, error) {
+	address, password, err := tartVNC(logFile)
+	if err != nil {
+		return "", err
+	}
+	return "vnc://:" + password + "@" + address, nil
+}
+
+func (t tart) screenshot(_, logFile, file string) error {
+	address, password, err := tartVNC(logFile)
+	if err != nil {
+		return err
+	}
+	return vncScreenshot(address, password, file)
 }
 
 func (t tart) rename(from, to string) error {

@@ -93,6 +93,7 @@ source "qemu" "windows" {
     ["-device", "usb-kbd"],
     ["-device", "usb-tablet"],
     ["-device", "ramfb"],
+    ["-device", "virtio-gpu-pci,id=gpu,xres=1920,yres=1080"],
     ["-device", "virtio-net-pci,netdev=user.0"],
     ["-netdev", "user,id=user.0,ipv6=off,hostfwd=tcp:127.0.0.1:{{ .SSHHostPort }}-:22"],
     ["-qmp", "unix:${var.qmp_socket},server=on,wait=off"],

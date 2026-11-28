@@ -14,6 +14,11 @@
 //	go run ./tools/live base rm OS                 delete the base VM
 //	go run ./tools/live vm up OS [-name SUFFIX]    clone the base, boot it, join the router; prints JSON
 //	go run ./tools/live vm ssh NAME [-- CMD...]    open a shell or run a command in a clone
+//	go run ./tools/live vm run NAME [-json] [-timeout D] [-gui] -- CMD...
+//	go run ./tools/live vm push|pull NAME FROM TO   copy files to or from a clone
+//	go run ./tools/live vm forward NAME PORT[:PORT] forward a host loopback port to the clone
+//	go run ./tools/live vm screenshot NAME FILE    save a PNG of the clone's screen
+//	go run ./tools/live vm vnc NAME                print the VNC address of the clone's screen
 //	go run ./tools/live vm stop NAME [-force]      shut a clone down and keep it for later
 //	go run ./tools/live vm start NAME              boot a stopped clone again
 //	go run ./tools/live vm down NAME               stop and delete a clone
@@ -45,6 +50,13 @@ const usage = `usage: go run ./tools/live <command>
   base rm OS                      delete the base VM
   vm up OS [-name SUFFIX]         clone the base, boot it, join the router; prints JSON
   vm ssh NAME [-- CMD...]         open a shell or run a command in a clone
+  vm run NAME [-json] [-timeout D] [-gui] -- CMD...
+                                  run a command; -gui in the test user's desktop session
+  vm push NAME LOCAL REMOTE       copy files into a clone
+  vm pull NAME REMOTE LOCAL       copy files out of a clone
+  vm forward NAME PORT[:PORT]     forward a host loopback port to the clone's loopback
+  vm screenshot NAME FILE         save a PNG of the clone's screen
+  vm vnc NAME                     print the VNC address of the clone's screen
   vm stop NAME [-force]           shut a clone down but keep it for later
   vm start NAME                   boot a stopped clone again; prints JSON
   vm down NAME                    stop and delete a clone

@@ -19,6 +19,7 @@ type guest struct {
 	tunneled   string // succeeds when internet traffic goes through the tunnel
 	internet   string // succeeds when the VM reaches the internet
 	session    string // succeeds when the test user has a GUI session; empty when the OS has none
+	gui        string // runs %s, a quoted sh command, in the desktop session; empty when there is none or for PowerShell
 	sync       string // flushes the disk cache
 	update     string // upgrades the packages of the base; empty when a rebuild is the update
 	poweroff   string
@@ -72,6 +73,9 @@ var macosGuest = guest{
 	reaches:  "nc -z -G 5 devops.mock.test 8080",
 	tunneled: "route -n get 1.1.1.1 | grep -q 'interface: utun'",
 	session:  "test \"$(stat -f %Su /dev/console)\" = \"$USER\"",
+	// launchctl asuser enters the user's GUI session, where the login
+	// keychain is unlocked and apps open on the user's screen.
+	gui:      `sudo launchctl asuser "$(id -u)" sudo -u "$(id -un)" sh -c %s`,
 	update:   "eval \"$(/opt/homebrew/bin/brew shellenv)\" && brew update && brew upgrade",
 	poweroff: "sudo shutdown -h now",
 }

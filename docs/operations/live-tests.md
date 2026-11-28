@@ -30,6 +30,12 @@ go run ./tools/live setup OS          # everything above, then verify; OS is ubu
 go run ./tools/live verify OS         # boot a throwaway clone and check the bed
 go run ./tools/live vm up OS          # clone, boot and connect a VM; prints its details as JSON
 go run ./tools/live vm ssh NAME -- uname -a
+go run ./tools/live vm run NAME [-json] [-timeout D] [-gui] -- CMD...   # see "Commands in a clone"
+go run ./tools/live vm push NAME LOCAL REMOTE     # copy a file or folder into the clone
+go run ./tools/live vm pull NAME REMOTE LOCAL     # copy a file or folder out of the clone
+go run ./tools/live vm forward NAME PORT[:PORT]   # host 127.0.0.1:PORT to the clone's loopback port
+go run ./tools/live vm screenshot NAME FILE       # PNG of the clone's desktop
+go run ./tools/live vm vnc NAME                   # print a VNC URL for the clone
 go run ./tools/live vm list -json
 go run ./tools/live vm stop NAME      # shut it down, keep it for later
 go run ./tools/live vm start NAME     # boot it again; prints its details as JSON
@@ -54,6 +60,7 @@ go run ./tools/live status
 - Nothing runs when nothing needs it: before you hand back, stop the clones you keep, delete the others, and run `services down`. The base VM stays stopped.
 - Record dated live results in [`docs/verification/`](../verification/).
 - macOS runs at most two macOS VMs at a time, base builds included; `vm up` refuses a third. Stop or delete one first.
+- Use `vm run -json` for scripted checks and `vm run -gui` for anything that needs the desktop session. Take a `vm screenshot` to see the screen instead of asking a human to look.
 - Prefer the tools already in use (Tart, Packer, `curl`, `wg`, cloud-init, Homebrew, CoreDNS) over new code.
 
 ## Layout
@@ -78,11 +85,11 @@ The tool keeps everything large or secret in `~/.tfsaz-live` (or `$TFSAZ_LIVE_HO
 | Path | Contents |
 | --- | --- |
 | `tart/` | Tart's home for these VMs only (`TART_HOME`), so they never mix with other Tart VMs; its `cache/` holds the pulled macOS image |
-| `qemu/` | QEMU's VMs, one directory each: `disk.qcow2` (a clone's is an overlay on the base's), UEFI variables, its last SSH port, and while it runs its PID and QMP socket |
+| `qemu/` | QEMU's VMs, one directory each: `disk.qcow2` (a clone's is an overlay on the base's), UEFI variables, its last SSH port, and while it runs its PID, QMP socket and `vnc` (VNC address with password, mode 600) |
 | `cache/iso/` | Installer ISOs, checked against the SHA-256 in `vms/<os>/iso.json` (and `virtio.json` for Windows) |
 | `packer/` | Packer plugins and cache |
 | `keys/<os>-base/` | The key of the last base build; for Windows also the password of `tester` |
-| `runs/<name>/` | Per clone: its own SSH key, known_hosts, Tart or QEMU log, `vm.json` |
+| `runs/<name>/` | Per clone: its own SSH key, known_hosts, Tart or QEMU log, `vm.json`; `tart.log` holds Tart's VNC address with password (mode 600) |
 | `router/` | The router's WireGuard key and one file per connected VM |
 
 Only `base build` downloads, and only what the cache lacks: an ISO matching `iso.json` (`curl` resumes an interrupted download), or the macOS image pinned in `image.json` (Tart pulls it once). The Windows ISO is the exception: the tool only checks it. The Windows build also downloads the virtio-win ISO once (about 880 MB) and, inside the VM, OpenSSH Server and WireGuard. Deleting the directory removes everything; `setup` recreates it.
@@ -103,7 +110,7 @@ The guest needs a host with at least its macOS version, and macOS runs at most t
 
 ### Windows
 
-`base build windows` checks Microsoft's Windows 11 ARM64 ISO and the virtio-win ISO, writes `Autounattend.xml` with a new password for `tester` and `setup.ps1` with a new build key to a seed ISO, and runs Packer with the QEMU plugin. QEMU runs the VM with Apple's Hypervisor.framework and UEFI firmware from Homebrew's QEMU. The `virt` machine has no IDE or SATA, so the three ISOs are USB drives, and the disk is NVMe, for which Windows has an inbox driver. Setup runs unattended: it skips the TPM, Secure Boot and online account checks, installs Windows 11 Pro with the generic install key (not activated), and logs `tester` in automatically. At first logon, `setup.ps1` installs the virtio network driver (NetKVM) from the virtio-win ISO and OpenSSH Server with the build key as the only login. `provision.ps1` installs PowerShell 7 and WireGuard for Windows (each pinned by hash and checked for its publisher's signature) and turns off automatic updates and sleep. `prepare-base.ps1` deletes the SSH host keys, which sshd recreates per clone, makes PowerShell 7 the SSH shell and shuts the VM down. The build takes about 13 minutes and 16 GB.
+`base build windows` checks Microsoft's Windows 11 ARM64 ISO and the virtio-win ISO, writes `Autounattend.xml` with a new password for `tester` and `setup.ps1` with a new build key to a seed ISO, and runs Packer with the QEMU plugin. QEMU runs the VM with Apple's Hypervisor.framework and UEFI firmware from Homebrew's QEMU. The `virt` machine has no IDE or SATA, so the three ISOs are USB drives, and the disk is NVMe, for which Windows has an inbox driver. The VM has two display adapters: `ramfb`, which Windows' boot manager needs (its linear framebuffer tops out at 1024x768), and a virtio GPU at 1920x1080 for the desktop. Setup runs unattended: it skips the TPM, Secure Boot and online account checks, installs Windows 11 Pro with the generic install key (not activated), and logs `tester` in automatically. At first logon, `setup.ps1` installs the virtio network driver (NetKVM) and the virtio GPU driver (`viogpudo`) from the virtio-win ISO, shows only the GPU's display (Windows would keep `ramfb` at 800x600 as its main display, where new windows open), and installs OpenSSH Server with the build key as the only login. `provision.ps1` installs PowerShell 7 and WireGuard for Windows (each pinned by hash and checked for its publisher's signature) and turns off automatic updates and sleep. `prepare-base.ps1` deletes the SSH host keys, which sshd recreates per clone, makes PowerShell 7 the SSH shell and shuts the VM down. The build takes about 13 minutes and 16 GB.
 
 Windows has no update in place: `base update windows` refuses. A newer Windows comes with a new ISO pin in `iso.json` and `base build windows -force`.
 
@@ -120,6 +127,21 @@ All three refuse while clones of the base exist.
 ## Clones
 
 `vm up OS` clones the base (an APFS copy, or a qcow2 overlay for Windows, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in under 10 seconds for Ubuntu, about 30 for macOS and about a minute for Windows. A macOS clone boots into the logged-in GUI session of `admin`, a Windows clone into the one of `tester`; a Windows clone restarts once for its computer name. It prints `vm.json`: name, NAT address (for Windows `127.0.0.1` and a port), address in the test bed, SSH key. Commands over `vm ssh` run in sh on Ubuntu and macOS and in PowerShell 7 (`pwsh`) on Windows. TFSaz must not rely on PowerShell 7, since users may have only Windows PowerShell 5.1 and cmd: run a step whose shell matters with `powershell` or `cmd /c`. `vm stop NAME` shuts a clone down from inside and keeps it with its key and router peer; when it cannot reach the clone it leaves it running, and `-force` stops it without a shutdown, which can lose unwritten changes. `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
+
+Every clone's desktop is 1920x1080. Tart clones get it from `tart set NAME --display 1920x1080px` when `vm up` clones them.
+
+## Commands in a clone
+
+| Command | Effect |
+| --- | --- |
+| `vm run NAME [-json] [-timeout D] [-gui] -- CMD...` | Runs CMD in the clone and passes on stdin (not with `-gui`) and the exit code. CMD is an sh command on Ubuntu and macOS, and a PowerShell 7 script on Windows: it is sent encoded so quotes survive and uses PowerShell's default error handling, so after a native command end with `exit $LASTEXITCODE` to pass its exit code. |
+| `-timeout D` | Default 10m. On timeout the tool prints a message and exits 124. |
+| `-json` | Prints `{"exitCode","stdout","stderr","timedOut","seconds"}`. The tool itself exits 0 when the command ran. |
+| `-gui` | Runs CMD in the test user's desktop session, where keychains, link handlers, browsers and T3 behave as for a user at the machine. macOS: through `launchctl asuser` in the Aqua session of `admin`, with the login keychain unlocked and apps opening on screen. Windows: through a one-time scheduled task in the interactive session of `tester`, without elevation like the user's own programs; output and exit code go through files in `%TEMP%` that are removed afterwards, and on timeout the task and the processes of its script are stopped. Ubuntu refuses `-gui` until its desktop base exists (planned). |
+| `vm push NAME LOCAL REMOTE`, `vm pull NAME REMOTE LOCAL` | Copy files and folders with scp and the clone's key. Windows paths look like `C:/Users/tester/file`. |
+| `vm forward NAME PORT[:PORT]` | Forwards the host's 127.0.0.1:PORT to the clone's loopback port until stopped, for example to reach a browser's or an app's debugging port from Playwright on the host. Run it in the background. |
+| `vm screenshot NAME FILE` | Saves a PNG of the clone's desktop, taken from the hypervisor, so the guest needs no permission and nobody has to click anything. Windows: QEMU's QMP `screendump` of the virtio GPU. macOS and Ubuntu: the VNC server of Apple's Virtualization.framework, which Tart starts for every clone (`tart run --no-graphics --vnc-experimental`, which prints the address instead of opening a window). An Ubuntu clone shows a black console until its desktop base exists. |
+| `vm vnc NAME` | Prints `vnc://:PASSWORD@127.0.0.1:PORT` for a VNC client or an agent's VNC tool. The hypervisor serves it (Virtualization.framework for Tart, QEMU's own VNC server bound to the virtio GPU for Windows). Loopback only, a new random password per start; nothing runs in the guest for it. |
 
 ## Network
 
@@ -177,7 +199,7 @@ It also advises shortening macOS's DHCP leases for VMs from a day to ten minutes
 - A base build prints a VNC address and password; open it to watch the installer or, on macOS, the desktop.
 - The Ubuntu system must ask DHCP with its MAC address (`dhcp-identifier: mac` in the autoinstall and clone network config); otherwise Tart finds no IP and Packer waits until its 25-minute SSH timeout.
 - A clone's Tart output is in `~/.tfsaz-live/runs/NAME/tart.log`. `vm up` deletes a clone that fails to come up.
-- A Windows build prints a VNC address without a password; a Windows clone shows nothing on the host. To capture either screen, send QMP `screendump` to `~/.tfsaz-live/build/windows/qmp.sock` or `~/.tfsaz-live/qemu/NAME/qmp.sock`, for example `{ echo '{"execute":"qmp_capabilities"}'; sleep 1; echo '{"execute":"screendump","arguments":{"filename":"/tmp/screen.png","format":"png"}}'; sleep 2; } | nc -U SOCKET`. A Windows build logs its first logon to `C:\Windows\Temp\tfsaz-setup.log`; a clone's QEMU output is in `~/.tfsaz-live/runs/NAME/qemu.log`.
+- To see a clone's screen, use `vm screenshot NAME FILE`. A Windows build prints a VNC address without a password and has no clone name; to capture its screen, send QMP `screendump` to `~/.tfsaz-live/build/windows/qmp.sock`, for example `{ echo '{"execute":"qmp_capabilities"}'; sleep 1; echo '{"execute":"screendump","arguments":{"filename":"/tmp/screen.png","format":"png"}}'; sleep 2; } | nc -U SOCKET`. A Windows build logs its first logon to `C:\Windows\Temp\tfsaz-setup.log`; a clone's QEMU output is in `~/.tfsaz-live/runs/NAME/qemu.log`.
 - A macOS clone's tunnel logs to `/var/log/tfsaz-live-wg0.log` in the VM; `sudo launchctl kickstart -k system/com.tfsaz.live.wg0` restarts it.
 
 ## Remove everything
