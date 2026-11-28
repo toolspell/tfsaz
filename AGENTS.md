@@ -98,6 +98,7 @@ TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter 
 
 - While iterating, run focused tests (`go test -count=1 ./internal/az -run 'TestName'`). The pre-commit hook is a quick check of the staged content; it does not replace `check`. What each command runs, and where a new lint rule or repo check goes: [Development](docs/operations/development.md#checks).
 - When a change touches a command T3 calls, run `TestStockT3Adapter` (the last line; needs a full T3 source tree with dependencies installed, which the sparse `.reference-apps/t3code` is not). Without one, say in the handoff that it did not run.
+- A flaky CI test is not acceptable. When you notice one, fix it right away instead of postponing it. Only when the fix needs a human decision or would have severe consequences, open a GitHub issue (rules in [Issues](docs/operations/development.md#issues)) and tell your user.
 - Before you fix a bug, or write or review a test, read [Testing](docs/internals/testing.md), the one home of the test rules.
 
 ## Pull requests
@@ -108,6 +109,7 @@ TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter 
 - Credit the agents that contributed changes. Whoever merges the PR verifies that all [co-author trailers reach main](docs/operations/development.md#co-author-attribution).
 - Babysit a PR with `watch_pull_request`; never poll checks or reviews.
 - Workflows that run on PRs must work for stacked PRs: [GitHub workflows](docs/operations/development.md#github-workflows).
+- When you change CI workflows or CI tooling, or work with stacked PRs, consider the speed of the whole process: every CI minute and every correction loop counts. Think first, then act: verify enough to be sure, but do not over-verify, overengineer or bloat CI, and do not waste time through carelessness.
 - Outside contributions follow [CONTRIBUTING.md](CONTRIBUTING.md).
 - Ask Codex for a second review (`@codex review`) only after a significant change since its last review: new behavior, a redesign of reviewed logic, or a new change to credentials, system changes or a command T3 calls. Not for fixes of review findings, rebases, docs, tests or formatting.
 
