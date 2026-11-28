@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVerifyRouteNode(t *testing.T) {
@@ -84,6 +85,38 @@ func TestVerifyRouteNode(t *testing.T) {
 			t.Fatal("expected an incoming TLS handshake")
 		}
 	}
+	timeout := nodeTLSTimeout
+	t.Cleanup(func() { nodeTLSTimeout = timeout })
+	nodeTLSTimeout = time.Second
+	slowStart := filepath.Join(t.TempDir(), "slow-start.js")
+	if err := os.WriteFile(slowStart, []byte("Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NODE_OPTIONS", `--dns-result-order=ipv4first --require "`+filepath.ToSlash(slowStart)+`"`)
+	out.Reset()
+	if err := verifyRouteNode(t.Context(), cfg, &out); err != nil || out.String() != "profile fixture: Node verified collection TLS\n" {
+		t.Fatalf("with a Node startup longer than the TLS budget got output %q, error %v", &out, err)
+	}
+	<-serverNames
+	t.Setenv("NODE_OPTIONS", "--dns-result-order=ipv4first")
+
+	stalled, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stalled.Close()
+	go func() {
+		if conn, err := stalled.Accept(); err == nil {
+			<-t.Context().Done()
+			conn.Close()
+		}
+	}()
+	out.Reset()
+	silent := config{Profiles: []Profile{{ID: "stalled", CollectionURL: "https://" + stalled.Addr().String() + "/Private%20Collection"}}}
+	if err := verifyRouteNode(t.Context(), silent, &out); err == nil || !strings.Contains(err.Error(), "profile stalled: Node TLS connection timed out") || out.Len() != 0 {
+		t.Fatalf("with a stalled handshake got output %q, error %v", &out, err)
+	}
+
 	out.Reset()
 	t.Setenv("NODE_TLS_REJECT_UNAUTHORIZED", "0")
 	if err := verifyRouteNode(t.Context(), cfg, &out); err == nil || !strings.Contains(err.Error(), "unset NODE_TLS_REJECT_UNAUTHORIZED") || out.Len() != 0 {

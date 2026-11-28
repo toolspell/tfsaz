@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 )
 
@@ -16,7 +17,7 @@ const routeNodeProbe = `
 const net = require('net');
 const tls = require('tls');
 const { domainToASCII } = require('url');
-const [host, port] = process.argv.slice(1);
+const [host, port, timeout] = process.argv.slice(1);
 const servername = net.isIP(host) ? undefined : domainToASCII(host);
 const certificateErrors =
   /^(CERT_|CRL_|INVALID_CA$|INVALID_PURPOSE$|PATH_LENGTH_EXCEEDED$|DEPTH_ZERO_SELF_SIGNED_CERT$|SELF_SIGNED_CERT_IN_CHAIN$|UNABLE_TO_(GET_ISSUER_CERT|GET_CRL|DECRYPT_CERT_SIGNATURE|DECODE_ISSUER_PUBLIC_KEY|VERIFY_LEAF_SIGNATURE)|ERR_TLS_CERT_)/;
@@ -32,7 +33,7 @@ const socket = tls.connect({
 const deadline = setTimeout(() => {
   process.exitCode = 13;
   socket.destroy();
-}, 10000);
+}, Number(timeout));
 socket.once('close', () => clearTimeout(deadline));
 socket.once('secureConnect', () => {
   process.exitCode = socket.authorized ? 0 : 10;
@@ -78,10 +79,14 @@ func verifyRouteNode(ctx context.Context, cfg config, out io.Writer) error {
 	return errors.Join(failures...)
 }
 
+// The TLS budget starts once Node runs; a cold Node start on Windows can take
+// longer than the handshake itself.
+var nodeTLSTimeout = 10 * time.Second
+
 func checkNodeTLS(ctx context.Context, node, host, port string) error {
 	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(probeCtx, node, "-e", routeNodeProbe, "--", host, port).Output()
+	output, err := exec.CommandContext(probeCtx, node, "-e", routeNodeProbe, "--", host, port, strconv.FormatInt(nodeTLSTimeout.Milliseconds(), 10)).Output()
 	if err == nil {
 		if string(output) != "verified\n" {
 			return errors.New("Node exited without confirming the TLS handshake; check the runtime and its startup options")
