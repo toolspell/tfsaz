@@ -126,7 +126,18 @@ func download(path, url, want string) error {
 			return fmt.Errorf("the download does not match the SHA-512 of the release manifest; deleted it (%v)", err)
 		}
 	}
-	return os.Rename(part, path)
+	if err := os.Rename(part, path); err != nil {
+		if info, statErr := os.Stat(path); statErr == nil && info.Mode().IsRegular() {
+			if want == "" {
+				return nil
+			}
+			if ok, _ := hasSHA512(path, want); ok {
+				return nil
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 func hasSHA512(path, want string) (bool, error) {
