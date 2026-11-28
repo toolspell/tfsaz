@@ -63,9 +63,9 @@ func osVersions(base string) fileVersions {
 }
 
 // gitVersions reads files at base and at HEAD from the clone. A file in a
-// directory where, on either side, a Go file embeds files or a Go file is a
-// symlink reads as an error and selects every OS: its bytes may also compile
-// or count as data under another name.
+// directory where, on either side, a Go file embeds files reads as an error
+// and selects every OS, and so does every file once any Go file is a
+// symlink: their bytes may also count as data or compile under another name.
 func gitVersions(base string) fileVersions {
 	dirs, dirsErr := aliasDirs(base)
 	return func(file string) ([]byte, bool, []byte, bool, error) {
@@ -74,7 +74,7 @@ func gitVersions(base string) fileVersions {
 		}
 		for _, dir := range dirs {
 			if dir == "." || strings.HasPrefix(file, dir+"/") {
-				return nil, false, nil, false, fmt.Errorf("%s: a Go file in %s embeds files or is a symlink", file, dir)
+				return nil, false, nil, false, fmt.Errorf("%s: a Go file in %s embeds files, or a Go file is a symlink", file, dir)
 			}
 		}
 		b, bOK, err := gitBlob(base, file)
@@ -87,7 +87,7 @@ func gitVersions(base string) fileVersions {
 }
 
 // aliasDirs lists the directories that hold, at base or HEAD, a Go file with
-// a //go:embed directive or a Go file that is a symlink.
+// a //go:embed directive, and "." for all when a Go file is a symlink.
 func aliasDirs(base string) ([]string, error) {
 	var dirs []string
 	for _, rev := range []string{base, "HEAD"} {
@@ -113,7 +113,8 @@ func aliasDirs(base string) ([]string, error) {
 		for _, e := range entries {
 			// <mode> <type> <object>\t<path>
 			if meta, name, ok := strings.Cut(e, "\t"); ok && strings.HasPrefix(meta, "120000 ") && strings.HasSuffix(name, ".go") {
-				dirs = append(dirs, path.Dir(name))
+				// A link may point into any package, so nothing narrows.
+				dirs = append(dirs, ".")
 			}
 		}
 	}
