@@ -74,9 +74,17 @@ func (e *env) lockMacOSBoot(o osDef) (func(), error) {
 // start boots a VM headless in the background; Tart's output goes to logFile.
 // The VM keeps running after this process exits.
 func (t tart) start(name, logFile string) error {
-	log, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	c, err := t.startCommand(name, logFile)
 	if err != nil {
 		return err
+	}
+	return c.Process.Release()
+}
+
+func (t tart) startCommand(name, logFile string, inherited ...*os.File) (*exec.Cmd, error) {
+	log, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil, err
 	}
 	defer func() { _ = log.Close() }()
 	// Virtualization.framework's VNC server serves screenshots; with
@@ -84,11 +92,12 @@ func (t tart) start(name, logFile string) error {
 	c := exec.Command("tart", "run", "--no-graphics", "--vnc-experimental", name)
 	c.Env = append(os.Environ(), t.env()...)
 	c.Stdout, c.Stderr = log, log
+	c.ExtraFiles = inherited
 	detach(c)
 	if err := c.Start(); err != nil {
-		return err
+		return nil, err
 	}
-	return c.Process.Release()
+	return c, nil
 }
 
 func (t tart) address(name string, wait time.Duration) (string, int, error) {
