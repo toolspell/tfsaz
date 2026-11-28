@@ -1,8 +1,8 @@
 name: Feature request
 description: Propose an improvement or new capability. Wait for a maintainer to agree before you open a PR.
 title: "[Feature]: "
+type: Feature
 labels:
-  - enhancement
   - needs-triage
 body:
   - type: markdown
