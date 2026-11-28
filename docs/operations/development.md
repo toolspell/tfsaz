@@ -117,7 +117,7 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 | Changes | ubuntu-24.04 | `go run ./tools/dev ci-changes`: whether the test matrix and Mock must run ([path filter](#path-filter)). |
 | Checks | ubuntu-24.04 | `go run ./tools/dev ci-checks`: the whole-tree checks of `ready` for the root module without the tests, plus the [repo checks](#repo-checks). |
 | Mock | ubuntu-24.04 | `go run ./tools/dev ci-mock`: the live-test mock module's `go test -race`, its Go gates and report per system, and its `go mod tidy -diff`. Runs when a file it checks changed, and always on merge queue groups and pushes to `main`. |
-| test | macOS, Windows (three runners), Ubuntu | `go run ./tools/dev ci-test`: `go test -race -count=1 ./...` in the root module with the Go version in `go.mod`, the oldest supported. Skipped when only non-code files changed. Windows splits the tests into [shards](#test-shards). |
+| test | macOS, Windows (one or three runners), Ubuntu | `go run ./tools/dev ci-test`: `go test -race -count=1` on the root module packages the [path filter](#path-filter) selects, with the Go version in `go.mod`, the oldest supported. Skipped when no selected package changed. Windows splits the tests into [shards](#test-shards) when `internal/az` runs. |
 | Check | ubuntu-24.04 | Roll-up: passes when every job passed, or `test` or Mock was skipped because Changes found no change it checks. Fails on anything else. |
 
 ### Test shards
@@ -156,12 +156,13 @@ The workflow also passes the base to `ci-checks`, which ignores it: every gate t
 | --- | --- | --- | --- |
 | Non-code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the review bot files `.macroscope/` and `.coderabbit.config.ts`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml` | skipped | none | skipped |
 | `.golangci.yml`, the tool modules `tools/<tool>/` | skipped | none | skipped |
-| `internal/**`, root `*.go`, `go.mod`, `go.sum` | `./...` | 3 | skipped |
-| `tools/dev/**`, `.github/workflows/**` (they change how CI checks) | `./...` | 3 | runs |
-| Other root module code under `tools/` (`tools/live`, `tools/syncrepos`), `live-tests/harness/**` | `.`, `./tools/...`, `./live-tests/harness/...` | 1 | skipped |
+| `internal/**`, root `*.go`, `go.sum` | `./...` | 3 | skipped |
+| `go.mod` | `./...` | 3 | runs: its `go` line is the Go version every job sets up |
+| `tools/dev/**`, `.github/workflows/**`, fixtures included (they change how CI checks) | `./...` | 3 | runs |
+| Files of the other root module packages under `tools/` (`tools/live`, `tools/syncrepos`), `live-tests/harness/**` | `.`, `./tools/...`, `./live-tests/harness/...` | 1 | skipped |
 | Other `live-tests/**`, the mock module included (router, dns, compose, VMs, mock) | `.`, `./tools/live` (its tests read `live-tests/`) | 1 | runs for mock files |
 | `testdata/**` of a root module package | that package and `.` | 3 under `internal/`, else 1 | skipped |
-| Anything else, such as `.gitignore` or a new kind of file | `./...` | 3 | runs |
+| Anything else, such as `.gitignore`, a new kind of file, or a file under `tools/` outside every package | `./...` | 3 | runs |
 
 - The root package `.` always runs with the matrix: its tests include the repo checks that read the whole tree, and `internal/az` tests build it.
 - Without a base, when the diff fails or lists no files: everything runs and the log says why.
