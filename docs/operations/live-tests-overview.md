@@ -13,7 +13,7 @@ flowchart LR
     u1["Ubuntu Server ISO<br/>3 GB"]
     m1["Cirrus Labs macOS image<br/>29 GB, already installed"]
     w1["Windows 11 ISO, you download it<br/>+ virtio-win driver ISO"]
-    d1["Docker Hub images<br/>golang, debian, alpine, coredns"]
+    d1["Test bed images<br/>mock and router from ghcr.io,<br/>verified, or built locally;<br/>CoreDNS from Docker Hub"]
   end
   subgraph base["Built once, shared"]
     direction TB
@@ -26,12 +26,12 @@ flowchart LR
     u3["Ubuntu clone<br/>APFS copy, boots in about 20 s"]
     m3["macOS clone<br/>APFS copy, boots in about 30 s"]
     w3["Windows clone<br/>qcow2 overlay, boots in about 1 min"]
-    d3["Test bed services<br/>mock and router built per instance,<br/>CoreDNS as is"]
+    d3["Test bed services<br/>shared images, one set<br/>of containers per instance"]
   end
   u1 -- "Tart + Packer" --> u2 --> u3
   m1 -- "Tart + Packer" --> m2 --> m3
   w1 -- "QEMU + Packer" --> w2 --> w3
-  d1 -- "docker compose up --build" --> d3
+  d1 -- "docker compose up" --> d3
   classDef download fill:#1e3a8a,stroke:#3b82f6,color:#fff
   classDef base fill:#134e4a,stroke:#2dd4bf,color:#fff
   classDef instance fill:#713f12,stroke:#facc15,color:#fff
@@ -40,7 +40,7 @@ flowchart LR
   class u3,m3,w3,d3 instance
 ```
 
-The base builds also install SSH access, WireGuard and Chrome. No step installs TFSaz; a test installs it in its clone. The test bed has no shared build: each instance builds its mock and router images from Docker's layer cache and removes them on `down`.
+The base builds also install SSH access, WireGuard and Chrome. No step installs TFSaz; a test installs it in its clone. The mock and router images are shared by all instances: `up` pulls the verified image for their current inputs from `ghcr.io`, or builds it locally when the host cannot verify it or no image matches; `down` keeps them ([Test bed images](live-tests-internals.md#test-bed-images)).
 
 Details: [Base VMs](live-tests-internals.md#base-vms) and [Clones](live-tests.md#clones).
 

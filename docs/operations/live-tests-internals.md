@@ -40,6 +40,20 @@ Edge stays the default browser. Provisioning verifies Google's Authenticode sign
 
 A new guest OS gets a `live-tests/vms/<os>/` directory, an entry in the tool's OS list in `tools/live/env.go`, its guest commands in `tools/live/guest.go`, and its build inputs in `buildInputs` in `tools/live/base.go`. A new hypervisor implements the `provider` interface in `tools/live/provider.go`, as Tart (`tart.go`) and QEMU (`qemu.go`) do.
 
+## Test bed images
+
+The mock and router images are identified by an input key: SHA-256 over their build parameters and the files of their build context, the explicit list in `tools/live/images.go` (test files are not part of it). `image key IMAGE` prints the key and `image context IMAGE DIR` stages that context; local builds and CI build only from the staged directory, so Docker's ignore rules never decide what goes in. Base images and CoreDNS are pinned by digest and Dependabot bumps them; to refresh the packages without a base bump, change `ARG REFRESH` in the Dockerfile. Either changes the key.
+
+Only `up`, `services up` and `setup` resolve images; every other command uses the defaults in `compose.yaml` and never hashes or contacts a registry. Resolving, per image:
+
+1. On a `linux/arm64` engine without another `DOCKER_DEFAULT_PLATFORM`, a verified digest cached for the key in `images/` (see below) is used as is, and pulled again by digest if Docker lost it. This needs no network when the image is present.
+2. Otherwise, with a `linux/arm64` engine and a signed-in `gh` 2.102.0 or newer, the tool pulls `ghcr.io/toolspell/tfsaz-live-IMAGE:in-KEY` and accepts the digest the pull reports only if `gh attestation verify --hostname github.com` confirms provenance from `.github/workflows/testbed-images.yml` in `toolspell/tfsaz` on `refs/heads/main` (pinned to github.com, so `GH_HOST` cannot redirect it), the image is `linux/arm64` and its label `org.toolspell.tfsaz-live.key` equals the computed key. A rejected image keeps its tag but is never run: the tool runs a prebuilt image only by its verified digest (and a local build by its image ID), never by tag, and removing the tag could delete an image another instance just verified. A `DOCKER_DEFAULT_PLATFORM` other than `linux/arm64` counts as not eligible, since Compose would pick another variant.
+3. Otherwise it builds `tfsaz-live-local/IMAGE:in-KEY` from the staged context, or reuses that tag. Local builds are never treated as verified.
+
+Compose then gets the exact reference (`ghcr.io/...@sha256:DIGEST` or the ID `docker build --iidfile` wrote) with `pull_policy: never` and starts with `--no-build`. Every other Compose call passes the defaults explicitly, so an exported `TFSAZ_LIVE_MOCK_IMAGE` or `TFSAZ_LIVE_ROUTER_IMAGE` never reaches it. Teardown keeps the images, since other instances share them.
+
+The digest cache is as trusted as the rest of the state directory, which also holds the clones' SSH keys and the router keys: keep `TFSAZ_LIVE_HOME` private to your account. Local builds are trusted as far as the Docker engine is: whoever can retag local images controls Docker anyway.
+
 ## State outside the repository
 
 The tool stores state outside the worktree in `~/.tfsaz-live` (or the absolute path in `TFSAZ_LIVE_HOME`). `setup` recreates it when needed.
@@ -51,6 +65,7 @@ The tool stores state outside the worktree in `~/.tfsaz-live` (or the absolute p
 | `cache/iso/`, `cache/t3/` | Installer ISOs, checked against the SHA-256 in `vms/<os>/iso.json` (and `virtio.json` for Windows); T3 installers |
 | `packer/` | Packer plugins and cache |
 | `keys/<os>-base/` | The key of the last base build; for Windows also the password of `tester` |
+| `images/IMAGE/linux-arm64/KEY` | Verified digest of a prebuilt test bed image for that input key |
 | `slots.json`, `*.lock` | Shared slot registry and locks for allocating slots, changing bases and starting macOS VMs |
 | `instances/ID/runs/NAME/` | Clone SSH key, known_hosts, `vm.json` and VM log. `tart.log` holds the VNC address with password (mode 600). |
 | `instances/ID/failed-starts/` | Last startup log per failed clone. `down` and `prune` remove these logs. |
