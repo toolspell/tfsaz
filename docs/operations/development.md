@@ -341,3 +341,5 @@ Tests that need a whole disposable machine run in the live-test VMs against the 
 
 - Rules for fixtures, live gates and test PATs: [Testing](../internals/testing.md#fixtures-and-live-tests).
 - Record dated live results in [`docs/verification/`](../verification/), not in user guides. Current records: [offline fixtures and native suites](../verification/offline-fixtures.md), [live T3 results](../verification/live-t3-2026-11.md), [browser routing](../verification/browser-routing.md), [live VM browsers](../verification/live-vm-browsers-2026-11.md) and [live VM smoke](../verification/live-vm-smoke-2026-11.md).
+
+FAST A5 verification.
