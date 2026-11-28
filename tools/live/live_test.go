@@ -91,6 +91,8 @@ func TestCIGuard(t *testing.T) {
 				{"setup ubuntu", true},
 				{"verify macos", true},
 				{"clean", true},
+				{"image key mock", false},
+				{"image context router DIR", false},
 				{"vm future-command", false},
 			} {
 				t.Run(tc.command, func(t *testing.T) {

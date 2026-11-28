@@ -220,7 +220,7 @@ These files in `.github/` take effect once they are pushed to GitHub; locally th
 
 | File | What it does |
 | --- | --- |
-| `dependabot.yml` | Weekly grouped updates for the Go module, weekly updates of the pinned tools (`build(deps): ...`) and workflow actions (`ci(deps): ...`), at most 3 open PRs each, no release younger than 7 days, labeled `dependencies`. |
+| `dependabot.yml` | Weekly grouped updates for the Go module, weekly updates of the pinned tools and of the test bed's digest-pinned base images in the Dockerfiles and `live-tests/compose.yaml` (`build(deps): ...`), and of workflow actions (`ci(deps): ...`), at most 3 open PRs each, no release younger than 7 days, labeled `dependencies`. |
 | `labels.json`, `workflows/labels.yml` | The label set. The workflow creates and updates these labels on a push to `main` that changes them, or on manual dispatch. It never deletes a label. |
 | `ISSUE_TEMPLATE/` | Bug report and feature request forms. Blank issues are off; security reports go to `SECURITY.md`. |
 | `pull_request_template.md` | Problem, Change, Verification and a macOS, Windows and Linux checklist. |

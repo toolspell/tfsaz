@@ -1,4 +1,4 @@
-# Weekly grouped updates for the Go module, the pinned tool modules and the SHA-pinned workflow actions.
+# Weekly grouped updates for the Go module, the pinned tool modules, the SHA-pinned workflow actions and the test bed base images.
 # Commit types follow the repo's conventional commits: go.mod and go.sum are build
 # inputs ("build(deps): bump ..."), workflow pins are CI ("ci(deps): bump ...").
 version: 2
@@ -54,5 +54,38 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: ci
+      include: scope
+    labels: ["dependencies"]
+
+  # The test bed images' base images, pinned as tag@digest; a bump changes their input keys.
+  - package-ecosystem: docker
+    directories:
+      - "/live-tests/devops-server-mock"
+      - "/live-tests/router"
+    schedule:
+      interval: weekly
+    groups:
+      testbed-images:
+        patterns: ["*"]
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: build
+      include: scope
+    labels: ["dependencies"]
+
+  - package-ecosystem: docker-compose
+    directory: "/live-tests"
+    schedule:
+      interval: weekly
+    groups:
+      testbed-compose:
+        patterns: ["*"]
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: build
       include: scope
     labels: ["dependencies"]
