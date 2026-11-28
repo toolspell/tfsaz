@@ -113,7 +113,7 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 | Job | Runner | What it does |
 | --- | --- | --- |
 | Changes | ubuntu-24.04 | `go run ./tools/dev ci-changes`: whether the test matrix and Mock must run ([path filter](#path-filter)). |
-| Checks | ubuntu-24.04 | `go run ./tools/dev ci-checks`: the whole-tree checks of `ready` for the root module without the tests, plus the [repo checks](#repo-checks). |
+| Checks | ubuntu-24.04 | `go run ./tools/dev ci-checks`: the whole-tree checks of `ready` for the root module without the tests, plus the [repo checks](#repo-checks). Its Go gates run only when a Go input changed ([gates](#gates-and-reports)). |
 | Mock | ubuntu-24.04 | `go run ./tools/dev ci-mock`: the live-test mock module's `go test -race`, its Go gates and report per system, and its `go mod tidy -diff`. Runs when a file it checks changed, and always on merge queue groups and pushes to `main`. |
 | test | macOS, Windows (one or three runners), Ubuntu | `go run ./tools/dev ci-test`: `go test -race -count=1` on the root module packages the [path filter](#path-filter) selects, with the Go version in `go.mod`, the oldest supported. Skipped when no selected package changed. Windows splits the tests into [shards](#test-shards) when `internal/az` runs. |
 | Check | ubuntu-24.04 | Roll-up: passes when every job passed, or `test` or Mock was skipped because Changes found no change it checks. Fails on anything else. |
@@ -126,7 +126,7 @@ Three shards keep the Windows runners at about macOS's duration. More would shor
 
 ### Gates and reports
 
-- **Gates** (Checks): gofmt; `go vet`, golangci-lint and govulncheck for darwin, linux and windows in the root module; `go mod tidy -diff` for the root and tool modules; actionlint; gitleaks over the full history; the repo checks. The test matrix gates too.
+- **Gates** (Checks): actionlint, gitleaks over the full history and the repo checks on every run. The Go gates when a Go input changed ([path filter](#path-filter)): gofmt; `go vet`, golangci-lint and govulncheck for darwin, linux and windows in the root module; `go mod tidy -diff` for the root and tool modules. A push to `main` runs govulncheck regardless, so a new advisory still fails `main`. The test matrix gates too.
 - **Gates** (Mock): the same `go vet`, golangci-lint and govulncheck per system, `go mod tidy -diff` and `go test -race` for the live-test mock's module.
 - **Report** that never fails a run: deadcode for each system, in Checks and Mock.
 - TFSaz has no cgo code, so vet, lint and govulncheck with `GOOS` set on Linux see what native runs would see. Only the tests need the three runners.
@@ -144,27 +144,27 @@ The path filter compares against a base:
 | Push to `main` | `github.event.before`, the previous head of `main` | Covers every commit of the push, including direct pushes that had no PR run. |
 | Manual run, first push, or a base the clone lacks (force push) | None: the matrix runs | Nothing to compare against. |
 
-The workflow also passes the base to `ci-checks`, which ignores it: every gate there covers the whole tree.
+`ci-checks` reads the same base and decides from the same [path filter](#path-filter) whether its Go gates run; it needs no output of Changes. Each gate that runs still covers the whole tree.
 
 ### Path filter
 
 `ci-changes` lists the files changed since the [change base](#change-base) and classifies each one. The job's outputs are the root module packages the test matrix tests, the matrix itself (built with `fromJSON`), and whether Mock runs. Several files select the union of their rows.
 
-| Changed paths | Test matrix packages | Windows shards | Mock |
-| --- | --- | --- | --- |
-| Non-code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the review bot files `.macroscope/` and `.coderabbit.config.ts`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml` | skipped | none | skipped |
-| `.golangci.yml`, the tool modules `tools/<tool>/` | skipped | none | skipped |
-| `internal/**`, root `*.go`, `go.sum` | `./...` | 3 | skipped |
-| `go.mod` | `./...` | 3 | runs: its `go` line is the Go version every job sets up |
-| `tools/dev/**`, `.github/workflows/**`, fixtures included (they change how CI checks) | `./...` | 3 | runs |
-| Files of the other root module packages under `tools/` (`tools/live`, `tools/syncrepos`), `live-tests/harness/**` | `.`, `./tools/...`, `./live-tests/harness/...` | 1 | skipped |
-| Other `live-tests/**`, the mock module included (router, dns, compose, VMs, mock) | `.`, `./tools/live` (its tests read `live-tests/`) | 1 | runs for mock files |
-| `testdata/**` of a root module package | that package and `.` | 3 under `internal/`, else 1 | skipped |
-| Anything else, such as `.gitignore`, a new kind of file, or a file under `tools/` outside every package | `./...` | 3 | runs |
+| Changed paths | Test matrix packages | Windows shards | Checks Go gates | Mock |
+| --- | --- | --- | --- | --- |
+| Non-code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the review bot files `.macroscope/` and `.coderabbit.config.ts`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml` | skipped | none | skipped | skipped |
+| `.golangci.yml`, the tool modules `tools/<tool>/` | skipped | none | run | skipped |
+| `internal/**`, root `*.go`, `go.sum` | `./...` | 3 | run | skipped |
+| `go.mod` | `./...` | 3 | run | runs: its `go` line is the Go version every job sets up |
+| `tools/dev/**`, `.github/workflows/**`, fixtures included (they change how CI checks) | `./...` | 3 | run | runs |
+| Files of the other root module packages under `tools/` (`tools/live`, `tools/syncrepos`), `live-tests/harness/**` | `.`, `./tools/...`, `./live-tests/harness/...` | 1 | run | skipped |
+| Other `live-tests/**`, the mock module included (router, dns, compose, VMs, mock) | `.`, `./tools/live` (its tests read `live-tests/`) | 1 | skipped (Mock covers the mock's Go code) | runs for mock files |
+| `testdata/**` of a root module package | that package and `.` | 3 under `internal/`, else 1 | run | skipped |
+| Anything else, such as `.gitignore`, a new kind of file, or a file under `tools/` outside every package | `./...` | 3 | run | runs |
 
 - The root package `.` always runs with the matrix: its tests include the repo checks that read the whole tree, and `internal/az` tests build it.
 - Inside the selected packages, the matrix runs only on the OSes a change compiles for. A changed Go file of the root module's code (`internal/**`, root `*.go`, the other packages under `tools/` and `live-tests/harness/`) selects an OS when Go's own build-constraint evaluation (`go/build`, cgo on, the runner's architecture) includes it for that GOOS on either side of the diff, the base or the head. That covers added, edited, renamed and deleted files and moved build tags: `route_windows.go` runs only Windows, deleting a `_darwin.go` file runs macOS, a shared file runs all three. Every other file that selects tests, fixtures and non-Go files included, selects all three OSes, and so does a Go file that no runner builds, whose constraint uses a tag other than `darwin`, `linux`, `windows`, `unix`, `amd64`, `arm64` and `cgo` (such as `race`, `tfsaztest`, a Go version or an architecture feature), whose `//go:build` line Go cannot read (unless its name suffix already limits it to one OS), that cannot be read from Git, or that lies in a directory whose Go files use `//go:embed`. Under act (`ci-local`, which runs only the Ubuntu entry) nothing narrows. The rules are `goFileOSes` in `tools/dev/oses.go`.
-- Without a base, when the diff fails or lists no files: everything runs and the log says why.
+- Without a base, when the diff fails or lists no files: everything runs, the Go gates included, and the log says why.
 - Merge queue groups and pushes to `main` run Mock on every change, so a lint config or tool pin change is checked there.
 - The rules are `classify` in `tools/dev/selection.go`, and `TestSelectFor` has one case per row. Code under a new path, or a path that goes away, needs a row there and here.
 

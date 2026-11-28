@@ -36,14 +36,18 @@ func vet(modules []string) step {
 	})}
 }
 
+func govulncheck(modules []string) step {
+	return step{name: "govulncheck", run: eachTarget(modules, func(dir, goos string) func(*bytes.Buffer) error {
+		return toolFor(dir, goos, "govulncheck", "./...")
+	})}
+}
+
 // goGates are vet, golangci-lint, govulncheck and the deadcode report for
 // each of the given code modules and supported systems.
 func goGates(modules []string) []step {
 	return []step{
 		vet(modules),
-		{name: "govulncheck", run: eachTarget(modules, func(dir, goos string) func(*bytes.Buffer) error {
-			return toolFor(dir, goos, "govulncheck", "./...")
-		})},
+		govulncheck(modules),
 		lint(modules),
 		{name: "deadcode", report: true, run: eachTarget(modules, func(dir, goos string) func(*bytes.Buffer) error {
 			return toolFor(dir, goos, "deadcode", "./...")
