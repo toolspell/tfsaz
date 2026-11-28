@@ -48,7 +48,7 @@ func TestChangeSelectionEvents(t *testing.T) {
 	t.Run("push before SHA with a deleted file", func(t *testing.T) {
 		f := newGitFixture(t)
 		before := f.commit(map[string]string{"tools/live/old.go": "package main\n", "docs/old.md": "old\n"})
-		f.commit(map[string]string{"tools/live/old.go": ""})
+		f.commit(map[string]string{"tools/live/old.go": deleted})
 		got, why := changeSelection(before, staticPkgDirs)
 		selectionCase{files: []string{"tools/live/old.go"}, packages: toolsPkgs, shards: 1, goGates: true}.check(t, got)
 		if !strings.HasPrefix(why, "1 changed files since ") {
@@ -59,7 +59,7 @@ func TestChangeSelectionEvents(t *testing.T) {
 	t.Run("push deleting only a doc is skipped", func(t *testing.T) {
 		f := newGitFixture(t)
 		before := f.commit(map[string]string{"docs/old.md": "old\n"})
-		f.commit(map[string]string{"docs/old.md": ""})
+		f.commit(map[string]string{"docs/old.md": deleted})
 		got, _ := changeSelection(before, staticPkgDirs)
 		selectionCase{files: []string{"docs/old.md"}}.check(t, got)
 	})
