@@ -51,6 +51,11 @@ build {
 
   provisioner "shell" {
     execute_command = "sudo sh -eu '{{ .Path }}'"
+    script          = "${path.root}/provision.sh"
+  }
+
+  provisioner "shell" {
+    execute_command = "sudo sh -eu '{{ .Path }}'"
     script          = "${path.root}/prepare-base.sh"
   }
 }

@@ -49,6 +49,14 @@ var ubuntuGuest = guest{
 		"PostUp = resolvectl dns %i " + routerAddress.String() + "; resolvectl domain %i '~.'\n",
 	wgUp:     "sudo sh -c 'umask 077 && cat >/etc/wireguard/wg0.conf' && sudo systemctl enable --now wg-quick@wg0",
 	resolves: "getent hosts devops.mock.test | grep -q '^172.30.53.10 '",
+	// gnome-shell runs before its compositor accepts clients; connect to
+	// its Wayland socket to see that it does. -gui takes the display from
+	// the user's systemd manager, which GNOME tells once it is up.
+	session: "pgrep -u \"$USER\" -x gnome-shell >/dev/null && python3 -c 'import os, socket; socket.socket(socket.AF_UNIX).connect(\"/run/user/%d/wayland-0\" % os.getuid())' && systemctl --user show-environment | grep -q '^WAYLAND_DISPLAY='",
+	// GNOME hands its session's environment to the user's systemd manager.
+	// An SSH session lacks the display, the desktop's name and the snap
+	// directory in XDG_DATA_DIRS, without which links open in no browser.
+	gui:      `bash -c 'set -a; eval "$(systemctl --user show-environment)"; set +a; exec sh -c "$1"' tfsaz %s`,
 	reaches:  "timeout 5 bash -c '</dev/tcp/devops.mock.test/8080'",
 	tunneled: "ip route get 1.1.1.1 | grep -q ' dev wg0 '",
 	update:   "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update && apt-get -y -o DPkg::Lock::Timeout=600 full-upgrade && apt-get -y autoremove'",

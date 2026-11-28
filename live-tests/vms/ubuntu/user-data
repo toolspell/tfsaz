@@ -2,6 +2,10 @@
 # Autoinstall config for the Ubuntu base VM. `go run ./tools/live base build
 # ubuntu` replaces ${ssh_public_key} with the key of this build and puts the
 # file on a seed ISO labeled cidata.
+# The installer itself accepts the build key too, for the user installer,
+# so a stuck build can be inspected: ssh installer@IP, /var/log/installer.
+ssh_authorized_keys:
+  - ${ssh_public_key}
 autoinstall:
   version: 1
   source:
