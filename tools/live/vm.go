@@ -134,6 +134,9 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 	if err := e.requireRouter(); err != nil {
 		return info, err
 	}
+	if err := e.macosSlot(o); err != nil {
+		return info, err
+	}
 	dir := e.runDir(name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return info, err
@@ -181,11 +184,10 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 	if _, err := login.run(nil, "true"); err != nil {
 		return info, fmt.Errorf("the run key does not work: %w", err)
 	}
-	if _, err := login.run(nil, fmt.Sprintf(
-		"sudo hostnamectl set-hostname %[1]s && sudo sed -i 's/^127\\.0\\.1\\.1 .*/127.0.1.1 %[1]s/' /etc/hosts", name)); err != nil {
+	if _, err := login.run(nil, fmt.Sprintf(o.guest.hostname, name)); err != nil {
 		return info, err
 	}
-	if info.BedAddress, err = e.joinRouter(name, login); err != nil {
+	if info.BedAddress, err = e.joinRouter(o, name, login); err != nil {
 		return info, err
 	}
 	// Flush the setup to the clone's disk, so a later stop cannot lose it.
@@ -202,17 +204,17 @@ func (e *env) vmUp(osName, suffix string) (info vmInfo, err error) {
 
 // joinRouter gives the clone a WireGuard tunnel to the router and checks
 // that it reaches the mock by name.
-func (e *env) joinRouter(name string, login sshTarget) (string, error) {
+func (e *env) joinRouter(o osDef, name string, login sshTarget) (string, error) {
 	routerKey, err := e.routerKey()
 	if err != nil {
 		return "", err
 	}
 	// The router is published on the host, which is the clone's gateway.
-	gateway, err := login.run(nil, "ip -4 route show default | awk '{print $3; exit}'")
+	gateway, err := login.run(nil, o.guest.gateway)
 	if err != nil || gateway == "" {
 		return "", fmt.Errorf("find the clone's gateway: %w", err)
 	}
-	public, err := login.run(nil, "sudo sh -c 'umask 077 && wg genkey >/etc/wireguard/private.key && wg pubkey </etc/wireguard/private.key'")
+	public, err := login.run(nil, o.guest.wgKey)
 	if err != nil {
 		return "", err
 	}
@@ -220,16 +222,16 @@ func (e *env) joinRouter(name string, login sshTarget) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	config := strings.NewReader(wgConfig(address, routerKey, gateway))
-	if _, err := login.run(config, "sudo sh -c 'umask 077 && cat >/etc/wireguard/wg0.conf' && sudo systemctl enable --now wg-quick@wg0"); err != nil {
+	config := strings.NewReader(wgConfig(address, routerKey, gateway, o.guest.wgLines))
+	if _, err := login.run(config, o.guest.wgUp); err != nil {
 		return "", err
 	}
-	return address.String(), reachesMock(login)
+	return address.String(), reachesMock(o, login)
 }
 
 // reachesMock waits until the clone reaches the mock by name through the router.
-func reachesMock(login sshTarget) error {
-	check := "getent hosts devops.mock.test && timeout 5 bash -c '</dev/tcp/devops.mock.test/8080'"
+func reachesMock(o osDef, login sshTarget) error {
+	check := o.guest.resolves + " && " + o.guest.reaches
 	var last error
 	for range 15 {
 		if _, last = login.run(nil, check); last == nil {
@@ -254,7 +256,8 @@ func (e *env) vmStop(name string, force bool) error {
 	}
 	// tart stop ends a Linux guest without a shutdown after its timeout, and
 	// writes still in the guest's cache are lost; shut down from inside.
-	if _, err := info.login().run(nil, "sudo systemctl poweroff"); err != nil && !strings.Contains(err.Error(), "closed by remote host") {
+	o, _ := osOfVM(name)
+	if _, err := info.login().run(nil, o.guest.poweroff); err != nil && !strings.Contains(err.Error(), "closed by remote host") {
 		return fmt.Errorf("%w; %s keeps running. vm stop %s -force stops it without a shutdown and can lose its unwritten changes", err, name, name)
 	}
 	if err := t.waitStopped(name, 2*time.Minute); err != nil {
@@ -271,6 +274,10 @@ func (e *env) vmStart(name string) error {
 		return err
 	}
 	if err := e.requireRouter(); err != nil {
+		return err
+	}
+	o, _ := osOfVM(name)
+	if err := e.macosSlot(o); err != nil {
 		return err
 	}
 	t := e.tart()
@@ -294,7 +301,7 @@ func (e *env) vmStart(name string) error {
 	if err := login.wait(3 * time.Minute); err != nil {
 		return err
 	}
-	if err := reachesMock(login); err != nil {
+	if err := reachesMock(o, login); err != nil {
 		return err
 	}
 	fmt.Println(string(data))

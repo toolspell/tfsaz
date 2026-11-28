@@ -60,6 +60,8 @@ func TestCloneNames(t *testing.T) {
 		{"tfsaz-ubuntu-", false},
 		{"tfsaz-ubuntu-/../..", false},
 		{"tfsaz-ubuntu-a/b", false},
+		{"tfsaz-macos-a1b2c3", true},
+		{"tfsaz-macos-base", false},
 		{"tfsaz-windows-x", false}, // not set up yet
 		{"ubuntu-a1b2c3", false},
 	} {
@@ -70,14 +72,25 @@ func TestCloneNames(t *testing.T) {
 }
 
 func TestWGConfig(t *testing.T) {
-	config := wgConfig(netip.MustParseAddr("172.30.53.129"), "ROUTER", "192.168.64.1")
-	for _, want := range []string{
-		"private-key /etc/wireguard/private.key", "Address = 172.30.53.129/32", "resolvectl dns %i 172.30.53.2",
-		"PublicKey = ROUTER", "Endpoint = 192.168.64.1:51820", "AllowedIPs = 0.0.0.0/0",
+	for _, tc := range []struct {
+		name  string
+		guest guest
+		dns   string
+	}{
+		{"ubuntu", ubuntuGuest, "resolvectl dns %i 172.30.53.2"},
+		{"macos", macosGuest, "DNS = 172.30.53.2"},
 	} {
-		if !strings.Contains(config, want) {
-			t.Errorf("config misses %q:\n%s", want, config)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			config := wgConfig(netip.MustParseAddr("172.30.53.129"), "ROUTER", "192.168.64.1", tc.guest.wgLines)
+			for _, want := range []string{
+				"private-key /etc/wireguard/private.key", "Address = 172.30.53.129/32", tc.dns,
+				"PublicKey = ROUTER", "Endpoint = 192.168.64.1:51820", "AllowedIPs = 0.0.0.0/0",
+			} {
+				if !strings.Contains(config, want) {
+					t.Errorf("config misses %q:\n%s", want, config)
+				}
+			}
+		})
 	}
 }
 

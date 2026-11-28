@@ -41,6 +41,10 @@ func (e *env) verify(osName string) (err error) {
 	if err := requireMac(); err != nil {
 		return err
 	}
+	o, err := lookupOS(osName)
+	if err != nil {
+		return err
+	}
 	b := make([]byte, 3)
 	_, _ = rand.Read(b)
 	info, err := e.vmUp(osName, "verify-"+hex.EncodeToString(b))
@@ -54,14 +58,14 @@ func (e *env) verify(osName string) (err error) {
 		pat = "mock-pat"
 	}
 	checks := []struct{ name, command string }{
-		{"the VM resolves devops.mock.test to the mock",
-			"getent hosts devops.mock.test | grep -q '^172.30.53.10 '"},
+		{"the VM resolves devops.mock.test to the mock", o.guest.resolves},
 		{"the mock's REST API answers through the router",
 			fmt.Sprintf(`test "$(curl -s -u :%s -o /dev/null -w '%%{http_code}' 'http://devops.mock.test:8080/DefaultCollection/_apis/connectionData?api-version=5.0-preview.1')" = 200`, pat)},
-		{"traffic to the internet goes through the tunnel",
-			"ip route get 1.1.1.1 | grep -q ' dev wg0 '"},
-		{"the VM reaches the internet",
-			"curl -s -o /dev/null --max-time 15 https://github.com"},
+		{"traffic to the internet goes through the tunnel", o.guest.tunneled},
+		{"the VM reaches the internet", "curl -s -o /dev/null --max-time 15 https://github.com"},
+	}
+	if o.guest.session != "" {
+		checks = append(checks, struct{ name, command string }{"the test user is logged in to the GUI", o.guest.session})
 	}
 	failed := 0
 	login := info.login()

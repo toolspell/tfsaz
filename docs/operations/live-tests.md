@@ -1,6 +1,6 @@
 # Live tests
 
-Live tests check what TFSaz changes on a client machine: routing, trust, keyring, services, link handlers, browsers and T3. They run in disposable VMs that reach a mock of Azure DevOps Server instead of the shared testbed. The files are in [`live-tests/`](../../live-tests/), the tool in [`tools/live`](../../tools/live/). Ubuntu works; Windows (UTM) and macOS (Tart) are planned.
+Live tests check what TFSaz changes on a client machine: routing, trust, keyring, services, link handlers, browsers and T3. They run in disposable VMs that reach a mock of Azure DevOps Server instead of the shared testbed. The files are in [`live-tests/`](../../live-tests/), the tool in [`tools/live`](../../tools/live/). Ubuntu and macOS guests work; Windows (QEMU) is planned.
 
 ## Set up a Mac
 
@@ -8,9 +8,10 @@ The host must be an Apple Silicon Mac with Homebrew, Go and Git. From the reposi
 
 ```sh
 go run ./tools/live setup ubuntu
+go run ./tools/live setup macos
 ```
 
-`setup` installs what is missing, starts the test bed, builds the Ubuntu base VM if it does not exist, and ends with `verify`. It skips steps that are done, so it is safe to rerun. The first run takes about 10 minutes plus the 3 GB ISO download.
+`setup OS` installs what is missing, starts the test bed, builds the OS's base VM if it does not exist, and ends with `verify`. It skips steps that are done, so it is safe to rerun. The first Ubuntu run takes about 10 minutes plus the 3 GB ISO download; the first macOS run takes about 25 minutes to pull the 29 GB image and 3 minutes for the rest.
 
 | Step | Done by | Human part |
 | --- | --- | --- |
@@ -22,9 +23,9 @@ go run ./tools/live setup ubuntu
 ## Commands
 
 ```sh
-go run ./tools/live setup ubuntu      # everything above, then verify
-go run ./tools/live verify ubuntu     # boot a throwaway clone and check the bed
-go run ./tools/live vm up ubuntu      # clone, boot and connect a VM; prints its details as JSON
+go run ./tools/live setup OS          # everything above, then verify; OS is ubuntu or macos
+go run ./tools/live verify OS         # boot a throwaway clone and check the bed
+go run ./tools/live vm up OS          # clone, boot and connect a VM; prints its details as JSON
 go run ./tools/live vm ssh NAME -- uname -a
 go run ./tools/live vm list -json
 go run ./tools/live vm stop NAME      # shut it down, keep it for later
@@ -36,7 +37,7 @@ go run ./tools/live status
 
 `go run ./tools/live help` lists all commands. None prompts unless it runs in a terminal; `setup` and `doctor -install` install without asking. `vm ssh` passes on the remote exit code, but `go run` turns any nonzero code into 1 and prints `exit status N`. For the exact code, build the tool once with `go build -o bin/live ./tools/live` and run `bin/live`.
 
-`verify` checks from a new clone that `devops.mock.test` resolves to the mock, that the mock's REST API answers through the router, that internet traffic goes through the tunnel and works, and that the router reaches the VM. It prints one line per check, deletes the clone and fails if any check failed.
+`verify` checks from a new clone that `devops.mock.test` resolves to the mock, that the mock's REST API answers through the router, that internet traffic goes through the tunnel and works, that the router reaches the VM, and on macOS that the test user is logged in to the GUI. It prints one line per check, deletes the clone and fails if any check failed.
 
 ## For agents
 
@@ -48,7 +49,8 @@ go run ./tools/live status
 - Keep a clone while its case or PR may still need it, for example for review fixes or a rerun. Stop it with `vm stop NAME` while you do not use it and start it again with `vm start NAME`. Delete it with `vm down NAME` only once you are sure nothing needs it any more.
 - Nothing runs when nothing needs it: before you hand back, stop the clones you keep, delete the others, and run `services down`. The base VM stays stopped.
 - Record dated live results in [`docs/verification/`](../verification/).
-- Prefer the tools already in use (Tart, Packer, `curl`, `wg`, cloud-init, CoreDNS) over new code.
+- macOS runs at most two macOS VMs at a time, base builds included; `vm up` refuses a third. Stop or delete one first.
+- Prefer the tools already in use (Tart, Packer, `curl`, `wg`, cloud-init, Homebrew, CoreDNS) over new code.
 
 ## Layout
 
@@ -59,9 +61,10 @@ go run ./tools/live status
 | `live-tests/dns/Corefile` | The DNS sinkhole |
 | `live-tests/router/` | The WireGuard router that connects VMs |
 | `live-tests/vms/ubuntu/` | The Ubuntu base VM: ISO pin, autoinstall config, Packer template, base preparation |
+| `live-tests/vms/macos/` | The macOS base VM: image pin, Packer template, provisioning, base preparation |
 | `tools/live/` | The tool |
 
-A new guest OS gets a `live-tests/vms/<os>/` directory and an entry in the tool's OS list in `tools/live/env.go`; until then the tool refuses it with "not set up yet".
+A new guest OS gets a `live-tests/vms/<os>/` directory, an entry in the tool's OS list in `tools/live/env.go`, its guest commands in `tools/live/guest.go`, and its build inputs in `buildInputs` in `tools/live/base.go`; until then the tool refuses it with "not set up yet".
 
 ## State outside the repository
 
@@ -69,30 +72,42 @@ The tool keeps everything large or secret in `~/.tfsaz-live` (or `$TFSAZ_LIVE_HO
 
 | Path | Contents |
 | --- | --- |
-| `tart/` | Tart's home for these VMs only (`TART_HOME`), so they never mix with other Tart VMs |
+| `tart/` | Tart's home for these VMs only (`TART_HOME`), so they never mix with other Tart VMs; its `cache/` holds the pulled macOS image |
 | `cache/iso/` | Downloaded installer ISOs, checked against the SHA-256 in `vms/<os>/iso.json` |
 | `packer/` | Packer plugins and cache |
 | `keys/<os>-base/` | The key of the last base build |
 | `runs/<name>/` | Per clone: its own SSH key, known_hosts, Tart log, `vm.json` |
 | `router/` | The router's WireGuard key and one file per connected VM |
 
-Only `base build` downloads an ISO, and only when the cache has none matching `iso.json`; `curl` resumes an interrupted download. Deleting the directory removes everything; `setup` recreates it.
+Only `base build` downloads, and only what the cache lacks: an ISO matching `iso.json` (`curl` resumes an interrupted download), or the macOS image pinned in `image.json` (Tart pulls it once). Deleting the directory removes everything; `setup` recreates it.
 
 ## Base VMs
 
+### Ubuntu
+
 `base build ubuntu` checks the ISO, writes the autoinstall config with a new build key to a seed ISO, and runs Packer with the Tart plugin. The installer runs unattended; Packer answers its one autoinstall prompt. The last step, `prepare-base.sh`, removes what must differ per clone (SSH host keys, machine ID, interface-specific network config) and turns off Ubuntu's automatic updates, so clones do not run `apt` during tests. The build goes into `tfsaz-ubuntu-build` and replaces `tfsaz-ubuntu-base` only when it succeeded. It takes about 8 minutes and 6 GB.
+
+The base has one user, `tester`, with passwordless sudo, no password and no other login than the build key.
+
+### macOS
+
+`base build macos` starts from Cirrus Labs' vanilla macOS 27 image, pinned by digest in `image.json`: macOS after Setup Assistant, with the user `admin` (password `admin`) logged in automatically, Remote Login on, passwordless sudo and Gatekeeper off. Tart pulls it once (about 29 GB). `provision.sh` makes the build key the only SSH login (the image's public password stops working over SSH), installs Homebrew with the Command Line Tools and `wireguard-tools`, adds the launchd daemon `com.tfsaz.live.wg0` that starts the tunnel on boot, and turns off automatic updates. `prepare-base.sh` deletes the SSH host keys, which sshd recreates per clone. With the image in Tart's cache, the build takes about 3 minutes and `base update macos` about 2.5 minutes.
+
+The guest needs a host with at least its macOS version, and macOS runs at most two macOS VMs at a time; the tool checks both. A newer macOS comes with a new pin in `image.json` and `base build macos -force`.
+
+### Commands
 
 | Command | Effect |
 | --- | --- |
-| `base build ubuntu` | First build; `-force` rebuilds from scratch |
-| `base update ubuntu` | Boots the base, upgrades its packages, prepares it again |
-| `base rm ubuntu` | Deletes the base and its build key |
+| `base build OS` | First build; `-force` rebuilds from scratch |
+| `base update OS` | Boots the base, upgrades its packages (apt on Ubuntu, Homebrew on macOS), prepares it again |
+| `base rm OS` | Deletes the base and its build key |
 
-All three refuse while clones of the base exist. The base has one user, `tester`, with passwordless sudo, no password and no other login than the build key.
+All three refuse while clones of the base exist.
 
 ## Clones
 
-`vm up ubuntu` clones the base (an APFS copy, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in under 10 seconds. It prints `vm.json`: name, NAT address, address in the test bed, SSH key. `vm stop NAME` shuts a clone down from inside and keeps it with its key and router peer; when it cannot reach the clone it leaves it running, and `-force` stops it without a shutdown, which can lose unwritten changes. `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
+`vm up OS` clones the base (an APFS copy, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in under 10 seconds for Ubuntu and about 30 for macOS. A macOS clone boots into the logged-in GUI session of `admin`. It prints `vm.json`: name, NAT address, address in the test bed, SSH key. `vm stop NAME` shuts a clone down from inside and keeps it with its key and router peer; when it cannot reach the clone it leaves it running, and `-force` stops it without a shutdown, which can lose unwritten changes. `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
 
 ## Network
 
@@ -133,9 +148,10 @@ It also advises shortening macOS's DHCP leases for VMs from a day to ten minutes
 
 ## Troubleshooting
 
-- A base build prints a VNC address and password; open it to watch the installer.
-- The installed system must ask DHCP with its MAC address (`dhcp-identifier: mac` in the autoinstall and clone network config); otherwise Tart finds no IP and Packer waits until its 25-minute SSH timeout.
+- A base build prints a VNC address and password; open it to watch the installer or, on macOS, the desktop.
+- The Ubuntu system must ask DHCP with its MAC address (`dhcp-identifier: mac` in the autoinstall and clone network config); otherwise Tart finds no IP and Packer waits until its 25-minute SSH timeout.
 - A clone's Tart output is in `~/.tfsaz-live/runs/NAME/tart.log`. `vm up` deletes a clone that fails to come up.
+- A macOS clone's tunnel logs to `/var/log/tfsaz-live-wg0.log` in the VM; `sudo launchctl kickstart -k system/com.tfsaz.live.wg0` restarts it.
 
 ## Remove everything
 

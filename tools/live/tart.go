@@ -67,6 +67,28 @@ func (t tart) clones(o osDef) ([]string, error) {
 	return names, nil
 }
 
+// macosSlot refuses to start another macOS VM when two run already:
+// Apple's license and Virtualization.framework allow two per host.
+func (e *env) macosSlot(o osDef) error {
+	if o.macos == 0 {
+		return nil
+	}
+	vms, err := e.tart().list()
+	if err != nil {
+		return err
+	}
+	var running []string
+	for _, vm := range vms {
+		if vm.Running && strings.HasPrefix(vm.Name, prefix+o.name+"-") {
+			running = append(running, vm.Name)
+		}
+	}
+	if len(running) >= 2 {
+		return fmt.Errorf("macOS allows two macOS VMs at a time; running: %s", strings.Join(running, ", "))
+	}
+	return nil
+}
+
 // start boots a VM headless in the background; Tart's output goes to logFile.
 // The VM keeps running after this process exits.
 func (t tart) start(name, logFile string) error {
