@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -360,5 +362,88 @@ func TestShellQuote(t *testing.T) {
 		if err != nil || string(out) != s {
 			t.Errorf("sh got %q, %v; want %q", out, err, s)
 		}
+	}
+}
+
+func TestT3Installer(t *testing.T) {
+	for _, tc := range []struct{ os, tag, manifest, file string }{
+		{"macos", "v0.1.13-nightly.20261125.5258", "nightly-mac.yml", "T3-Code-0.1.13-nightly.20261125.5258-arm64.zip"},
+		{"ubuntu", "v0.1.13-nightly.20261125.5258", "nightly-linux-arm64.yml", "T3-Code-0.1.13-nightly.20261125.5258-arm64.deb"},
+		{"windows", "v0.1.12", "latest.yml", "T3-Code-0.1.12-arm64.exe"},
+	} {
+		manifest, file, err := t3Installer(tc.os, tc.tag)
+		if err != nil || manifest != tc.manifest || file != tc.file {
+			t.Errorf("t3Installer(%s, %s) = %q, %q, %v", tc.os, tc.tag, manifest, file, err)
+		}
+	}
+}
+
+func TestManifestSHA512(t *testing.T) {
+	manifest := "version: 1\nfiles:\n  - url: a-arm64.zip\n    sha512: AAA==\n    size: 1\n  - url: a-x64.zip\n    sha512: BBB==\npath: a-arm64.zip\nsha512: AAA==\n"
+	for file, want := range map[string]string{"a-arm64.zip": "AAA==", "a-x64.zip": "BBB=="} {
+		if got, err := manifestSHA512(strings.NewReader(manifest), file); err != nil || got != want {
+			t.Errorf("manifestSHA512(%s) = %q, %v; want %q", file, got, err, want)
+		}
+	}
+	if _, err := manifestSHA512(strings.NewReader(manifest), "missing.zip"); err == nil {
+		t.Error("manifestSHA512 found a file the manifest does not list")
+	}
+}
+
+func TestDownload(t *testing.T) {
+	if _, err := exec.LookPath("curl"); err != nil {
+		t.Skip("curl unavailable")
+	}
+	src := filepath.Join(t.TempDir(), "installer")
+	if err := os.WriteFile(src, []byte("installer"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srcPath := filepath.ToSlash(src)
+	if !strings.HasPrefix(srcPath, "/") {
+		srcPath = "/" + srcPath
+	}
+	url := (&neturl.URL{Scheme: "file", Path: srcPath}).String()
+	sum := sha512.Sum512([]byte("installer"))
+	good := base64.StdEncoding.EncodeToString(sum[:])
+	for _, tc := range []struct {
+		name, url, want string
+		runs            int
+		ok              bool
+	}{
+		{name: "no checksum", url: url, runs: 1, ok: true},
+		{name: "matching checksum, parallel runs", url: url, want: good, runs: 4, ok: true},
+		{name: "wrong checksum", url: url, want: "AAAA", runs: 1},
+		{name: "failed download", url: url + ".missing", runs: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "file")
+			errs := make(chan error, tc.runs)
+			for range tc.runs {
+				go func() { errs <- download(path, tc.url, tc.want) }()
+			}
+			deadline := time.After(30 * time.Second)
+			for range tc.runs {
+				select {
+				case err := <-errs:
+					if (err == nil) != tc.ok {
+						t.Errorf("download: %v, want success %v", err, tc.ok)
+					}
+				case <-deadline:
+					t.Fatal("download did not finish within 30 s")
+				}
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var names []string
+			for _, e := range entries {
+				names = append(names, e.Name())
+			}
+			if want := map[bool][]string{true: {"file"}, false: nil}[tc.ok]; !slices.Equal(names, want) {
+				t.Errorf("directory holds %q, want %q", names, want)
+			}
+		})
 	}
 }

@@ -20,6 +20,8 @@ type guest struct {
 	internet   string // succeeds when the VM reaches the internet
 	session    string // succeeds when the test user has a GUI session; empty when the OS has none
 	gui        string // runs %s, a quoted sh command, in the desktop session; empty when there is none or for PowerShell
+	tempDir    string // where vm t3 copies the installer, with a trailing slash
+	t3Install  string // installs the T3 Code desktop app from the installer %[1]s and deletes it
 	sync       string // flushes the disk cache
 	update     string // upgrades the packages of the base; empty when a rebuild is the update
 	poweroff   string
@@ -56,11 +58,13 @@ var ubuntuGuest = guest{
 	// GNOME hands its session's environment to the user's systemd manager.
 	// An SSH session lacks the display, the desktop's name and the snap
 	// directory in XDG_DATA_DIRS, without which links open in no browser.
-	gui:      `bash -c 'set -a; eval "$(systemctl --user show-environment)"; set +a; exec sh -c "$1"' tfsaz %s`,
-	reaches:  "timeout 5 bash -c '</dev/tcp/devops.mock.test/8080'",
-	tunneled: "ip route get 1.1.1.1 | grep -q ' dev wg0 '",
-	update:   "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update && apt-get -y -o DPkg::Lock::Timeout=600 full-upgrade && apt-get -y autoremove'",
-	poweroff: "sudo systemctl poweroff",
+	gui:       `bash -c 'set -a; eval "$(systemctl --user show-environment)"; set +a; exec sh -c "$1"' tfsaz %s`,
+	tempDir:   "/tmp/",
+	t3Install: "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Lock::Timeout=600 %[1]s && rm -f %[1]s",
+	reaches:   "timeout 5 bash -c '</dev/tcp/devops.mock.test/8080'",
+	tunneled:  "ip route get 1.1.1.1 | grep -q ' dev wg0 '",
+	update:    "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update && apt-get -y -o DPkg::Lock::Timeout=600 full-upgrade && apt-get -y autoremove'",
+	poweroff:  "sudo systemctl poweroff",
 }
 
 // macOS: wireguard-tools come from Homebrew; the base's launchd daemon
@@ -83,9 +87,11 @@ var macosGuest = guest{
 	session:  "test \"$(stat -f %Su /dev/console)\" = \"$USER\"",
 	// launchctl asuser enters the user's GUI session, where the login
 	// keychain is unlocked and apps open on the user's screen.
-	gui:      `sudo launchctl asuser "$(id -u)" sudo -u "$(id -un)" sh -c %s`,
-	update:   "eval \"$(/opt/homebrew/bin/brew shellenv)\" && brew update && brew upgrade",
-	poweroff: "sudo shutdown -h now",
+	gui:       `sudo launchctl asuser "$(id -u)" sudo -u "$(id -un)" sh -c %s`,
+	tempDir:   "/tmp/",
+	t3Install: "ditto -x -k %[1]s /Applications && rm -f %[1]s",
+	update:    "eval \"$(/opt/homebrew/bin/brew shellenv)\" && brew update && brew upgrade",
+	poweroff:  "sudo shutdown -h now",
 }
 
 // Windows: the base has WireGuard for Windows and C:\ProgramData\tfsaz-live,
@@ -118,5 +124,12 @@ Get-NetAdapter | Where-Object Name -ne 'wg0' | Set-DnsClientServerAddress -Serve
 	internet: "curl.exe -s -o NUL --max-time 15 https://github.com; exit $LASTEXITCODE",
 	session:  `if ((Get-CimInstance Win32_ComputerSystem).UserName -like "*\$env:USERNAME") { exit 0 }; exit 1`,
 	sync:     "Write-VolumeCache -DriveLetter C",
+	tempDir:  "C:/Windows/Temp/",
+	// The NSIS installer installs for the user that runs it, as a download
+	// and double-click would.
+	// Defender can hold the installer for a moment after it exits.
+	t3Install: "$p = Start-Process -Wait -PassThru -FilePath '%[1]s' -ArgumentList '/S'\n" +
+		"for ($try = 1; ; $try++) { try { Remove-Item '%[1]s'; break } catch { if ($try -ge 30) { throw }; Start-Sleep 1 } }\n" +
+		"exit $p.ExitCode",
 	poweroff: "shutdown /s /t 0 /f",
 }

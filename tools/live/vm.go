@@ -109,6 +109,8 @@ func (e *env) vm(args []string) error {
 		return e.vmScreenshot(args[1:])
 	case "vnc":
 		return e.vmVNC(args[1:])
+	case "t3":
+		return e.vmT3(args[1:])
 	case "stop":
 		force := flags.Bool("force", false, "stop without a shutdown; can lose unwritten changes")
 		if len(args) < 2 || flags.Parse(args[2:]) != nil || flags.NArg() != 0 {
