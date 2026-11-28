@@ -121,7 +121,7 @@ func (tc selectionCase) check(t *testing.T, got selection) {
 
 func TestSelectFor(t *testing.T) {
 	for _, tc := range selectionCases {
-		t.Run(tc.name, func(t *testing.T) { tc.check(t, selectFor(tc.files, testPkgDirs)) })
+		t.Run(tc.name, func(t *testing.T) { tc.check(t, selectFor(tc.files, testPkgDirs, nil)) })
 	}
 }
 
@@ -140,6 +140,8 @@ func newGitFixture(t *testing.T) *gitFixture {
 	}
 	dir := t.TempDir()
 	isolateGit(t)
+	// ci-local runs these tests under act, which turns OS narrowing off.
+	t.Setenv("ACT", "")
 	t.Chdir(dir)
 	f := &gitFixture{t: t, dir: dir}
 	f.git("init", "--quiet", "--initial-branch=main")
@@ -159,13 +161,17 @@ func (f *gitFixture) git(args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// commit writes files (an empty content deletes the file) and commits them,
-// returning the new head.
+// deleted as a file's content in commit removes the file; an empty string is
+// an empty file.
+const deleted = "\x00deleted"
+
+// commit writes files (deleted removes one) and commits them, returning the
+// new head.
 func (f *gitFixture) commit(files map[string]string) string {
 	f.t.Helper()
 	for name, content := range files {
 		p := filepath.Join(f.dir, filepath.FromSlash(name))
-		if content == "" {
+		if content == deleted {
 			if err := os.Remove(p); err != nil {
 				f.t.Fatal(err)
 			}

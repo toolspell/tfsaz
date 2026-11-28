@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -48,7 +49,93 @@ func changeSelection(base string, pkgDirs func() ([]string, error)) (selection, 
 	if err != nil {
 		return everything(), err.Error()
 	}
-	return selectFor(files, dirs), fmt.Sprintf("%d changed files since %s", len(files), short(sha))
+	return selectFor(files, dirs, osVersions(sha)), fmt.Sprintf("%d changed files since %s", len(files), short(sha))
+}
+
+// osVersions is what narrows the test matrix OSes: the files at base and
+// HEAD, or nil under act, which runs only the Ubuntu entry
+// (ci-local), so a change for another OS still tests there.
+func osVersions(base string) fileVersions {
+	if os.Getenv("ACT") != "" {
+		return nil
+	}
+	return gitVersions(base)
+}
+
+// gitVersions reads files at base and at HEAD from the clone. A file in a
+// directory where, on either side, a Go file embeds files reads as an error
+// and selects every OS, and so does every file once any Go file is a
+// symlink: their bytes may also count as data or compile under another name.
+func gitVersions(base string) fileVersions {
+	dirs, dirsErr := aliasDirs(base)
+	return func(file string) ([]byte, bool, []byte, bool, error) {
+		if dirsErr != nil {
+			return nil, false, nil, false, dirsErr
+		}
+		for _, dir := range dirs {
+			if dir == "." || strings.HasPrefix(file, dir+"/") {
+				return nil, false, nil, false, fmt.Errorf("%s: a Go file in %s embeds files, or a Go file is a symlink", file, dir)
+			}
+		}
+		b, bOK, err := gitBlob(base, file)
+		if err != nil {
+			return nil, false, nil, false, err
+		}
+		h, hOK, err := gitBlob("HEAD", file)
+		return b, bOK, h, hOK, err
+	}
+}
+
+// aliasDirs lists the directories that hold, at base or HEAD, a Go file with
+// a //go:embed directive, and "." for all when a Go file is a symlink.
+func aliasDirs(base string) ([]string, error) {
+	var dirs []string
+	for _, rev := range []string{base, "HEAD"} {
+		raw, err := exec.Command("git", "grep", "-l", "-z", "--fixed-strings", "//go:embed", rev, "--", "*.go").Output()
+		var exit *exec.ExitError
+		switch {
+		case errors.As(err, &exit) && exit.ExitCode() == 1:
+			// no match
+		case err != nil:
+			return nil, fmt.Errorf("git grep //go:embed %s: %v", rev, err)
+		default:
+			for _, f := range strings.Split(string(raw), "\x00") {
+				if _, name, ok := strings.Cut(f, ":"); ok {
+					dirs = append(dirs, path.Dir(name))
+				}
+			}
+		}
+		// ls-tree takes path prefixes, not globs, so filter the names here.
+		entries, err := gitPaths("ls-tree", "-r", "-z", rev)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			// <mode> <type> <object>\t<path>
+			if meta, name, ok := strings.Cut(e, "\t"); ok && strings.HasPrefix(meta, "120000 ") && strings.HasSuffix(name, ".go") {
+				// A link may point into any package, so nothing narrows.
+				dirs = append(dirs, ".")
+			}
+		}
+	}
+	return dirs, nil
+}
+
+// gitBlob returns a file's content at rev, or ok false when rev's tree has no
+// such entry. A blob that cannot be read is an error, not a deletion.
+func gitBlob(rev, file string) ([]byte, bool, error) {
+	entry, err := git("ls-tree", "-z", rev, "--", file)
+	if err != nil {
+		return nil, false, err
+	}
+	if entry == "" {
+		return nil, false, nil
+	}
+	out, err := git("cat-file", "blob", rev+":"+file)
+	if err != nil {
+		return nil, false, err
+	}
+	return []byte(out), true, nil
 }
 
 // ciChanges writes the Changes job's outputs: tests and mock (true|false),
@@ -66,8 +153,8 @@ func ciChanges(base string) bool {
 		fmt.Fprintln(os.Stderr, "ci-changes:", err)
 		return false
 	}
-	fmt.Fprintf(os.Stderr, "ci-changes: %s; tests: %s on %d Windows shards; Go gates: %v; mock: %v\n",
-		why, or(strings.Join(s.packages, " "), "none"), s.shards, s.goGates, s.mock)
+	fmt.Fprintf(os.Stderr, "ci-changes: %s; tests: %s on %s, %d Windows shards; Go gates: %v; mock: %v\n",
+		why, or(strings.Join(s.packages, " "), "none"), or(strings.Join(s.oses, " "), "no OS"), s.shards, s.goGates, s.mock)
 	lines := fmt.Sprintf("tests=%v\nmock=%v\npackages=%s\nmatrix=%s\n", s.tests(), s.mock, strings.Join(s.packages, " "), matrix)
 	fmt.Print(lines)
 	if out := os.Getenv("GITHUB_OUTPUT"); out != "" {
