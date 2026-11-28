@@ -97,7 +97,11 @@ func TestVerifyRouteNode(t *testing.T) {
 	if err := verifyRouteNode(t.Context(), cfg, &out); err != nil || out.String() != "profile fixture: Node verified collection TLS\n" {
 		t.Fatalf("with a Node startup longer than the TLS budget got output %q, error %v", &out, err)
 	}
-	<-serverNames
+	select {
+	case <-serverNames:
+	default:
+		t.Fatal("expected an incoming TLS handshake after a slow Node start")
+	}
 	t.Setenv("NODE_OPTIONS", "--dns-result-order=ipv4first")
 
 	stalled, err := net.Listen("tcp", "127.0.0.1:0")
