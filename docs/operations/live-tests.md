@@ -59,7 +59,7 @@ go run ./tools/live status
 
 Usage errors print the command's synopsis on stderr and exit 2, before the tool touches any state. `vm ssh` passes on the remote exit code. `go run` reports any nonzero code as `exit status N` and exits 1. For the exact code, build the tool once with `go build -o bin/live ./tools/live` and run `bin/live`.
 
-Live tests never run in GitHub CI or `ci-local`. When `CI` or `GITHUB_ACTIONS` is set, the tool allows only help, `status`, `services status`, `mock ca`, `mock requests`, `vm list`, `vm vnc` and plain `doctor`, which then checks the host without prompting or creating state.
+Live tests never run in GitHub CI or `ci-local`. When `CI` or `GITHUB_ACTIONS` is set, the tool allows only help, `status`, `services status`, `mock ca`, `mock requests`, `vm list`, `vm vnc`, `image key`, `image context` and plain `doctor`, which then checks the host without prompting or creating state.
 
 `verify` checks from a new clone that `devops.mock.test` resolves to the mock, that the mock's REST API answers through the router, that internet traffic goes through the tunnel and works, that the router reaches the VM, and that the test user is logged in to the desktop. It prints one line per check, deletes the clone and fails if any check failed.
 

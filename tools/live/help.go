@@ -54,6 +54,9 @@ var liveCommands = []commandHelp{
 	{"vm start", "NAME", "", "Boot a stopped clone and print its updated details as JSON."},
 	{"vm down", "NAME", "", "Stop and delete a clone and its router peer. Accepts legacy clone names."},
 	{"vm list", "", "[-json]", "List this instance's clones and shared legacy clones with their status."},
+	{"image", "", "<action>", "Compute test bed image keys and stage build contexts. IMAGE is mock or router."},
+	{"image key", "IMAGE", "", "Print the image's input key: SHA-256 over its build parameters and the files of its build context."},
+	{"image context", "IMAGE DIR", "", "Copy the image's build context into DIR, which must be new or empty, and print its input key."},
 	{"clean", "", "", "Delete this instance's clones and router peers, leaving its services and slot in place."},
 	{"status", "", "", "Show shared base VMs, this instance's services and clones, and orphaned slots."},
 }
@@ -191,6 +194,10 @@ func (c *liveInvocation) validate(operands []string) error {
 			}
 			if c.path == "base update" && o.guest.update == "" {
 				return fmt.Errorf("base update supports ubuntu and macos; rebuild %s with base build %s -force", o.name, o.name)
+			}
+		case "IMAGE":
+			if _, ok := lookupImage(c.args[0]); !ok {
+				return unknownImage(c.args[0])
 			}
 		case "NAME":
 			_, _, modern := parseCloneName(c.args[0])

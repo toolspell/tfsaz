@@ -55,6 +55,9 @@ func TestLiveHelp(t *testing.T) {
 		{"vm start", " NAME", nil},
 		{"vm down", " NAME", nil},
 		{"vm list", " [-json]", []string{"-json"}},
+		{"image", " <action>", nil},
+		{"image key", " IMAGE", nil},
+		{"image context", " IMAGE DIR", nil},
 		{"clean", "", nil},
 		{"status", "", nil},
 	}
@@ -164,6 +167,11 @@ func TestLiveUsageErrors(t *testing.T) {
 		{"vm start " + name + " extra", "vm start NAME", "unexpected operand"},
 		{"vm down", "vm down NAME", "missing NAME"},
 		{"vm list -json extra", "vm list [-json]", "unexpected operand"},
+		{"image", "image <action>", "missing action"},
+		{"image key", "image key IMAGE", "missing IMAGE"},
+		{"image key coredns", "image key IMAGE", "unknown image"},
+		{"image context mock", "image context IMAGE DIR", "missing DIR"},
+		{"image context mock dir extra", "image context IMAGE DIR", "unexpected operand"},
 		{"clean extra", "clean", "unexpected operand"},
 		{"status extra", "status", "unexpected operand"},
 	} {

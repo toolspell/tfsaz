@@ -96,6 +96,8 @@ func (e *env) runCommand(call liveInvocation, stdout io.Writer, inCI bool) error
 		return e.verify(call.args[0])
 	case "up":
 		return e.up(call.args, stdout)
+	case "image":
+		return e.image(action, call.args, stdout)
 	case "clean":
 		return e.removeClones()
 	case "down":
@@ -119,7 +121,7 @@ func ciEnvironment() string {
 
 func ciReadOnly(call liveInvocation) bool {
 	switch call.path {
-	case "status", "services status", "mock ca", "mock requests", "vm list", "vm vnc":
+	case "status", "services status", "mock ca", "mock requests", "vm list", "vm vnc", "image key", "image context":
 		return true
 	case "doctor":
 		return !call.install && !call.yes
