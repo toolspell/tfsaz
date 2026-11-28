@@ -46,6 +46,8 @@ Pick a new mechanical guard by what it reads: a pattern inside one Go file belon
 
 `.golangci.yml` enables golangci-lint's standard linters plus `unused` and `nolintlint`. Every finding fails `check`, `ready` and CI. A deliberate exception names its reason: a `//nolint` names a specific linter and says why, and an exclusion rule in `.golangci.yml` carries a comment. The `ST1005` rule, for example, exempts error strings that start with a proper noun.
 
+actionlint checks the workflows. `.github/actionlint.yaml` holds its exceptions, each scoped to one file and message, with the reason in a comment.
+
 deadcode only reports. It lists, per system, functions that `main` cannot reach, including code that only tests call on that system. Delete such code or move it to the file of the system that uses it; a function kept on purpose says why in its comment, as `editRouteHosts` does for Linux.
 
 ## Pre-commit hook
@@ -189,7 +191,8 @@ These files in `.github/` take effect once they are pushed to GitHub; locally th
 | `ISSUE_TEMPLATE/` | Bug report and feature request forms. Blank issues are off; security reports go to `SECURITY.md`. |
 | `pull_request_template.md` | Problem, Change, Verification and a macOS, Windows and Linux checklist. |
 | `workflows/pr-title.yml`, `scripts/pr-title.cjs` | Check `PR title`: the title is a Conventional Commit subject (`type(scope): what changed`), because the squash merge uses it as the commit subject. A title edit reruns only this check. In the merge queue it passes without checking: a group has no title, and each PR passed on its own run. |
-| `workflows/pr-size.yml`, `scripts/pr-size.cjs` | Sets one `size:XS` to `size:XXL` label by changed lines, ignoring whitespace. `go.sum` files never count; `_test.go` files and `testdata/` count only in a PR that touches nothing else. Comments when a PR adds 10 or more test functions net. Runs on `pull_request_target` from the default branch and only diffs the PR's commits. |
+| `workflows/pr-size.yml`, `scripts/pr-size.cjs` | Sets one `size:XS` to `size:XXL` label by changed lines, ignoring whitespace. `go.sum` files never count; `_test.go` files and `testdata/` count only in a PR that touches nothing else. Comments when a PR adds 10 or more test functions net. |
+| `workflows/pr-size-apply.yml` | Writes that label and comment. Two workflows, because GitHub blocks `pull_request_target` in public repositories: `pr-size.yml` measures on `pull_request` with a read-only token and uploads the numbers as an artifact; this one runs on `workflow_run` from the default branch with the write token. It treats the artifact as untrusted and writes only when the artifact matches the run, the run has exactly that one PR, and the PR is open with the measured head and base; otherwise it skips. Apply runs queue per head branch and never cancel each other, because they finish out of push order. The design supports fork PRs, but only same-repository PRs are verified, because the repository accepts no others today. |
 | `workflows/agent-context-budget.yml` | Check `Agent context budget`: fails when a value in `.agents/context-budget.json` is higher than on the PR's base branch. In the merge queue it passes without checking: each PR passed against its own base, and two PRs that change the same value conflict in the file. |
 | `workflows/claude.yml` | Runs Claude Code when the account in the repository variable `CLAUDE_ALLOWED_ACTOR` mentions `@claude` in an issue, a PR or a review; unset, nobody can start it. It reads code and CI results and writes comments, never pushes. Needs the secret `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`). |
 
