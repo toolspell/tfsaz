@@ -179,16 +179,21 @@ The filter is a job, not `paths-ignore` on the trigger: a workflow that does not
 
 ### Caching
 
-| Cache | Job | Key |
-| --- | --- | --- |
-| Go module and build cache (`go-checks-...`) | Checks | `go.sum`, the mock's `go.sum` and `tools/*/go.sum`, so the compiled tools, most of a cold run, come from the build cache |
-| Go module and build cache (`go-test-...`) | test, per OS | `go.sum` and the mock's `go.sum` |
-| golangci-lint analysis cache (`golangci-lint-...`, `~/.cache/golangci-lint`) | Checks | `.golangci.yml`, both `go.sum` files and the golangci-lint pin in `tools/golangci-lint/go.sum` |
+| Cache | Job | Key | Size |
+| --- | --- | --- | --- |
+| Go module and build cache (`go-checks-...`) | Checks | `go.sum` and `tools/*/go.sum`, so the compiled tools, most of a cold run, come from the build cache | about 1.1 GB |
+| Go module and build cache (`go-mock-...`) | Mock | the mock's `go.sum` and `tools/*/go.sum` | about 360 MB |
+| Go module and build cache (`go-test-...`) | test, per OS | `go.sum` | about 100 MB each |
+| golangci-lint analysis cache (`golangci-lint-...`, `~/.cache/golangci-lint`) | Checks | `.golangci.yml`, `go.sum` and the golangci-lint pin in `tools/golangci-lint/go.sum` | under 1 MB |
 
 - Every key also holds the Go version, and the Go caches the runner's OS and architecture. A run without an exact match restores the newest entry with the same prefix.
+- Each cache pays for its restore many times over: a warm Checks or Mock job takes well under a minute instead of about 2.5 minutes, mostly for compiling the tools. Measured in [#135](https://github.com/toolspell/tfsaz/issues/135).
+- A key changes only with its dependency files, so the build cache keeps aging for this repository's own packages until then; the tools and dependencies, the expensive part, stay cached.
+- The Windows shards share one key. On `main` the first shard to finish saves it; the others log a harmless "Unable to reserve cache" warning.
 - Only a push to `main` saves, and only when its key was not there yet. Pull requests and merge queue groups restore `main`'s entries and save none: a branch's own entries would count against the repository's 10 GB and evict `main`'s, and no other branch could restore them. The workflow splits `actions/cache/restore` and `actions/cache/save` for this; `actions/setup-go` runs with `cache: false`.
 - Changes builds only the standard-library `tools/dev` and caches nothing.
-- CodeQL's default setup keeps its own caches. It analyzes Go and Actions only, without JavaScript/TypeScript (set on 2026-11-28).
+- CodeQL's default setup keeps its own Go dependency cache (`codeql-dependencies-...`, about 800 MB) on `main`; pull requests restore it and save no copy. It analyzes Go and Actions only, without JavaScript/TypeScript (set on 2026-11-28).
+- All entries together take about 2.7 GB of the repository's 10 GB. GitHub removes an entry unused for 7 days.
 - To clear a stale or broken entry, list them with `gh cache list` and delete one with `gh cache delete <key or id>`; the next push to `main` saves it again.
 
 ### Secrets found in CI
