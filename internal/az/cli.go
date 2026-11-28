@@ -363,3 +363,4 @@ func (a app) discover(ctx context.Context, cfg config) (string, error) {
 	}
 	return "", errors.Join(failures...)
 }
+// FAST A4 verification
