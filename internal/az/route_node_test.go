@@ -104,11 +104,11 @@ func TestVerifyRouteNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stalled.Close()
+	defer func() { _ = stalled.Close() }()
 	go func() {
 		if conn, err := stalled.Accept(); err == nil {
 			<-t.Context().Done()
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 	out.Reset()
