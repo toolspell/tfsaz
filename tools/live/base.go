@@ -17,6 +17,11 @@ import (
 )
 
 func (e *env) base(action, osName string, force bool) error {
+	switch action {
+	case "build", "update", "rm":
+	default:
+		return fmt.Errorf("unknown base action %q", action)
+	}
 	if err := requireMac(); err != nil {
 		return err
 	}
@@ -40,14 +45,12 @@ func (e *env) base(action, osName string, force bool) error {
 		return e.buildBase(o, force)
 	case "update":
 		return e.updateBase(o)
-	case "rm":
-		step("deleting %s", o.base())
-		if err := v.remove(o.base()); err != nil {
-			return err
-		}
-		return os.RemoveAll(e.path("keys", o.name+"-base"))
 	}
-	return errUsage
+	step("deleting %s", o.base())
+	if err := v.remove(o.base()); err != nil {
+		return err
+	}
+	return os.RemoveAll(e.path("keys", o.name+"-base"))
 }
 
 // baseHint says how to renew an existing base: Windows has no update in

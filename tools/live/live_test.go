@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -17,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -65,40 +69,44 @@ func TestCIGuard(t *testing.T) {
 				{"base update macos", true},
 				{"base rm windows", true},
 				{"vm list -json", false},
-				{"vm vnc NAME", false},
+				{"vm vnc tfsaz-ubuntu-demo", false},
 				{"vm up ubuntu", true},
-				{"vm ssh NAME", true},
-				{"vm run NAME -- uname", true},
-				{"vm push NAME LOCAL REMOTE", true},
-				{"vm pull NAME REMOTE LOCAL", true},
-				{"vm screenshot NAME FILE", true},
-				{"vm forward NAME 9222", true},
-				{"vm t3 install NAME", true},
-				{"vm t3 start NAME", true},
-				{"vm stop NAME", true},
-				{"vm start NAME", true},
-				{"vm down NAME", true},
+				{"vm ssh tfsaz-ubuntu-demo", true},
+				{"vm run tfsaz-ubuntu-demo -- uname", true},
+				{"vm push tfsaz-ubuntu-demo LOCAL REMOTE", true},
+				{"vm pull tfsaz-ubuntu-demo REMOTE LOCAL", true},
+				{"vm screenshot tfsaz-ubuntu-demo FILE", true},
+				{"vm forward tfsaz-ubuntu-demo 9222", true},
+				{"vm t3 install tfsaz-ubuntu-demo", true},
+				{"vm t3 start tfsaz-ubuntu-demo", true},
+				{"vm stop tfsaz-ubuntu-demo", true},
+				{"vm start tfsaz-ubuntu-demo", true},
+				{"vm down tfsaz-ubuntu-demo", true},
 				{"setup ubuntu", true},
 				{"verify macos", true},
 				{"clean", true},
-				{"vm future-command", true},
+				{"vm future-command", false},
 			} {
 				t.Run(tc.command, func(t *testing.T) {
-					args := strings.Fields(tc.command)
-					err := run(args[0], args[1:])
+					var stdout, stderr bytes.Buffer
+					code := liveMain(strings.Fields(tc.command), &stdout, &stderr)
 					switch {
 					case tc.blocked && env.name != "":
-						want := "live test changes are disabled when " + env.name + " is set"
-						if err == nil || err.Error() != want {
-							t.Fatalf("got %v, want %q", err, want)
+						want := "live: live test changes are disabled when " + env.name + " is set\n"
+						if code != 1 || stderr.String() != want {
+							t.Fatalf("exit %d, stderr %q, want %q", code, stderr.String(), want)
 						}
-					case args[0] == "help":
-						if err != nil {
-							t.Fatal(err)
+					case tc.command == "help":
+						if code != 0 || stderr.Len() != 0 {
+							t.Fatalf("exit %d, stderr %q", code, stderr.String())
+						}
+					case tc.command == "vm future-command":
+						if code != 2 || !strings.Contains(stderr.String(), "unknown action") {
+							t.Fatalf("exit %d, stderr %q", code, stderr.String())
 						}
 					default:
-						if err == nil || err.Error() != "run from inside the TFSaz repository" {
-							t.Fatalf("got %v, want repository lookup to fail", err)
+						if code != 1 || stderr.String() != "live: run from inside the TFSaz repository\n" {
+							t.Fatalf("exit %d, stderr %q, want repository lookup to fail", code, stderr.String())
 						}
 					}
 				})
@@ -225,6 +233,57 @@ func TestLoadVMStaysInRuns(t *testing.T) {
 	}
 }
 
+func TestLoadVMMetadataError(t *testing.T) {
+	const name = "tfsaz-ubuntu-demo"
+	for _, tc := range []struct{ kind, want string }{
+		{"missing", "no clone"},
+		{"unreadable", "read metadata"},
+		{"missing metadata", "read metadata"},
+		{"malformed", "decode metadata"},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			e := &env{home: t.TempDir()}
+			file := filepath.Join(e.runDir(name), "vm.json")
+			switch tc.kind {
+			case "unreadable":
+				if err := os.MkdirAll(file, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			case "malformed", "missing metadata":
+				if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if tc.kind == "malformed" {
+					if err := os.WriteFile(file, []byte("{"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			_, err := e.loadVM(name)
+			if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "vm list -json") {
+				t.Fatalf("got %v, want %q and vm list -json", err, tc.want)
+			}
+			var syntax *json.SyntaxError
+			var path *os.PathError
+			if tc.kind == "malformed" && !errors.As(err, &syntax) || tc.kind != "malformed" && !errors.As(err, &path) {
+				t.Fatalf("missing cause in %v", err)
+			}
+		})
+	}
+}
+
+func TestMockJournalError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	_, err := requestMockJournal(http.MethodDelete, srv.URL, http.StatusNoContent)
+	if err == nil || !strings.Contains(err.Error(), "DELETE") || !strings.Contains(err.Error(), "503") ||
+		!strings.Contains(err.Error(), "services status") {
+		t.Fatalf("got %v, want DELETE, HTTP 503 and services status", err)
+	}
+}
+
 func TestMockRequestsVMFilter(t *testing.T) {
 	e := &env{home: t.TempDir()}
 	info := vmInfo{Name: "tfsaz-ubuntu-a", IP: "192.0.2.1", BedAddress: "172.30.53.129"}
@@ -247,6 +306,34 @@ func TestMockRequestsVMFilter(t *testing.T) {
 	}
 	if got := out.String(); got != "[]\n" {
 		t.Errorf("journal output = %q; want an empty JSON array", got)
+	}
+}
+
+func TestSensitiveSSHError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake SSH executable uses a sh script")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" >&2\nexit 7\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	const value, label = "fixture-value", "verify mock REST API"
+	target := sshTarget{host: "192.0.2.1"}
+	err := target.runSensitive(ctx, "curl -u :"+value, label)
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 7 || !strings.Contains(err.Error(), label) || strings.Contains(err.Error(), value) {
+		t.Fatalf("got %v, want safe label and exit status 7", err)
+	}
+}
+
+func TestRouterKeyError(t *testing.T) {
+	e := &env{home: t.TempDir()}
+	_, err := e.routerKey()
+	if !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "services status") {
+		t.Fatalf("got %v, want missing file cause and services status", err)
 	}
 }
 
@@ -413,26 +500,15 @@ func TestTartVNC(t *testing.T) {
 	if err != nil || address != "127.0.0.1:5001" || password != "new-pw" {
 		t.Fatalf("tartVNC = %q, %q, %v; want the last start's address", address, password, err)
 	}
-}
 
-func TestSplitCommand(t *testing.T) {
-	for _, tc := range []struct {
-		args    []string
-		name    string
-		flags   []string
-		command []string
-		ok      bool
-	}{
-		{[]string{"vm1", "--", "echo", "hi"}, "vm1", []string{}, []string{"echo", "hi"}, true},
-		{[]string{"vm1", "-json", "-gui", "--", "id"}, "vm1", []string{"-json", "-gui"}, []string{"id"}, true},
-		{[]string{"vm1", "echo"}, "", nil, nil, false},
-		{[]string{"vm1", "--"}, "", nil, nil, false},
-		{[]string{"--", "echo"}, "", nil, nil, false},
-	} {
-		name, flags, command, ok := splitCommand(tc.args)
-		if name != tc.name || ok != tc.ok || !slices.Equal(flags, tc.flags) || !slices.Equal(command, tc.command) {
-			t.Errorf("splitCommand(%q) = %q, %q, %q, %v", tc.args, name, flags, command, ok)
-		}
+	const value = "fixture%secret"
+	if err := os.WriteFile(log, []byte("vnc://:"+value+"@127.0.0.1:5001"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = tartVNC(log)
+	var parseErr *neturl.Error
+	if !errors.As(err, &parseErr) || !strings.Contains(err.Error(), log) || strings.Contains(err.Error(), value) {
+		t.Fatalf("got %v, want the log path and the wrapped parser error without the password", err)
 	}
 }
 

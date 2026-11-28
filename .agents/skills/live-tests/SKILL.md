@@ -26,7 +26,7 @@ From the repository root, prefix each command below with `go run ./tools/live`. 
 
 1. Run `services up`, then `vm up OS`. Take `NAME` from the JSON output.
 2. For T3 cases, run `vm t3 install NAME` and `vm t3 start NAME`. Follow the [Playwright steps](../../../docs/operations/live-tests.md#drive-t3-with-playwright) to drive the UI.
-3. Run the case with `vm run NAME -- CMD...`. Use `-json` for scripted checks or `-gui` for commands that need the desktop session. Target the Azure DevOps Server mock.
+3. Run the case with `vm run NAME [-json] [-gui] -- CMD...`. Use `-json` for scripted checks or `-gui` for commands that need the desktop session. Target the Azure DevOps Server mock.
 4. Inspect traffic with `mock requests -vm NAME`. Capture UI evidence with `vm screenshot NAME FILE` when relevant.
 5. Stop your forwards, then run `vm down NAME` and `services down` when the bed is no longer needed. On a shared host, leave other runs and the services they use alone.
 

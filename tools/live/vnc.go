@@ -30,6 +30,15 @@ const (
 // vncPattern finds the VNC address Tart prints for --vnc-experimental.
 var vncPattern = regexp.MustCompile(`vnc://[^\s]+`)
 
+type vncLogError struct {
+	file  string
+	cause error
+}
+
+func (e vncLogError) Error() string { return "invalid VNC address in " + e.file }
+
+func (e vncLogError) Unwrap() error { return e.cause }
+
 // tartVNC returns the address and password of the VNC server of the last
 // Tart start that logFile records.
 func tartVNC(logFile string) (address, password string, err error) {
@@ -43,7 +52,8 @@ func tartVNC(logFile string) (address, password string, err error) {
 	}
 	u, err := url.Parse(string(all[len(all)-1]))
 	if err != nil {
-		return "", "", err
+		// A URL parser error can include the VNC password.
+		return "", "", vncLogError{file: logFile, cause: err}
 	}
 	password, _ = u.User.Password()
 	return u.Host, password, nil

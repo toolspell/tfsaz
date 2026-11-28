@@ -8,12 +8,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -28,30 +26,10 @@ type runResult struct {
 	Seconds  float64 `json:"seconds"`
 }
 
-// splitCommand splits NAME [FLAGS] -- CMD... into its parts.
-func splitCommand(args []string) (name string, flagArgs, command []string, ok bool) {
-	i := slices.Index(args, "--")
-	if len(args) < 1 || i < 1 || i == len(args)-1 {
-		return "", nil, nil, false
-	}
-	return args[0], args[1:i], args[i+1:], true
-}
-
 // vmRun runs a command in a clone: in its shell over SSH, or with -gui in
 // the test user's desktop session, where keychains, link handlers and
 // browsers behave as for a user at the machine.
-func (e *env) vmRun(args []string) error {
-	name, flagArgs, command, ok := splitCommand(args)
-	if !ok {
-		return errUsage
-	}
-	flags := flag.NewFlagSet("vm run", flag.ContinueOnError)
-	asJSON := flags.Bool("json", false, "print exit code, stdout and stderr as JSON")
-	timeout := flags.Duration("timeout", 10*time.Minute, "stop waiting after this long; exit code 124")
-	gui := flags.Bool("gui", false, "run in the test user's desktop session")
-	if flags.Parse(flagArgs) != nil || flags.NArg() != 0 {
-		return errUsage
-	}
+func (e *env) vmRun(name string, command []string, asJSON, gui bool, timeout time.Duration) error {
 	info, err := e.loadVM(name)
 	if err != nil {
 		return err
@@ -61,8 +39,8 @@ func (e *env) vmRun(args []string) error {
 	login := info.login()
 	var remote string
 	switch {
-	case *gui:
-		if remote, err = guiRemote(o, script, *timeout); err != nil {
+	case gui:
+		if remote, err = guiRemote(o, script, timeout); err != nil {
 			return err
 		}
 	case o.guest.powershell:
@@ -73,20 +51,20 @@ func (e *env) vmRun(args []string) error {
 	// Windows enforces the timeout of a -gui command in the guest, so it
 	// can stop the task and report its output; the host only catches a
 	// guest that stops answering.
-	limit := *timeout
-	if *gui && o.guest.powershell {
+	limit := timeout
+	if gui && o.guest.powershell {
 		limit += 30 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	c := exec.CommandContext(ctx, "ssh", login.args(remote)...)
 	var stdout, stderr bytes.Buffer
-	if *asJSON {
+	if asJSON {
 		c.Stdout, c.Stderr = &stdout, &stderr
 	} else {
 		c.Stdout, c.Stderr = os.Stdout, os.Stderr
 	}
-	if !*gui {
+	if !gui {
 		c.Stdin = os.Stdin
 	}
 	start := time.Now()
@@ -101,9 +79,9 @@ func (e *env) vmRun(args []string) error {
 	case err != nil:
 		return err
 	}
-	if !*asJSON {
+	if !asJSON {
 		if result.TimedOut {
-			fmt.Fprintf(os.Stderr, "live: %s did not finish within %s\n", name, *timeout)
+			fmt.Fprintf(os.Stderr, "live: %s did not finish within %s\n", name, timeout)
 			return exitStatus(124)
 		}
 		if result.ExitCode != 0 {
@@ -112,7 +90,7 @@ func (e *env) vmRun(args []string) error {
 		return nil
 	}
 	result.Stdout, result.Stderr = stdout.String(), stderr.String()
-	if result.ExitCode == 124 && *gui && strings.Contains(result.Stderr, "tfsaz-live: timed out") {
+	if result.ExitCode == 124 && gui && strings.Contains(result.Stderr, "tfsaz-live: timed out") {
 		result.TimedOut = true
 	}
 	data, err := json.MarshalIndent(result, "", "  ")
@@ -223,17 +201,10 @@ func (t sshTarget) scpArgs(local, remote string, push bool) []string {
 }
 
 // vmCopy copies files to (push) or from a clone with scp.
-func (e *env) vmCopy(args []string, push bool) error {
-	if len(args) != 3 {
-		return errUsage
-	}
-	info, err := e.loadVM(args[0])
+func (e *env) vmCopy(name, local, remote string, push bool) error {
+	info, err := e.loadVM(name)
 	if err != nil {
 		return err
-	}
-	local, remote := args[1], args[2]
-	if !push {
-		local, remote = args[2], args[1]
 	}
 	_, err = output(nil, "scp", info.login().scpArgs(local, remote, push)...)
 	return err
@@ -242,27 +213,15 @@ func (e *env) vmCopy(args []string, push bool) error {
 // vmForward forwards a loopback port on the host to a port on the clone's
 // loopback until it is stopped, for example to reach a browser's or an
 // app's debugging port from Playwright on the host.
-func (e *env) vmForward(args []string) error {
-	if len(args) != 2 {
-		return errUsage
-	}
-	localPort, remotePort, ok := strings.Cut(args[1], ":")
-	if !ok {
-		remotePort = localPort
-	}
-	for _, p := range []string{localPort, remotePort} {
-		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
-			return errUsage
-		}
-	}
-	info, err := e.loadVM(args[0])
+func (e *env) vmForward(name, localPort, remotePort string) error {
+	info, err := e.loadVM(name)
 	if err != nil {
 		return err
 	}
 	login := info.login()
 	sshArgs := append([]string{"-N", "-o", "ExitOnForwardFailure=yes",
 		"-L", "127.0.0.1:" + localPort + ":127.0.0.1:" + remotePort}, login.args()...)
-	step("forwarding 127.0.0.1:%s to %s port %s until stopped", localPort, args[0], remotePort)
+	step("forwarding 127.0.0.1:%s to %s port %s until stopped", localPort, name, remotePort)
 	c := exec.Command("ssh", sshArgs...)
 	c.Stdout, c.Stderr = os.Stdout, os.Stderr
 	return c.Run()
@@ -270,15 +229,12 @@ func (e *env) vmForward(args []string) error {
 
 // vmVNC prints the VNC address of a clone's screen, served by the
 // hypervisor, for a VNC client or an agent's VNC tool.
-func (e *env) vmVNC(args []string) error {
-	if len(args) != 1 {
-		return errUsage
-	}
-	if _, err := e.loadVM(args[0]); err != nil {
+func (e *env) vmVNC(name string) error {
+	if _, err := e.loadVM(name); err != nil {
 		return err
 	}
-	o, _ := osOfVM(args[0])
-	address, err := e.vms(o).vnc(args[0], filepath.Join(e.runDir(args[0]), o.provider+".log"))
+	o, _ := osOfVM(name)
+	address, err := e.vms(o).vnc(name, filepath.Join(e.runDir(name), o.provider+".log"))
 	if err == nil {
 		fmt.Println(address)
 	}
@@ -286,12 +242,8 @@ func (e *env) vmVNC(args []string) error {
 }
 
 // vmScreenshot saves a PNG of the clone's screen.
-func (e *env) vmScreenshot(args []string) error {
-	if len(args) != 2 {
-		return errUsage
-	}
-	name := args[0]
-	file, err := filepath.Abs(args[1])
+func (e *env) vmScreenshot(name, file string) error {
+	file, err := filepath.Abs(file)
 	if err != nil {
 		return err
 	}

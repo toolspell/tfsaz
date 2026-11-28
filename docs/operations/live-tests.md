@@ -19,7 +19,7 @@ go run ./tools/live setup windows
 | Tart (with softnet) and Packer | `doctor -install`, through Homebrew | none |
 | Docker | `doctor -install` installs OrbStack | start OrbStack once and accept its setup |
 | QEMU, for Windows | `doctor -install`, through Homebrew | none |
-| Windows 11 ARM64 ISO | not the tool: Microsoft's download links expire | download it once from [Microsoft](https://www.microsoft.com/software-download/windows11arm64) (English, United States) into `~/.tfsaz-live/cache/iso/`; `setup windows` names the file it expects |
+| Windows 11 ARM64 ISO | not the tool: Microsoft's download links expire | download it once from [Microsoft](https://www.microsoft.com/software-download/windows11arm64) (English, United States) into `cache/iso/` under the [state directory](#state-outside-the-repository); `setup windows` names the file it expects |
 | Homebrew, Go, Git | not the tool | install them first |
 | Shorter DHCP leases for VMs | `doctor` only advises it | optional, needs `sudo` ([why](#host-requirements)) |
 
@@ -46,7 +46,9 @@ go run ./tools/live clean             # delete every clone
 go run ./tools/live status
 ```
 
-`go run ./tools/live help` lists all commands. None prompts unless it runs in a terminal; `setup` and `doctor -install` install without asking. `vm ssh` passes on the remote exit code, but `go run` turns any nonzero code into 1 and prints `exit status N`. For the exact code, build the tool once with `go build -o bin/live ./tools/live` and run `bin/live`.
+`go run ./tools/live help` lists all commands. For a command's synopsis and flags, use `help CMD [SUB...]` or add `--help` or `-h` to the command path. Help works in CI and from outside the checkout when you run the built binary. Commands only prompt in a terminal. `setup` and `doctor -install` (also spelled `doctor -yes`) install without asking.
+
+Usage errors print the command's synopsis on stderr and exit 2. `vm ssh` passes on the remote exit code. `go run` reports any nonzero code as `exit status N` and exits 1. For the exact code, build the tool once with `go build -o bin/live ./tools/live` and run `bin/live`.
 
 Run the live suite outside GitHub CI and `ci-local`. When `CI` or `GITHUB_ACTIONS` is present, the tool allows help and read-only diagnostics. In that mode, plain `doctor` checks the host without prompting or creating state.
 
@@ -56,9 +58,10 @@ Run the live suite outside GitHub CI and `ci-local`. When `CI` or `GITHUB_ACTION
 
 - Use the [live-tests skill](../../.agents/skills/live-tests/SKILL.md) to choose guests and run the cases affected by your change.
 - Target the mock. Use the shared Azure DevOps Server testbed only when the maintainer asks ([AGENTS.md](../../AGENTS.md#ways-to-hurt-yourself)).
+- The mock's PAT (`MOCK_PAT`) and the keys and certificates it generates are public test values for a throwaway local test bed, not credentials. Any other credential, such as a real PAT for the shared testbed or a TFSaz profile in a VM, follows the [credential rules](../../AGENTS.md#credentials).
 - Run `base build` and `setup` in the background and watch their output. Do not wait past Packer's SSH timeout (25 minutes for Ubuntu, 10 for macOS, 60 for Windows); [Troubleshooting](#troubleshooting) has the known causes.
 - When the Windows ISO is missing, ask the maintainer to download it; do not fetch it from another source.
-- When a base command refuses because clones exist, remove the clones; do not work around it. Leave the base VM and `~/.tfsaz-live/cache` in place between tasks.
+- When a base command refuses because clones exist, remove the clones; do not work around it. Leave the base VM and the state directory's `cache/` in place between tasks.
 - Never commit anything from `live-tests/.state` or copy keys into the repository.
 - Ask the maintainer before the `sudo` step `doctor` advises.
 - Keep a clone while its case or PR may still need it, for example for review fixes or a rerun. Stop it with `vm stop NAME` while you do not use it and start it again with `vm start NAME`. Delete it with `vm down NAME` only once you are sure nothing needs it any more.
@@ -86,7 +89,7 @@ A new guest OS gets a `live-tests/vms/<os>/` directory, an entry in the tool's O
 
 ## State outside the repository
 
-The tool keeps everything large or secret in `~/.tfsaz-live` (or `$TFSAZ_LIVE_HOME`) and links it as `live-tests/.state`, which Git ignores.
+The state directory is the absolute path in `TFSAZ_LIVE_HOME`, or `~/.tfsaz-live` by default. The tool links it as `live-tests/.state`. The mock writes its CA certificate and SSH files under `live-tests/devops-server-mock/keys/`. Git ignores both paths in the checkout.
 
 | Path | Contents |
 | --- | --- |
@@ -98,7 +101,7 @@ The tool keeps everything large or secret in `~/.tfsaz-live` (or `$TFSAZ_LIVE_HO
 | `runs/<name>/` | Per clone: its own SSH key, known_hosts, Tart or QEMU log, `vm.json`; `tart.log` holds Tart's VNC address with password (mode 600) |
 | `router/` | The router's WireGuard key and one file per connected VM |
 
-Only `base build` downloads, and only what the cache lacks: an ISO matching `iso.json` (`curl` resumes an interrupted download), or the macOS image pinned in `image.json` (Tart pulls it once). The Windows ISO is the exception: the tool only checks it. The Windows build also downloads the virtio-win ISO once (about 880 MB) and, inside the VM, OpenSSH Server and WireGuard. Deleting the directory removes everything; `setup` recreates it.
+A base build downloads only what the cache lacks: an ISO matching `iso.json` (`curl` resumes an interrupted download), or the macOS image pinned in `image.json` (Tart pulls it once). The Windows ISO is the exception: the tool only checks it. The Windows build also downloads the virtio-win ISO once (about 880 MB) and, inside the VM, OpenSSH Server and WireGuard. `setup` recreates the state directory when needed. See [Remove everything](#remove-everything) for cleanup.
 
 ## Base VMs
 
@@ -124,7 +127,7 @@ Windows has no update in place: `base update windows` refuses. A newer Windows c
 
 | Command | Effect |
 | --- | --- |
-| `base build OS` | First build; `-force` rebuilds from scratch |
+| `base build OS [-force]` | Build from scratch. Use `-force` to replace an existing base. |
 | `base update OS` | Boots the base, upgrades its packages (apt on Ubuntu, Homebrew on macOS), prepares it again; not on Windows |
 | `base rm OS` | Deletes the base and its build key |
 
@@ -134,23 +137,24 @@ All three refuse while clones of the base exist.
 
 `vm up OS` clones the base (an APFS copy, or a qcow2 overlay for Windows, so it takes little space), boots it headless, replaces the build key with a new key for this clone, sets its hostname and connects it to the router, in about 20 seconds for Ubuntu, 30 for macOS and a minute for Windows. A macOS clone boots into the logged-in GUI session of `admin`, an Ubuntu or Windows clone into the one of `tester`, and `vm up` and `vm start` wait until that session runs; a Windows clone restarts once for its computer name. It prints `vm.json`: name, NAT address (for Windows `127.0.0.1` and a port), address in the test bed, SSH key. Commands over `vm ssh` run in sh on Ubuntu and macOS and in PowerShell 7 (`pwsh`) on Windows. TFSaz must not rely on PowerShell 7, since users may have only Windows PowerShell 5.1 and cmd: run a step whose shell matters with `powershell` or `cmd /c`. `vm stop NAME` shuts a clone down from inside and keeps it with its key and router peer; when it cannot reach the clone it leaves it running, and `-force` stops it without a shutdown, which can lose unwritten changes. `vm start NAME` boots it again, prints the updated `vm.json` (the NAT address can change) and checks that it reaches the mock. `vm down NAME` and `clean` stop and delete clones and remove their router peers. Stopped clones count as clones: base commands refuse while any exist.
 
+With `vm up OS -name SUFFIX`, the clone is named `tfsaz-OS-SUFFIX`. Use 1 to 20 lowercase letters, digits or dashes, starting with a letter or digit. The suffixes `base` and `build` are reserved. The default is six random hex digits.
+
 Every clone's desktop is 1920x1080. Tart clones get it from `tart set NAME --display 1920x1080px` when `vm up` clones them; GNOME starts at 1280x720 and switches a few seconds after login, so an early screenshot of an Ubuntu clone can be smaller.
 
 ## Commands in a clone
 
 | Command | Effect |
 | --- | --- |
-| `vm run NAME [-json] [-timeout D] [-gui] -- CMD...` | Runs CMD in the clone and passes on stdin (not with `-gui`) and the exit code. CMD is an sh command on Ubuntu and macOS, and a PowerShell 7 script on Windows: it is sent encoded so quotes survive and uses PowerShell's default error handling, so after a native command end with `exit $LASTEXITCODE` to pass its exit code. |
+| `vm run NAME [-json] [-timeout D] [-gui] -- CMD...` | Runs CMD in the clone and passes on its exit code. In SSH mode it passes on stdin. After `--`, flags like `--help` go to CMD. CMD is an sh command on Ubuntu and macOS, and a PowerShell 7 script on Windows: it is sent encoded so quotes survive and uses PowerShell's default error handling, so after a native command end with `exit $LASTEXITCODE` to pass its exit code. |
 | `-timeout D` | Default 10m. On timeout the tool prints a message and exits 124. |
 | `-json` | Prints `{"exitCode","stdout","stderr","timedOut","seconds"}`. The tool itself exits 0 when the command ran. |
 | `-gui` | Runs CMD in the test user's desktop session, where keychains, link handlers, browsers and T3 behave as for a user at the machine. macOS: through `launchctl asuser` in the Aqua session of `admin`, with the login keychain unlocked and apps opening on screen. Windows: through a one-time scheduled task in the interactive session of `tester`, without elevation like the user's own programs; output and exit code go through files in `%TEMP%` that are removed afterwards, and on timeout the task and the processes of its script are stopped. Ubuntu: with the environment the GNOME session of `tester` hands to its systemd user manager (display, desktop name, `XDG_DATA_DIRS` with the snaps' apps), so default apps apply, such as Firefox for links; SSH sessions already share its D-Bus and keyring. A command that starts an app in the background must redirect the app's output (`app >/dev/null 2>&1 &`), or the command does not end until the app does; macOS's `open` and Windows' `Start-Process` detach by themselves. |
 | `vm push NAME LOCAL REMOTE`, `vm pull NAME REMOTE LOCAL` | Copy files and folders with scp and the clone's key. Windows paths look like `C:/Users/tester/file`. |
-| `vm forward NAME PORT[:PORT]` | Forwards the host's 127.0.0.1:PORT to the clone's loopback port until stopped, for example to reach a browser's or an app's debugging port from Playwright on the host. Run it in the background. |
+| `vm forward NAME PORT[:PORT]` | Forwards the host's 127.0.0.1:PORT to the clone's loopback port until stopped. Both ports must be 1 to 65535. For example, use it to reach a browser's or an app's debugging port from Playwright on the host. Run it in the background. |
 | `vm screenshot NAME FILE` | Saves a PNG of the clone's desktop, taken from the hypervisor, so the guest needs no permission and nobody has to click anything. Windows: QEMU's QMP `screendump` of the virtio GPU. macOS and Ubuntu: the VNC server of Apple's Virtualization.framework, which Tart starts for every clone (`tart run --no-graphics --vnc-experimental`, which prints the address instead of opening a window). |
 | `vm vnc NAME` | Prints `vnc://:PASSWORD@127.0.0.1:PORT` for a VNC client or an agent's VNC tool. The hypervisor serves it (Virtualization.framework for Tart, QEMU's own VNC server bound to the virtio GPU for Windows). Loopback only, a new random password per start; nothing runs in the guest for it. |
-| `vm t3 install NAME` | Installs the stock T3 Code desktop app at the tag that `tools/syncrepos` pins for `.reference-apps/t3code`, as its user would, and prints the tag. Clones start without T3, so a test can also cover a machine without it. The arm64 installer comes from T3's GitHub release, is checked against the SHA-512 in the release's electron-builder manifest and is cached in `~/.tfsaz-live/cache/t3/TAG/`. macOS: the app in `/Applications`. Ubuntu: the `.deb` through apt. Windows: the NSIS installer, silent, per user. About 10 seconds on macOS, 30 on Ubuntu and a minute on Windows. |
-
-| `vm t3 start NAME [-port P]` | Starts the installed T3 in the desktop session of the clone's test user with Chrome's debugging port P (default 9222) on the clone's loopback, waits until the port answers and prints its URL in the clone. When T3 already runs with that port, it only checks the port; when T3 runs without it, quit T3 first. Another app's debugging port on the same number does not count; pick another port. |
+| `vm t3 install NAME` | Installs the stock T3 Code desktop app at the tag that `tools/syncrepos` pins for `.reference-apps/t3code`, as its user would, and prints the tag. Clones start without T3, so a test can also cover a machine without it. The arm64 installer comes from T3's GitHub release, is checked against the SHA-512 in the release's electron-builder manifest and is cached in the state directory under `cache/t3/TAG/`. macOS: the app in `/Applications`. Ubuntu: the `.deb` through apt. Windows: the NSIS installer, silent, per user. About 10 seconds on macOS, 30 on Ubuntu and a minute on Windows. |
+| `vm t3 start NAME [-port P]` | Starts the installed T3 in the desktop session of the clone's test user with Chrome's debugging port P (1 to 65535, default 9222) on the clone's loopback. After launch it probes the port for up to a minute and prints its URL once T3 answers. When T3 already runs with that port, it only checks the port; when T3 runs without it, quit T3 first. Another app's debugging port on the same number does not count; pick another port. |
 
 On Windows, the first start shows Windows Defender Firewall's prompt for T3, as on a user's machine. It is a system dialog in front of T3, not part of T3's page, so Playwright does not see it; a test that takes screenshots closes it first.
 
@@ -232,19 +236,23 @@ It also advises shortening macOS's DHCP leases for VMs from a day to ten minutes
 
 ## Troubleshooting
 
+In the commands below, set `state_dir="${TFSAZ_LIVE_HOME:-$HOME/.tfsaz-live}"` to use the effective state directory.
+
 - A base build prints a VNC address and password; open it to watch the installer or, on macOS, the desktop.
 - The Ubuntu system must ask DHCP with its MAC address (`dhcp-identifier: mac` in the autoinstall and clone network config); otherwise Tart finds no IP and Packer waits until its SSH timeout.
 - Packer finds the Ubuntu installer's autoinstall prompt by OCR, which sometimes misreads it; when a build waits longer than 5 minutes after "Typing commands", stop it and build again. `PACKER_LOG=1` shows what the OCR reads.
-- A running Ubuntu installer accepts the build key for the user `installer`; `ssh -i ~/.tfsaz-live/keys/ubuntu-build/id_ed25519 installer@IP` shows its progress.
-- A clone's Tart output is in `~/.tfsaz-live/runs/NAME/tart.log`. `vm up` deletes a clone that fails to come up.
-- To see a clone's screen, use `vm screenshot NAME FILE`. A Windows build prints a VNC address without a password and has no clone name; to capture its screen, send QMP `screendump` to `~/.tfsaz-live/build/windows/qmp.sock`, for example `{ echo '{"execute":"qmp_capabilities"}'; sleep 1; echo '{"execute":"screendump","arguments":{"filename":"/tmp/screen.png","format":"png"}}'; sleep 2; } | nc -U SOCKET`. A Windows build logs its first logon to `C:\Windows\Temp\tfsaz-setup.log`; a clone's QEMU output is in `~/.tfsaz-live/runs/NAME/qemu.log`.
+- A running Ubuntu installer accepts the build key for the user `installer`; `ssh -i "$state_dir/keys/ubuntu-build/id_ed25519" installer@IP` shows its progress.
+- A clone's Tart output is in `$state_dir/runs/NAME/tart.log`. `vm up` deletes a clone that fails to come up.
+- To see a clone's screen, use `vm screenshot NAME FILE`. A Windows build prints a VNC address without a password and has no clone name; to capture its screen, send QMP `screendump` to `$state_dir/build/windows/qmp.sock`, for example `{ echo '{"execute":"qmp_capabilities"}'; sleep 1; echo '{"execute":"screendump","arguments":{"filename":"/tmp/screen.png","format":"png"}}'; sleep 2; } | nc -U SOCKET`. A Windows build logs its first logon to `C:\Windows\Temp\tfsaz-setup.log`; a clone's QEMU output is in `$state_dir/runs/NAME/qemu.log`.
 - A macOS clone's tunnel logs to `/var/log/tfsaz-live-wg0.log` in the VM; `sudo launchctl kickstart -k system/com.tfsaz.live.wg0` restarts it.
 
 ## Remove everything
 
+Use the same `TFSAZ_LIVE_HOME` as for setup. Set `state_dir="${TFSAZ_LIVE_HOME:-$HOME/.tfsaz-live}"` in your shell before running the cleanup commands.
+
 | Change on the host | Undo |
 | --- | --- |
-| Clones, base VMs, ISOs, keys, router state in `~/.tfsaz-live` | `go run ./tools/live clean`, `go run ./tools/live services down`, then `rm -rf ~/.tfsaz-live live-tests/.state` |
+| Clones, base VMs, ISOs, keys, router state in the state directory | `go run ./tools/live clean`, `go run ./tools/live services down`, then `rm -rf -- "$state_dir" live-tests/.state` |
 | The mock's CA and SSH files | After stopping services, run `rm -f live-tests/devops-server-mock/keys/{ca.pem,client_ed25519,client_ed25519.pub,known_hosts}` |
 | Docker images and network `tfsaz-live_bed` | `docker compose -f live-tests/compose.yaml down --rmi local` |
 | Tart, softnet, Packer and QEMU from Homebrew | `brew uninstall tart softnet packer qemu` |

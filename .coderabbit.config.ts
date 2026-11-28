@@ -92,6 +92,11 @@ export default defineConfig((ctx) => ({
           'Hold changed code to "Platform parity" in AGENTS.md: a feature missing on a platform needs "not supported on this platform" handling there and a `platform:<os>` issue.',
       },
       {
+        path: "{live-tests,tools/live}/**",
+        instructions:
+          'Exactly these are public test values, not credentials: the Azure DevOps Server mock\'s PAT (MOCK_PAT, default mock-pat) and the keys and certificates the mock generates. Every other credential stays in scope, including any real PAT, token or key a live test or the tool handles, for example for the shared testbed or TFSaz profiles in a VM.',
+      },
+      {
         path: "**/*_test.go",
         instructions:
           "Hold changed tests to the rules in docs/internals/testing.md. Request tests only as those rules allow.",

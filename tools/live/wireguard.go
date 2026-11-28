@@ -77,7 +77,7 @@ func (e *env) peers() (map[string]netip.Addr, error) {
 func (e *env) routerKey() (string, error) {
 	data, err := os.ReadFile(e.path("router", "public.key"))
 	if err != nil {
-		return "", fmt.Errorf("router key missing; run services up: %w", err)
+		return "", fmt.Errorf("read router public key; check with go run ./tools/live services status: %w", err)
 	}
 	return strings.TrimSpace(string(data)), nil
 }
