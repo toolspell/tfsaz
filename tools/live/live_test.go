@@ -366,14 +366,17 @@ func TestShellQuote(t *testing.T) {
 }
 
 func TestT3Installer(t *testing.T) {
-	for _, tc := range []struct{ os, tag, manifest, file string }{
-		{"macos", "v0.1.13-nightly.20261125.5258", "nightly-mac.yml", "T3-Code-0.1.13-nightly.20261125.5258-arm64.zip"},
-		{"ubuntu", "v0.1.13-nightly.20261125.5258", "nightly-linux-arm64.yml", "T3-Code-0.1.13-nightly.20261125.5258-arm64.deb"},
-		{"windows", "v0.1.12", "latest.yml", "T3-Code-0.1.12-arm64.exe"},
+	for _, tc := range []struct{ os, tag, manifest, file, name string }{
+		{"macos", "v0.1.13-nightly.20261125.5258", "nightly-mac.yml", "T3-Code-0.1.13-nightly.20261125.5258-arm64.zip", "T3 Code (Nightly)"},
+		{"ubuntu", "v0.1.13-nightly.20261125.5258", "nightly-linux-arm64.yml", "T3-Code-0.1.13-nightly.20261125.5258-arm64.deb", "T3 Code (Nightly)"},
+		{"windows", "v0.1.12", "latest.yml", "T3-Code-0.1.12-arm64.exe", "T3 Code (Beta)"},
 	} {
 		manifest, file, err := t3Installer(tc.os, tc.tag)
 		if err != nil || manifest != tc.manifest || file != tc.file {
 			t.Errorf("t3Installer(%s, %s) = %q, %q, %v", tc.os, tc.tag, manifest, file, err)
+		}
+		if got := t3Name(tc.tag); got != tc.name {
+			t.Errorf("t3Name(%s) = %q, want %q", tc.tag, got, tc.name)
 		}
 	}
 }

@@ -19,7 +19,8 @@
 //	go run ./tools/live vm forward NAME PORT[:PORT] forward a host loopback port to the clone
 //	go run ./tools/live vm screenshot NAME FILE    save a PNG of the clone's screen
 //	go run ./tools/live vm vnc NAME                print the VNC address of the clone's screen
-//	go run ./tools/live vm t3 NAME                 install T3 Code at the reference pin in a clone
+//	go run ./tools/live vm t3 install NAME         install T3 Code at the reference pin in a clone
+//	go run ./tools/live vm t3 start NAME           start it with a debugging port for Playwright
 //	go run ./tools/live vm stop NAME [-force]      shut a clone down and keep it for later
 //	go run ./tools/live vm start NAME              boot a stopped clone again
 //	go run ./tools/live vm down NAME               stop and delete a clone
@@ -58,7 +59,8 @@ const usage = `usage: go run ./tools/live <command>
   vm forward NAME PORT[:PORT]     forward a host loopback port to the clone's loopback
   vm screenshot NAME FILE         save a PNG of the clone's screen
   vm vnc NAME                     print the VNC address of the clone's screen
-  vm t3 NAME                      install the T3 Code desktop app of the reference pin
+  vm t3 install NAME              install the T3 Code desktop app of the reference pin
+  vm t3 start NAME [-port P]      start it with Chrome's debugging port P (9222); prints its URL in the clone
   vm stop NAME [-force]           shut a clone down but keep it for later
   vm start NAME                   boot a stopped clone again; prints JSON
   vm down NAME                    stop and delete a clone
