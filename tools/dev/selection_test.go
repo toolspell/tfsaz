@@ -32,7 +32,7 @@ type selectionCase struct {
 }
 
 // contractRows is how many of selectionCases are the one-per-row cases.
-const contractRows = 8
+const contractRows = 9
 
 // selectionCases has one case per contract row, in the contract's order,
 // then the cases for every path class and union.
@@ -44,6 +44,7 @@ var selectionCases = []selectionCase{
 	{"other root module tools", []string{"tools/live/help.go"}, toolsPkgs, 1, true, false},
 	{"live-test files", []string{"live-tests/router/Dockerfile"}, livePkgs, 1, false, false},
 	{"testdata", []string{"tools/live/testdata/x.json"}, []string{".", "./tools/live"}, 1, true, false},
+	{"go.mod", []string{"go.mod"}, all, 3, true, true},
 	{"unknown file", []string{".gitignore"}, all, 3, true, true},
 
 	// Every path class of the contract, with more representative paths.
@@ -68,7 +69,6 @@ var selectionCases = []selectionCase{
 	{"internal non-Go file", []string{"internal/az/embedded.json"}, all, 3, true, false},
 	{"internal nested Go file", []string{"internal/az/sub/x.go"}, all, 3, true, false},
 	{"root Go file", []string{"main.go", "repo_checks_test.go"}, all, 3, true, false},
-	{"go.mod", []string{"go.mod"}, all, 3, true, true},
 	{"go.sum", []string{"go.sum"}, all, 3, true, false},
 
 	{"tools/dev", []string{"tools/dev/selection.go"}, all, 3, true, true},
