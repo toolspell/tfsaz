@@ -4,6 +4,10 @@ name: ${TFSAZ_LIVE_PROJECT:?run tools/live up}
 
 services:
   devops-server-mock:
+    # tools/live sets the exact image (a verified ghcr.io digest or a local
+    # build's ID) when it starts services; other commands use the default.
+    image: ${TFSAZ_LIVE_MOCK_IMAGE:-tfsaz-live-local/mock:unresolved}
+    pull_policy: never
     build: ./devops-server-mock
     environment:
       MOCK_PAT: ${MOCK_PAT:-mock-pat}
@@ -44,6 +48,8 @@ services:
         ipv4_address: ${TFSAZ_LIVE_DNS_IP:?}
 
   router:
+    image: ${TFSAZ_LIVE_ROUTER_IMAGE:-tfsaz-live-local/router:unresolved}
+    pull_policy: never
     build: ./router
     cap_add:
       - NET_ADMIN

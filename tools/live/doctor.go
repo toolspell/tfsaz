@@ -97,6 +97,11 @@ func (e *env) doctor(install, checkOnly bool) error {
 		step("checking again")
 		missing, failing = checkTools()
 	}
+	if ok, detail := ghStatus(); ok {
+		fmt.Printf("ok       %-15s %s\n", "gh", detail)
+	} else {
+		fmt.Printf("info     %-15s %s: local builds only\n", "gh", detail)
+	}
 	e.adviseDHCP()
 	if n := len(missing) + len(failing); n > 0 {
 		return fmt.Errorf("%d tools missing or not working", n)

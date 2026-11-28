@@ -69,11 +69,13 @@ Run `up ubuntu macos windows` after building the shared bases. It starts this wo
 
 The instance ID is 12 hex digits derived from the absolute worktree path. To override it, set `TFSAZ_LIVE_INSTANCE` to 1 to 16 lowercase letters or digits and keep it set for that instance's commands. Use one shared `TFSAZ_LIVE_HOME` and the same local Docker engine for all worktrees on the host. A file lock protects the slot registry.
 
-| Command | Clones | Services and built images | Slot |
+| Command | Clones | Services | Slot |
 | --- | --- | --- | --- |
 | `clean` | deleted, with their router peers | kept | kept |
 | `services down` | kept | removed | kept |
 | `down` | deleted | removed | released |
+
+None of them removes the mock and router images: instances share them by input key ([Test bed images](live-tests-internals.md#test-bed-images)). [Remove everything](#remove-everything) says how to remove them.
 
 To keep clones between sessions, stop them with `vm stop NAME` and run `services down`. Later, `up OS...` brings back the `up` clones. For other clones, from `vm up` or a kept harness run, run `services up` and then `vm start NAME`.
 
@@ -266,6 +268,8 @@ Base commands and clone creation share a lock per guest OS across worktrees. Bas
 
 `doctor` checks Tart (2.0 or newer), Packer (1.11), QEMU (9.0), Docker with Compose (2.20), `curl`, `hdiutil`, `ssh` and `ssh-keygen`. It installs missing ones with Homebrew, reports older versions for you to upgrade, and tells apart a tool that is installed but not working, such as a stopped Docker engine. Homebrew refuses formulas from untrusted taps, so the tool trusts exactly `openai/tools/tart` and its dependency `openai/tools/softnet` before installing Tart.
 
+Prebuilt test bed images need a Docker engine on `linux/arm64` (any Apple Silicon Mac) and GitHub CLI 2.102.0 or newer, signed in with `gh auth login`, which verifies their provenance. Without them `up` builds the images locally, which works offline but takes a few minutes on a cold Docker cache. `doctor` reports `gh` as `local builds only` then, and does not fail.
+
 UI tests also need `playwright-cli` or Playwright on the host; `doctor` does not check them.
 
 It also advises shortening macOS's DHCP leases for VMs from a day to ten minutes: every clone gets a new MAC address, and the pool of about 250 addresses runs out after that many clones in a day.
@@ -292,7 +296,8 @@ Use the same `TFSAZ_LIVE_HOME` as for setup. Set `state_dir="${TFSAZ_LIVE_HOME:-
 
 | Change on the host | Undo |
 | --- | --- |
-| Per-instance clones, Docker containers, network and built images, router and mock keys | `go run ./tools/live down` in each worktree, with its instance override if set. Use `go run ./tools/live prune` for deleted worktrees. |
+| Per-instance clones, Docker containers and network, router and mock keys | `go run ./tools/live down` in each worktree, with its instance override if set. Use `go run ./tools/live prune` for deleted worktrees. |
+| Test bed images: verified pulls `ghcr.io/toolspell/tfsaz-live-*`, local builds `tfsaz-live-local/*` and per-project builds from before the prebuilt images | Once all instances are down, see [below](#remove-the-test-bed-images). |
 | Shared bases, caches, locks and harness artifacts | Once all instances are down, run `rm -rf -- "$state_dir"`. Delete a custom `TFSAZ_LIVE_ARTIFACTS` directory too. |
 | Tart, softnet, Packer and QEMU from Homebrew | `brew uninstall tart softnet packer qemu` |
 | OrbStack, if `doctor -install` installed it only for the test bed | `brew uninstall --cask orbstack` |
@@ -300,4 +305,15 @@ Use the same `TFSAZ_LIVE_HOME` as for setup. Set `state_dir="${TFSAZ_LIVE_HOME:-
 | Taps `openai/tools` and `hashicorp/tap` | `brew untap openai/tools hashicorp/tap` |
 | Shorter DHCP leases, if you applied the advice | `sudo defaults delete /Library/Preferences/SystemConfiguration/com.apple.InternetSharing.default.plist bootpd` |
 
-If `prune` reports a project it could not reach, start Docker and set `project` to the exact project it reported. List its containers with `docker container ls -aq --filter "label=com.docker.compose.project=$project"` and remove the returned IDs with `docker container rm -f ID...`. List its networks with `docker network ls -q --filter "label=com.docker.compose.project=$project"` and remove the returned IDs with `docker network rm ID...`. Remove the built images with `docker image rm "$project-router" "$project-devops-server-mock"`.
+If `prune` reports a project it could not reach, start Docker and set `project` to the exact project it reported. List its containers with `docker container ls -aq --filter "label=com.docker.compose.project=$project"` and remove the returned IDs with `docker container rm -f ID...`. List its networks with `docker network ls -q --filter "label=com.docker.compose.project=$project"` and remove the returned IDs with `docker network rm ID...`. Its images are shared by all instances; remove them as [below](#remove-the-test-bed-images).
+
+### Remove the test bed images
+
+Once all instances are down, list the mock and router images with their IDs, including digest-only pulls (tag `<none>`) and the per-project builds from before the prebuilt images:
+
+```sh
+docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' \
+  | grep -E '^(ghcr\.io/toolspell/tfsaz-live-|tfsaz-live-local/|tfsaz-live-[a-z0-9]+-(devops-server-mock|router):)'
+```
+
+Remove the listed IDs with `docker image rm -f ID...`. The next `up` pulls or builds them again.
