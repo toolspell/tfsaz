@@ -17,7 +17,7 @@ permissions: {}
 # could let a late, stale run cancel the current one. Queued runs wait their turn, and each writes
 # only when the PR's head and base are still what it measured.
 concurrency:
-  group: pr-size-apply-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  group: pr-size-apply-${{ github.event.workflow_run.head_repository.id }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
   queue: max
 

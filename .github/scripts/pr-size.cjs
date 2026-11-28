@@ -205,13 +205,15 @@ async function findPullRequest(github, context, run, result) {
       head: `${owner}:${run.head_branch}`,
       per_page: 100,
     });
-    candidates = pulls.filter((pr) => pr.head.repo?.full_name === run.head_repository.full_name);
+    // Repository ids, not names: a deleted fork's name can be reused by another repository.
+    candidates = pulls.filter((pr) => pr.head.repo?.id === run.head_repository.id);
   }
   return candidates.length === 1 && candidates[0].number === result.pr ? result.pr : null;
 }
 
 async function apply({ github, context, core, file }) {
   const run = context.payload.workflow_run;
+  if (!Number.isSafeInteger(run.head_repository?.id)) throw new Error("run has no head repository");
   const result = readResult(file);
   if (result.headSha !== run.head_sha || result.headRepository !== run.head_repository?.full_name) {
     throw new Error("result head is not the run's head");
@@ -230,8 +232,9 @@ async function apply({ github, context, core, file }) {
     pr.head.sha !== result.headSha ||
     pr.head.ref !== run.head_branch ||
     pr.head.repo?.full_name !== result.headRepository ||
+    pr.head.repo.id !== run.head_repository.id ||
     pr.base.sha !== result.baseSha ||
-    pr.base.repo.full_name !== repository
+    pr.base.repo.id !== context.payload.repository.id
   ) {
     core.notice(`Skipped: PR #${number} is closed or its head or base changed since Measure.`);
     return;
