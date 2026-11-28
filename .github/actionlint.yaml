@@ -1,0 +1,6 @@
+# actionlint 1.7.12 does not know the concurrency key `queue` yet
+# (https://github.com/rhysd/actionlint/issues/657). Remove this once it does.
+paths:
+  .github/workflows/pr-size-apply.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'

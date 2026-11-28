@@ -190,8 +190,8 @@ function readResult(file) {
 
 /**
  * The PR the result names, or null unless it is the run's only PR. workflow_run lists
- * same-repository PRs only; a fork PR is looked up by its head branch, closed ones included, so
- * closing one of two PRs on the same head never leaves the other as the only match.
+ * same-repository PRs only; a fork PR is looked up by its head branch. Every PR that branch ever
+ * had counts, whatever its state or head, so no other PR can have triggered the run.
  */
 async function findPullRequest(github, context, run, result) {
   const repositoryId = context.payload.repository.id;
@@ -205,10 +205,7 @@ async function findPullRequest(github, context, run, result) {
       head: `${owner}:${run.head_branch}`,
       per_page: 100,
     });
-    candidates = pulls.filter(
-      (pr) =>
-        pr.head.sha === run.head_sha && pr.head.repo?.full_name === run.head_repository.full_name,
-    );
+    candidates = pulls.filter((pr) => pr.head.repo?.full_name === run.head_repository.full_name);
   }
   return candidates.length === 1 && candidates[0].number === result.pr ? result.pr : null;
 }
@@ -225,8 +222,7 @@ async function apply({ github, context, core, file }) {
     return;
   }
   // Fetched fresh, so a result for a head or base that changed since Measure is never applied.
-  // A push between this read and the writes starts a newer Measure and Apply, which normally
-  // write after this run.
+  // pr-size-apply.yml runs one Apply per head at a time, so no newer run writes in between.
   const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: number });
   const repository = `${context.repo.owner}/${context.repo.repo}`;
   if (
