@@ -206,11 +206,18 @@ func ciChecks(base string, push bool) bool {
 	return runSteps("ci-checks", steps)
 }
 
-// ciMock is the CI mock job: the live-test mock module's race tests, Go gates
-// and go mod tidy -diff.
+// ciMock is the CI mock job: the live-test mock module's gofmt, race tests, Go
+// gates and go mod tidy -diff.
 func ciMock() bool {
 	mods := []string{mockModule}
-	steps := append(goGates(mods), tidy(mods)...)
+	goFiles, err := gitPaths("ls-files", "-z", "--", mockModule+"/*.go")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ci-mock:", err)
+		return false
+	}
+	// Checks skips gofmt when only the mock changed, so the mock's files get it here.
+	steps := append([]step{{name: "gofmt", run: gofmtCheck(goFiles, readWorktree)}}, goGates(mods)...)
+	steps = append(steps, tidy(mods)...)
 	steps = append(steps, step{name: "go test -race " + modulePattern(mockModule), run: cmd("go", "-C", mockModule, "test", "-race", "-count=1", "./...")})
 	return runSteps("ci-mock", steps)
 }

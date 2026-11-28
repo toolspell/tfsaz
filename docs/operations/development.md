@@ -129,7 +129,7 @@ Three shards keep the Windows runners at about macOS's duration. More would shor
 ### Gates and reports
 
 - **Gates** (Checks): actionlint, gitleaks over the full history and the repo checks on every run. The Go gates when a Go input changed ([path filter](#path-filter)): gofmt; `go vet`, golangci-lint and govulncheck for darwin, linux and windows in the root module; `go mod tidy -diff` for the root and tool modules. A push to `main` runs govulncheck regardless, so a new advisory still fails `main`. The test matrix gates too.
-- **Gates** (Mock): the same `go vet`, golangci-lint and govulncheck per system, `go mod tidy -diff` and `go test -race` for the live-test mock's module.
+- **Gates** (Mock): gofmt, the same `go vet`, golangci-lint and govulncheck per system, `go mod tidy -diff` and `go test -race` for the live-test mock's module.
 - **Report** that never fails a run: deadcode for each system, in Checks and Mock.
 - TFSaz has no cgo code, so vet, lint and govulncheck with `GOOS` set on Linux see what native runs would see. Only the tests need the three runners.
 - Checks and the test matrix run on the Go version in `go.mod`: govulncheck judges the standard library of the Go it runs on, and that version is the minimum every build uses.
