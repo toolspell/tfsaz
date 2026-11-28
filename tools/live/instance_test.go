@@ -75,7 +75,7 @@ func TestLiveBaseLock(t *testing.T) {
 }
 
 func TestLiveInstanceLockPolicy(t *testing.T) {
-	locked := strings.Split("up,down,clean,setup,verify,services up,services down,vm up,vm start,vm stop,vm down", ",")
+	locked := strings.Split("up,down,clean,setup,verify,services up,services down,mock reset,vm up,vm start,vm stop,vm down", ",")
 	for _, h := range liveCommands {
 		t.Run(h.path, func(t *testing.T) {
 			command, action, _ := strings.Cut(h.path, " ")

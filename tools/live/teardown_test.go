@@ -11,27 +11,68 @@ import (
 )
 
 func TestFailedVMUpKeepsLog(t *testing.T) {
+	for _, archiveOK := range []bool{true, false} {
+		name := "archive available"
+		if !archiveOK {
+			name = "archive blocked"
+		}
+		t.Run(name, func(t *testing.T) { checkFailedVMUpCleanup(t, archiveOK) })
+	}
+}
+
+func checkFailedVMUpCleanup(t *testing.T, archiveOK bool) {
+	t.Helper()
 	e := &env{home: t.TempDir(), instance: "first"}
 	o := oses[1]
 	name := e.cloneName(o, "up")
 	logFile := filepath.Join(e.runDir(name), "tart.log")
 	putLiveFile(t, filepath.Join(e.runDir(name), "id_ed25519"))
+	putLiveFile(t, filepath.Join(e.tart().home, "test"))
+	oldOutput := output
+	t.Cleanup(func() { output = oldOutput })
+	deleted := false
+	output = func(_ []string, bin string, args ...string) (string, error) {
+		if bin != "tart" {
+			t.Fatalf("unexpected command: %s %q", bin, args)
+		}
+		switch strings.Join(args, " ") {
+		case "list --source local --format json":
+			return `[{"Name":"` + name + `","State":"stopped"}]`, nil
+		case "stop " + name + " --timeout 30":
+			return "", nil
+		case "delete " + name:
+			deleted = true
+			return "", nil
+		}
+		t.Fatalf("unexpected Tart command: %q", args)
+		return "", nil
+	}
 	const body = "old line\n2\n3\n4\n5\nVNC server is running at vnc://:secret@127.0.0.1:5900\nVM failed to boot\n"
 	if err := os.WriteFile(logFile, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cause := errors.New("VM did not start")
-	err := e.cleanupFailedVM(o, name, cause)
 	kept := e.instancePath("failed-starts", name+".log")
-	if got := readLiveFile(t, kept); got != body {
-		t.Errorf("kept log = %q; want %q", got, body)
+	if !archiveOK {
+		putLiveFile(t, filepath.Dir(kept))
 	}
-	if !errors.Is(err, cause) || !strings.Contains(err.Error(), kept) || !strings.Contains(err.Error(), "VM failed to boot") ||
+	err := e.cleanupFailedVM(o, name, cause)
+	if archiveOK {
+		if got := readLiveFile(t, kept); got != body || !strings.Contains(err.Error(), kept) {
+			t.Errorf("kept log = %q; startup error = %v", got, err)
+		}
+	} else if !strings.Contains(err.Error(), "save startup log") {
+		t.Errorf("archive error missing from %v", err)
+	}
+	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "VM failed to boot") ||
 		strings.Contains(err.Error(), "old line") || strings.Contains(err.Error(), "secret") {
 		t.Errorf("startup error = %v", err)
 	}
 	if _, err := os.Stat(e.runDir(name)); !os.IsNotExist(err) {
 		t.Errorf("failed clone's run directory remains: %v", err)
+	}
+	if !deleted {
+		t.Error("failed clone was not deleted")
 	}
 }
 
@@ -92,12 +133,15 @@ func TestLiveRemovePeer(t *testing.T) {
 func TestLiveLegacyClones(t *testing.T) {
 	e := &env{home: t.TempDir(), instance: "first"}
 	const tartName, qemuName = "tfsaz-ubuntu-a1b2c3", "tfsaz-windows-c4d5e6"
+	const peerOnly, runOnly = "tfsaz-macos-peer", "tfsaz-macos-run"
 	putLiveFile(t, filepath.Join(e.tart().home, "test"))
 	putLiveFile(t, filepath.Join(e.qemu().dir(qemuName), "disk.qcow2"))
 	for _, name := range []string{tartName, qemuName} {
 		putLiveFile(t, e.path("runs", name, "vm.json"))
 		putLiveFile(t, e.path("router", "peers", name))
 	}
+	putLiveFile(t, e.path("router", "peers", peerOnly))
+	putLiveFile(t, e.path("runs", runOnly, "vm.json"))
 	old := output
 	t.Cleanup(func() { output = old })
 	var tartCommands []string
@@ -118,14 +162,19 @@ func TestLiveLegacyClones(t *testing.T) {
 		}
 	}
 	rows, err := e.cloneRows()
-	if err != nil || len(rows) != 2 || !rows[0].Legacy || !rows[1].Legacy ||
-		rows[0].Name != tartName || rows[1].Name != qemuName {
-		t.Fatalf("cloneRows = %v, %v; want both legacy clones", rows, err)
+	want := []string{peerOnly, runOnly, tartName, qemuName}
+	if err != nil || len(rows) != len(want) {
+		t.Fatalf("cloneRows = %v, %v; want %v", rows, err, want)
+	}
+	for i, row := range rows {
+		if row.Name != want[i] || !row.Legacy || (i < 2 && (row.State != "missing" || row.OS != "macos")) {
+			t.Errorf("legacy row %d = %+v; want %s", i, row, want[i])
+		}
 	}
 	if got := baseCloneError(oses[0], []string{tartName}).Error(); !strings.Contains(got, "go run ./tools/live vm down "+tartName) {
 		t.Errorf("base refusal = %q", got)
 	}
-	for _, name := range []string{tartName, qemuName} {
+	for _, name := range want {
 		h, args, _, err := resolveHelp([]string{"vm", "down", name})
 		if err != nil {
 			t.Fatal(err)
@@ -148,6 +197,25 @@ func TestLiveLegacyClones(t *testing.T) {
 	}
 	if _, err := os.Stat(e.qemu().dir(qemuName)); !os.IsNotExist(err) {
 		t.Errorf("QEMU clone should be gone: %v", err)
+	}
+}
+
+func TestLiveCloneRowsRejectMismatchedMetadata(t *testing.T) {
+	e := &env{home: t.TempDir(), instance: "first"}
+	o := oses[2]
+	name := e.cloneName(o, "record")
+	putLiveFile(t, filepath.Join(e.qemu().dir(name), "disk.qcow2"))
+	putLiveFile(t, filepath.Join(e.runDir(name), "vm.json"))
+	info := vmInfo{Name: e.cloneName(o, "other"), OS: o.name, IP: "192.0.2.1", SSHKey: "other-key"}
+	if err := writeJSON(filepath.Join(e.runDir(name), "vm.json"), info); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := e.cloneRows()
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("cloneRows = %v, %v; want one inventory row", rows, err)
+	}
+	if row := rows[0]; row.vmInfo != (vmInfo{Name: name}) || row.State != "stopped" {
+		t.Errorf("row = %+v; want name and provider state", row)
 	}
 }
 

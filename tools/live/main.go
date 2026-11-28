@@ -138,6 +138,8 @@ func locksInstance(command, action string) bool {
 		return true
 	case "services":
 		return action == "up" || action == "down"
+	case "mock":
+		return action == "reset"
 	case "vm":
 		return action == "up" || action == "down" || action == "start" || action == "stop"
 	}

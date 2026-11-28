@@ -224,20 +224,24 @@ func (e *env) cleanupFailedVM(o osDef, name string, cause error) error {
 		err = os.Rename(logFile, kept)
 	}
 	if err != nil {
-		return errors.Join(vmStartError(cause, logFile), fmt.Errorf("save startup log: %w; run vm down %s after inspecting it", err, name), e.vms(o).stop(name))
+		diagnostic := fmt.Errorf("%w%s", cause, startupLogTail(logFile))
+		return errors.Join(diagnostic, fmt.Errorf("save startup log: %w", err), e.vmDown(name))
 	}
 	cleanupErr := e.vmDown(name)
 	return errors.Join(vmStartError(cause, kept), cleanupErr)
 }
 
 func vmStartError(cause error, logFile string) error {
+	return fmt.Errorf("%w\nStartup log: %s%s", cause, logFile, startupLogTail(logFile))
+}
+
+func startupLogTail(logFile string) string {
 	data, err := os.ReadFile(logFile)
 	if err != nil || strings.TrimSpace(string(data)) == "" {
-		return fmt.Errorf("%w\nStartup log: %s", cause, logFile)
+		return ""
 	}
 	lines := strings.Split(strings.TrimSpace(vncPattern.ReplaceAllString(string(data), "[VNC address omitted]")), "\n")
-	tail := strings.Join(lines[max(0, len(lines)-5):], "\n")
-	return fmt.Errorf("%w\nStartup log: %s\n%s", cause, logFile, tail)
+	return "\n" + strings.Join(lines[max(0, len(lines)-5):], "\n")
 }
 
 func printVM(info vmInfo) error {
@@ -545,6 +549,27 @@ type cloneRow struct {
 	Legacy bool   `json:"legacy,omitempty"`
 }
 
+func (e *env) legacyClones(vms []vmEntry) (map[string]osDef, error) {
+	legacy := make(map[string]osDef)
+	for _, vm := range vms {
+		if o, ok := legacyCloneOS(vm.Name); ok {
+			legacy[vm.Name] = o
+		}
+	}
+	for _, dir := range []string{e.path("runs"), e.path("router", "peers")} {
+		entries, err := os.ReadDir(dir)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if o, ok := legacyCloneOS(entry.Name()); ok {
+				legacy[entry.Name()] = o
+			}
+		}
+	}
+	return legacy, nil
+}
+
 func (e *env) cloneRows() ([]cloneRow, error) {
 	vms, err := e.allVMs()
 	if err != nil {
@@ -554,26 +579,27 @@ func (e *env) cloneRows() ([]cloneRow, error) {
 	if err != nil {
 		return nil, err
 	}
+	legacy, err := e.legacyClones(vms)
+	if err != nil {
+		return nil, err
+	}
 	state := make(map[string]string)
-	legacy := make(map[string]osDef)
 	for _, vm := range vms {
 		state[vm.Name] = vm.State
-		if o, ok := legacyCloneOS(vm.Name); ok {
-			legacy[vm.Name] = o
-			names = append(names, vm.Name)
-		}
+	}
+	for name := range legacy {
+		names = append(names, name)
 	}
 	sort.Strings(names)
 	rows := []cloneRow{}
 	for _, n := range names {
-		var info vmInfo
+		info := vmInfo{Name: n}
 		o, old := legacy[n]
 		if old {
 			info.OS = o.name
-		} else {
-			info, _ = e.loadVM(n)
+		} else if saved, err := e.loadVM(n); err == nil {
+			info = saved
 		}
-		info.Name = n
 		s := state[n]
 		if s == "" {
 			s = "missing"
