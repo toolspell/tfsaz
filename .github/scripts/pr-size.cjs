@@ -1,8 +1,10 @@
-// The PR's commits are fetched as git data and only diffed: nothing from the PR is checked out or
-// run, which keeps this safe under pull_request_target.
+// Measure runs as `node pr-size.cjs` in pr-size.yml with a read-only token and writes the result
+// file. Apply runs from the default branch in pr-size-apply.yml with a write token and treats that
+// file as untrusted: a fork PR can change what Measure uploads.
 // Adapted from Toolspell's pr-size.cjs, itself adapted from T3 Code's pr-size.yml and
 // .github/scripts/test-delta.cjs (MIT).
 const { execFileSync } = require("node:child_process");
+const fs = require("node:fs");
 
 // Upper bounds, exclusive. The names and descriptions live in .github/labels.json.
 const SIZES = [
@@ -128,38 +130,130 @@ async function upsertTestDeltaComment(github, context, number, body) {
   }
 }
 
-async function run({ github, context, core }) {
-  const pr = context.payload.pull_request;
-  const head = `refs/remotes/pr-size/${pr.number}`;
-  git(["fetch", "--no-tags", "origin", pr.base.sha, `+refs/pull/${pr.number}/head:${head}`]);
-  // base.sha is the branch the PR targets: main, or the layer below in a stack.
-  const range = `${pr.base.sha}...${head}`;
+const SHA = /^[0-9a-f]{40}$/;
+const REPOSITORY = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
+const RESULT_KEYS = ["baseSha", "changedLines", "headRepository", "headSha", "netTests", "pr"];
+const RESULT_MAX_BYTES = 4096;
 
+/** @returns {{ changedLines: number, netTests: number }} for the PR's commits since its base. */
+function measure(baseSha, headSha) {
+  git(["fetch", "--no-tags", "origin", baseSha, headSha]);
+  // baseSha is the branch the PR targets: main, or the layer below in a stack.
+  const range = `${baseSha}...${headSha}`;
   const diffArgs = ["diff", "--numstat", "--ignore-all-space", "--ignore-blank-lines", range];
   const total = sumNumstat(git([...diffArgs, "--", ".", ...GENERATED_EXCLUDE_PATHSPECS]));
   const nonTest = sumNumstat(
     git([...diffArgs, "--", ".", ...GENERATED_EXCLUDE_PATHSPECS, ...TEST_EXCLUDE_PATHSPECS]),
   );
-  const next = sizeLabel(effectiveLines(total, nonTest));
-  await syncSizeLabel(github, context, pr.number, next);
-  core.info(`PR #${pr.number}: ${nonTest} non-test of ${total} changed lines -> ${next}`);
-
+  console.log(`${nonTest} non-test of ${total} changed lines`);
   const delta = countTestDelta(git(["diff", "-U0", range, "--", "*_test.go"]));
-  core.info(`PR #${pr.number}: test functions net ${delta.net}`);
-  await upsertTestDeltaComment(
-    github,
-    context,
-    pr.number,
-    render(delta, `${context.repo.owner}/${context.repo.repo}`),
+  console.log(`test functions net ${delta.net}`);
+  return { changedLines: effectiveLines(total, nonTest), netTests: delta.net };
+}
+
+/** Parses Measure's result file; throws unless every field has the expected type and range. */
+function parseResult(text) {
+  const result = JSON.parse(text);
+  if (typeof result !== "object" || result === null || Array.isArray(result)) {
+    throw new Error("result is not an object");
+  }
+  const keys = Object.keys(result).sort();
+  if (keys.join() !== RESULT_KEYS.join()) throw new Error(`result keys are ${keys.join(", ")}`);
+  const valid =
+    Number.isSafeInteger(result.pr) &&
+    result.pr > 0 &&
+    typeof result.headSha === "string" &&
+    SHA.test(result.headSha) &&
+    typeof result.baseSha === "string" &&
+    SHA.test(result.baseSha) &&
+    typeof result.headRepository === "string" &&
+    REPOSITORY.test(result.headRepository) &&
+    Number.isSafeInteger(result.changedLines) &&
+    result.changedLines >= 0 &&
+    Number.isSafeInteger(result.netTests);
+  if (!valid) throw new Error("result has a field of the wrong type or range");
+  return result;
+}
+
+function readResult(file) {
+  const { size } = fs.statSync(file);
+  if (size > RESULT_MAX_BYTES) throw new Error(`result file has ${size} bytes`);
+  return parseResult(fs.readFileSync(file, "utf8"));
+}
+
+/**
+ * The PR the result belongs to, or null when the run's PR is not exactly the result's.
+ * workflow_run lists same-repository PRs only; a fork PR is looked up by its head branch.
+ */
+async function findPullRequest(github, context, run, result) {
+  const listed = run.pull_requests ?? [];
+  if (listed.length > 0) return listed.some((pr) => pr.number === result.pr) ? result.pr : null;
+  const owner = run.head_repository?.owner?.login;
+  if (!owner || !run.head_branch) return null;
+  const { data } = await github.rest.pulls.list({
+    ...context.repo,
+    state: "open",
+    head: `${owner}:${run.head_branch}`,
+    per_page: 100,
+  });
+  const open = data.filter(
+    (pr) =>
+      pr.head.sha === run.head_sha && pr.head.repo?.full_name === run.head_repository.full_name,
   );
+  return open.length === 1 && open[0].number === result.pr ? result.pr : null;
+}
+
+async function apply({ github, context, core, file }) {
+  const run = context.payload.workflow_run;
+  const result = readResult(file);
+  if (result.headSha !== run.head_sha || result.headRepository !== run.head_repository?.full_name) {
+    throw new Error(`result for ${result.headRepository}@${result.headSha} is not from this run`);
+  }
+  const number = await findPullRequest(github, context, run, result);
+  if (number === null) {
+    core.notice(`Skipped: run ${run.id} does not belong to exactly PR #${result.pr}.`);
+    return;
+  }
+  // Fetched fresh, so a result for a head that a newer push replaced is never applied.
+  const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: number });
+  const repository = `${context.repo.owner}/${context.repo.repo}`;
+  if (
+    pr.state !== "open" ||
+    pr.head.sha !== result.headSha ||
+    pr.head.repo?.full_name !== result.headRepository ||
+    pr.base.repo.full_name !== repository
+  ) {
+    core.notice(`Skipped: PR #${number} is closed or its head is no longer ${result.headSha}.`);
+    return;
+  }
+  const next = sizeLabel(result.changedLines);
+  await syncSizeLabel(github, context, number, next);
+  core.info(`PR #${number}: ${result.changedLines} effective changed lines -> ${next}`);
+  core.info(`PR #${number}: test functions net ${result.netTests}`);
+  await upsertTestDeltaComment(github, context, number, render({ net: result.netTests }, repository));
+}
+
+if (require.main === module) {
+  const { PR_NUMBER, BASE_SHA, HEAD_SHA, HEAD_REPOSITORY, RESULT_FILE } = process.env;
+  if (!SHA.test(BASE_SHA ?? "") || !SHA.test(HEAD_SHA ?? "")) throw new Error("invalid commit SHA");
+  const result = {
+    pr: Number(PR_NUMBER),
+    headSha: HEAD_SHA,
+    headRepository: HEAD_REPOSITORY,
+    baseSha: BASE_SHA,
+    ...measure(BASE_SHA, HEAD_SHA),
+  };
+  parseResult(JSON.stringify(result));
+  fs.writeFileSync(RESULT_FILE, `${JSON.stringify(result)}\n`);
 }
 
 module.exports = {
   SIZES,
+  apply,
   countTestDelta,
   effectiveLines,
+  parseResult,
   render,
-  run,
   sizeLabel,
   sumNumstat,
 };
