@@ -15,7 +15,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -101,11 +100,7 @@ func writeKeys(dir string, host, client mockKey) error {
 		if err := os.WriteFile(path, f.data, f.mode); err != nil {
 			return err
 		}
-		if st, ok := info.Sys().(*syscall.Stat_t); ok {
-			if err := os.Chown(path, int(st.Uid), int(st.Gid)); err != nil {
-				log.Printf("chown %s: %v", path, err)
-			}
-		}
+		chownLike(path, info)
 	}
 	return nil
 }

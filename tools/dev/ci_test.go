@@ -20,6 +20,7 @@ func TestTestsNeeded(t *testing.T) {
 		{"markdown fixture", []string{"internal/az/testdata/readme.md"}, true},
 		{"root module files", []string{"go.sum"}, true},
 		{"dev tool code", []string{"tools/dev/ci.go"}, true},
+		{"mock module", []string{"live-tests/devops-server-mock/go.sum"}, true},
 		{"workflow", []string{".github/workflows/labels.yml"}, true},
 		{"unknown file", []string{".gitignore"}, true},
 	} {

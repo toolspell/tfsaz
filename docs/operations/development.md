@@ -10,12 +10,13 @@
 
 | Command | What it runs | When |
 | --- | --- | --- |
-| `go run ./tools/dev check` | On the files changed since the merge base with `main`, uncommitted and untracked ones included: gofmt on changed Go files; `go vet` and golangci-lint on the whole tree for darwin, linux and windows; `go mod tidy -diff` for the touched modules; actionlint when a workflow changed; gitleaks on the branch's commits and uncommitted changes; `go test` on the root package and the changed packages. | Before every commit. A few seconds; about 35 s more when `internal/az` changed. |
-| `go run ./tools/dev ready` | The whole tree: gofmt, `go vet`, golangci-lint and govulncheck for all three systems, `go mod tidy -diff` for every module, actionlint, gitleaks over the full history and uncommitted changes, `go test -race -count=1 ./...`. A report that never fails it: deadcode for all three systems. | Before a push. About 40 s. |
+| `go run ./tools/dev check` | On the files changed since the merge base with `main`, uncommitted and untracked ones included: gofmt on changed Go files; `go vet` and golangci-lint on the whole tree for darwin, linux and windows; `go mod tidy -diff` for the touched modules; actionlint when a workflow changed; gitleaks on the branch's commits and uncommitted changes; `go test` on the root package and the changed packages, plus the mock module's tests when a file under it changed. | Before every commit. A few seconds; about 35 s more when `internal/az` changed. |
+| `go run ./tools/dev ready` | The whole tree: gofmt, `go vet`, golangci-lint and govulncheck for all three systems, `go mod tidy -diff` for every module, actionlint, gitleaks over the full history and uncommitted changes, `go test -race -count=1 ./...` in each code module. A report that never fails it: deadcode for all three systems. | Before a push. About 40 s. |
 | `go run ./tools/dev ci-local` | The [CI workflow](#ci) with act in Docker: the Linux jobs only. | Before a push that changes CI, or to reproduce a CI failure. A few minutes. |
 | Pre-commit hook | Staged content only: gofmt, gitleaks `--staged`, and the repo checks when any file is staged. | On `git commit`. About 1 s. |
 | `go test -count=1 ./internal/az -run 'TestName'` | Focused tests. `-run` takes a regular expression, so `'TestA\|TestB'` runs both. | While iterating. |
 
+- The code modules are the root module and the live-test mock in `live-tests/devops-server-mock`, which has a `go.mod` of its own. "The whole tree" covers both: vet, lint, govulncheck, deadcode and the tests run in each. The tool modules under `tools/` get only `go mod tidy -diff`. The list is `codeModules` in `tools/dev/run.go`.
 - `check -base <ref>` compares against another ref. On `main` itself `check` sees only uncommitted changes; `-base HEAD~1` checks the last commit.
 - Vet, lint and govulncheck type-check each system from any host, so a `_windows.go` change is checked on macOS too. Tests run only for the host; CI covers the other two.
 - govulncheck needs network access and judges the standard library of the Go that runs it: an outdated local Go fails `ready` until you update it.
@@ -58,7 +59,7 @@ Enable it once per clone with `git config core.hooksPath .githooks`; the setup c
 go run ./tools/dev setup -tools
 ```
 
-T3 runs this as the project's "Setup Worktree" script, declared with "Check" and "Ready" in [`t3.json`](../../t3.json) (import the actions in T3's project settings once). It enables the hook, runs `go mod download` for the root module and each tool module, and with `-tools` builds the pinned tools into Go's build cache, so the first check does not wait for them. It is safe to run again.
+T3 runs this as the project's "Setup Worktree" script, declared with "Check" and "Ready" in [`t3.json`](../../t3.json) (import the actions in T3's project settings once). It enables the hook, runs `go mod download` for each code module and tool module, and with `-tools` builds the pinned tools into Go's build cache, so the first check does not wait for them. It is safe to run again.
 
 ## Pinned tools
 
@@ -112,18 +113,18 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 | --- | --- | --- |
 | Changes | ubuntu-24.04 | `go run ./tools/dev ci-changes`: whether the test matrix must run ([path filter](#path-filter)). |
 | Checks | ubuntu-24.04 | `go run ./tools/dev ci-checks`: the whole-tree checks of `ready` without the tests, plus the [repo checks](#repo-checks). |
-| test | macOS, Windows (three runners), Ubuntu | `go run ./tools/dev ci-test`: `go test -race -count=1 ./...` with the Go version in `go.mod`, the oldest supported. Skipped when only non-code files changed. Windows splits the tests into [shards](#test-shards). |
+| test | macOS, Windows (three runners), Ubuntu | `go run ./tools/dev ci-test`: `go test -race -count=1 ./...` in each [code module](#checks) with the Go version in `go.mod`, the oldest supported. Skipped when only non-code files changed. Windows splits the tests into [shards](#test-shards). |
 | Check | ubuntu-24.04 | Roll-up: passes when every job passed, or `test` was skipped because Changes found no code change. Fails on anything else. |
 
 ### Test shards
 
-The tests of a package run one after another, and Windows runs the Git-heavy setup and preserve tests about five times slower than Ubuntu: about 157 s for `internal/az`, against 78 s on macOS and 28 s on Ubuntu. Windows therefore runs on three runners, `ci-test -shard 1/3` to `3/3`. Each lists the top-level tests of every package with `go test -race -list`, sorts the names and takes every third one, so each test runs in exactly one shard. A new test needs no entry anywhere.
+The tests of a package run one after another, and Windows runs the Git-heavy setup and preserve tests about five times slower than Ubuntu: about 157 s for `internal/az`, against 78 s on macOS and 28 s on Ubuntu. Windows therefore runs on three runners, `ci-test -shard 1/3` to `3/3`. Each lists the top-level tests of every package with `go test -race -list`, sorts the names and takes every third one, so each test runs in exactly one shard. The mock module's tests take seconds and run whole in the first shard. A new test needs no entry anywhere.
 
 Three shards keep the Windows runners at about macOS's duration. More would shorten nothing, and a CI run already uses up to seven runners at once against the free plan's 20.
 
 ### Gates and reports
 
-- **Gates** (Checks): gofmt; `go vet`, golangci-lint and govulncheck for darwin, linux and windows; `go mod tidy -diff` for the root and every tool module; actionlint; gitleaks over the full history; the repo checks. The test matrix gates too.
+- **Gates** (Checks): gofmt; `go vet`, golangci-lint and govulncheck for darwin, linux and windows in each code module; `go mod tidy -diff` for every module; actionlint; gitleaks over the full history; the repo checks. The test matrix gates too.
 - **Report** that never fails a run: deadcode for each system.
 - TFSaz has no cgo code, so vet, lint and govulncheck with `GOOS` set on Linux see what native runs would see. Only the tests need the three runners.
 - Checks and the test matrix run on the Go version in `go.mod`: govulncheck judges the standard library of the Go it runs on, and that version is the minimum every build uses.
@@ -156,7 +157,7 @@ The filter is a job, not `paths-ignore` on the trigger: a workflow that does not
 
 ### Caching
 
-`actions/setup-go` saves the module and build caches. Checks keys them on `go.sum` and `tools/*/go.sum`, so the compiled tools, most of a cold run, come from the build cache. The test jobs key on `go.sum` per runner. Changes builds only the standard-library `tools/dev` and caches nothing.
+`actions/setup-go` saves the module and build caches. Checks keys them on `go.sum`, the mock's `go.sum` and `tools/*/go.sum`, so the compiled tools, most of a cold run, come from the build cache. The test jobs key on `go.sum` per runner. Changes builds only the standard-library `tools/dev` and caches nothing.
 
 ### Secrets found in CI
 

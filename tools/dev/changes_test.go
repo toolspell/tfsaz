@@ -12,27 +12,30 @@ func TestPlanFor(t *testing.T) {
 	deleted := "internal/az/removed.go"
 	exists := func(f string) bool { return f != deleted }
 	for _, tc := range []struct {
-		name      string
-		files     []string
-		goFiles   []string
-		goChanged bool
-		modules   []string
-		packages  []string
-		workflows bool
+		name        string
+		files       []string
+		goFiles     []string
+		goChanged   bool
+		modules     []string
+		packages    []string
+		moduleTests []string
+		workflows   bool
 	}{
-		{"docs only", []string{"README.md", "docs/user/install.md"}, nil, false, nil, []string{"."}, false},
-		{"internal/az code", []string{"internal/az/cli.go"}, []string{"internal/az/cli.go"}, true, []string{"."}, []string{".", "./internal/az"}, false},
-		{"deleted file is not formatted", []string{deleted}, nil, true, []string{"."}, []string{".", "./internal/az"}, false},
-		{"testdata tests its package", []string{"internal/az/testdata/repository.json"}, nil, false, nil, []string{".", "./internal/az"}, false},
-		{"root module files test everything", []string{"go.sum"}, nil, true, []string{"."}, []string{"./..."}, false},
-		{"tool pin", []string{"tools/gitleaks/go.mod"}, nil, false, []string{"tools/gitleaks"}, []string{"."}, false},
-		{"dev tool code", []string{"tools/dev/run.go"}, []string{"tools/dev/run.go"}, true, []string{"."}, []string{".", "./tools/dev"}, false},
-		{"lint config", []string{".golangci.yml"}, nil, true, nil, []string{"."}, false},
-		{"workflow", []string{".github/workflows/test.yml"}, nil, false, nil, []string{"."}, true},
+		{"docs only", []string{"README.md", "docs/user/install.md"}, nil, false, nil, []string{"."}, nil, false},
+		{"internal/az code", []string{"internal/az/cli.go"}, []string{"internal/az/cli.go"}, true, []string{"."}, []string{".", "./internal/az"}, nil, false},
+		{"deleted file is not formatted", []string{deleted}, nil, true, []string{"."}, []string{".", "./internal/az"}, nil, false},
+		{"testdata tests its package", []string{"internal/az/testdata/repository.json"}, nil, false, nil, []string{".", "./internal/az"}, nil, false},
+		{"root module files test everything", []string{"go.sum"}, nil, true, []string{"."}, []string{"./..."}, nil, false},
+		{"tool pin", []string{"tools/gitleaks/go.mod"}, nil, false, []string{"tools/gitleaks"}, []string{"."}, nil, false},
+		{"dev tool code", []string{"tools/dev/run.go"}, []string{"tools/dev/run.go"}, true, []string{"."}, []string{".", "./tools/dev"}, nil, false},
+		{"mock code", []string{"live-tests/devops-server-mock/http.go"}, []string{"live-tests/devops-server-mock/http.go"}, true, []string{"live-tests/devops-server-mock"}, []string{"."}, []string{"live-tests/devops-server-mock"}, false},
+		{"mock data", []string{"live-tests/devops-server-mock/catalog.json"}, nil, false, []string{"live-tests/devops-server-mock"}, []string{"."}, []string{"live-tests/devops-server-mock"}, false},
+		{"lint config", []string{".golangci.yml"}, nil, true, nil, []string{"."}, nil, false},
+		{"workflow", []string{".github/workflows/test.yml"}, nil, false, nil, []string{"."}, nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := planFor(tc.files, exists, pkgDirs)
-			if !slices.Equal(p.goFiles, tc.goFiles) || p.goChanged != tc.goChanged || !slices.Equal(p.modules, tc.modules) || !slices.Equal(p.packages, tc.packages) || p.workflows != tc.workflows {
+			if !slices.Equal(p.goFiles, tc.goFiles) || p.goChanged != tc.goChanged || !slices.Equal(p.modules, tc.modules) || !slices.Equal(p.packages, tc.packages) || !slices.Equal(p.moduleTests, tc.moduleTests) || p.workflows != tc.workflows {
 				t.Errorf("planFor(%q) = %+v", tc.files, p)
 			}
 		})
