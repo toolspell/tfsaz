@@ -122,7 +122,7 @@ After a manual or live run, undo what it changed as soon as you no longer need t
 
 ### Test shards
 
-The tests of a package run one after another, and Windows runs the Git-heavy setup and preserve tests about five times slower than Ubuntu: about 157 s for `internal/az`, against 78 s on macOS and 28 s on Ubuntu. Windows therefore runs on three runners, `ci-test -shard 1/3` to `3/3`. Each lists the top-level tests of every root module package with `go test -race -list`, sorts the names and takes every third one, so each test runs in exactly one shard. The mock module's tests run in the Mock job, not in a shard. A new test needs no entry anywhere.
+The tests of a package run one after another, and Windows runs the Git-heavy setup and preserve tests about five times slower than Ubuntu: about 157 s for `internal/az`, against 78 s on macOS and 28 s on Ubuntu. Windows therefore runs on three runners, `ci-test -shard 1/3` to `3/3`, when a change reaches `internal/az`; other changes run one Windows runner ([path filter](#path-filter)). Each shard lists the top-level tests of the selected packages (`-packages`) with `go test -race -list`, sorts the names and takes every third one, so each test runs in exactly one shard. The mock module's tests run in the Mock job, not in a shard. A new test needs no entry anywhere.
 
 Three shards keep the Windows runners at about macOS's duration. More would shorten nothing, and a CI run already uses up to seven runners at once against the free plan's 20.
 
@@ -150,9 +150,23 @@ The workflow also passes the base to `ci-checks`, which ignores it: every gate t
 
 ### Path filter
 
-`ci-changes` lists the files changed since the [change base](#change-base). The test matrix is skipped only when every file is outside the code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the review bot files `.macroscope/` and `.coderabbit.config.ts`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml`, `.golangci.yml` and the tool modules `tools/<tool>/`. Any other file runs the matrix, including every workflow and file types nobody listed yet. Without a base, or when the diff fails, the matrix runs and the log says why. The list is `testIrrelevant` in `tools/dev/ci.go`.
+`ci-changes` lists the files changed since the [change base](#change-base) and classifies each one. The job's outputs are the root module packages the test matrix tests, the matrix itself (built with `fromJSON`), and whether Mock runs. Several files select the union of their rows.
 
-Mock runs when a file under `live-tests/devops-server-mock/`, `tools/dev/` or `.github/workflows/` changed, other than the non-code files above, or a file in none of the known classes (`mockInput` in `tools/dev/ci.go`); the root module's code and fixtures, the other live-test files and the non-code files above skip it. Merge queue groups and pushes to `main` run it on every change, so a lint config or tool pin change is checked there.
+| Changed paths | Test matrix packages | Windows shards | Mock |
+| --- | --- | --- | --- |
+| Non-code: markdown (except under `testdata/`), `docs/`, `.agents/`, `.claude`, `.githooks/`, `.github/scripts/`, the review bot files `.macroscope/` and `.coderabbit.config.ts`, the issue and PR templates, `labels.json`, `dependabot.yml`, `.gitleaks.toml` | skipped | none | skipped |
+| `.golangci.yml`, the tool modules `tools/<tool>/` | skipped | none | skipped |
+| `internal/**`, root `*.go`, `go.mod`, `go.sum` | `./...` | 3 | skipped |
+| `tools/dev/**`, `.github/workflows/**` (they change how CI checks) | `./...` | 3 | runs |
+| Other root module code under `tools/` (`tools/live`, `tools/syncrepos`), `live-tests/harness/**` | `.`, `./tools/...`, `./live-tests/harness/...` | 1 | skipped |
+| Other `live-tests/**`, the mock module included (router, dns, compose, VMs, mock) | `.`, `./tools/live` (its tests read `live-tests/`) | 1 | runs for mock files |
+| `testdata/**` of a root module package | that package and `.` | 3 under `internal/`, else 1 | skipped |
+| Anything else, such as `.gitignore` or a new kind of file | `./...` | 3 | runs |
+
+- The root package `.` always runs with the matrix: its tests include the repo checks that read the whole tree, and `internal/az` tests build it.
+- Without a base, when the diff fails or lists no files: everything runs and the log says why.
+- Merge queue groups and pushes to `main` run Mock on every change, so a lint config or tool pin change is checked there.
+- The rules are `classify` in `tools/dev/selection.go`, and `TestSelectFor` has one case per row. Code under a new path, or a path that goes away, needs a row there and here.
 
 Checks always runs, so a docs-only change still gets the doc link, em dash and pinned-action checks. Skipping the matrix saves the slowest jobs, the macOS and Windows runs, on changes that cannot affect them.
 

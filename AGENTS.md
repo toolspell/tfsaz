@@ -100,6 +100,7 @@ TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter 
 - When a change touches a command T3 calls, run `TestStockT3Adapter` (the last line; needs a full T3 source tree with dependencies installed, which the sparse `.reference-apps/t3code` is not). Without one, say in the handoff that it did not run.
 - A flaky CI test is not acceptable. When you notice one, fix it right away instead of postponing it. Only when the fix needs a human decision or would have severe consequences, open a GitHub issue (rules in [Issues](docs/operations/development.md#issues)) and tell your user.
 - Before you fix a bug, or write or review a test, read [Testing](docs/internals/testing.md), the one home of the test rules.
+- When you add code under a new path or a path becomes obsolete, update the CI path and package rules in `tools/dev` ([Path filter](docs/operations/development.md#path-filter)).
 
 ## Pull requests
 

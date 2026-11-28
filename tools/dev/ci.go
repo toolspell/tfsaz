@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -29,87 +28,50 @@ func resolveBase(rev string) (string, string) {
 	return strings.TrimSpace(out), ""
 }
 
-// testsNeeded reports whether a change can affect the native test matrix.
-// Unknown files count as code, so a new kind of file runs the tests until it
-// is listed here. The root package's repo checks read markdown and workflows;
-// ci-checks runs those on every change.
-func testsNeeded(files []string) bool {
-	for _, f := range files {
-		if !testIrrelevant(f) {
-			return true
-		}
+// changeSelection is what CI runs for the change since base, compared from
+// the clone in the working directory, and why. Every error fails open to
+// everything. pkgDirs lists the root module's package directories; it is
+// called only when the diff has files.
+func changeSelection(base string, pkgDirs func() ([]string, error)) (selection, string) {
+	sha, reason := resolveBase(base)
+	if reason != "" {
+		return everything(), reason
 	}
-	return false
+	files, err := gitPaths("diff", "--name-only", "--no-renames", "-z", sha, "HEAD", "--")
+	if err != nil {
+		return everything(), err.Error()
+	}
+	if len(files) == 0 {
+		return everything(), "no changed files"
+	}
+	dirs, err := pkgDirs()
+	if err != nil {
+		return everything(), err.Error()
+	}
+	return selectFor(files, dirs), fmt.Sprintf("%d changed files since %s", len(files), short(sha))
 }
 
-// mockNeeded reports whether a change can affect the mock job: a file of the
-// mock's module, of tools/dev or of a workflow, or a file nobody listed. The
-// root module's code, the other live-test files and fixtures cannot. Merge
-// queue groups and pushes to main run the job regardless (test.yml).
-func mockNeeded(files []string) bool {
-	for _, f := range files {
-		if mockInput(f) {
-			return true
-		}
-	}
-	return false
-}
-
-func mockInput(f string) bool {
-	switch {
-	case testIrrelevant(f):
-		return false
-	case strings.HasPrefix(f, mockModule+"/"), strings.HasPrefix(f, "tools/dev/"), strings.HasPrefix(f, ".github/workflows/"):
-		return true
-	case strings.HasPrefix(f, "internal/"), f == "go.mod", f == "go.sum",
-		!strings.Contains(f, "/") && strings.HasSuffix(f, ".go"),
-		strings.HasPrefix(f, "tools/") && strings.HasSuffix(f, ".go"),
-		strings.HasPrefix(f, "live-tests/"),
-		strings.Contains("/"+path.Dir(f)+"/", "/testdata/"):
-		return false
-	}
-	return true
-}
-
-func testIrrelevant(f string) bool {
-	if strings.Contains("/"+path.Dir(f)+"/", "/testdata/") {
-		return false
-	}
-	if toolModule(f) != "" {
-		return true
-	}
-	for _, prefix := range []string{"docs/", ".agents/", ".claude/", ".githooks/", ".macroscope/", ".github/ISSUE_TEMPLATE/", ".github/scripts/"} {
-		if strings.HasPrefix(f, prefix) {
-			return true
-		}
-	}
-	switch f {
-	case ".claude", ".coderabbit.config.ts", ".github/pull_request_template.md", ".github/labels.json", ".github/dependabot.yml", ".gitleaks.toml", ".golangci.yml":
-		return true
-	}
-	return strings.HasSuffix(f, ".md")
-}
-
-// ciChanges writes tests=true|false for the workflow's test matrix and
-// mock=true|false for the mock job. Every error fails open: both run and the
-// log says why.
+// ciChanges writes the Changes job's outputs: tests and mock (true|false),
+// packages (for ci-test -packages) and matrix (the test jobs as JSON).
 func ciChanges(base string) bool {
-	tests, mock, why := true, true, ""
-	if sha, reason := resolveBase(base); reason != "" {
-		why = reason
-	} else if files, err := gitPaths("diff", "--name-only", "--no-renames", "-z", sha, "HEAD", "--"); err != nil {
-		why = err.Error()
-	} else if len(files) == 0 {
-		why = "no changed files"
-	} else {
-		tests, mock = testsNeeded(files), mockNeeded(files)
-		why = fmt.Sprintf("%d changed files since %s", len(files), short(sha))
+	s, why := changeSelection(base, func() ([]string, error) {
+		root, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		return packageDirs(root)
+	})
+	matrix, err := json.Marshal(map[string]any{"include": s.matrix()})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ci-changes:", err)
+		return false
 	}
-	fmt.Fprintf(os.Stderr, "ci-changes: %s; native tests needed: %v; mock checks needed: %v\n", why, tests, mock)
-	line := fmt.Sprintf("tests=%v\nmock=%v\n", tests, mock)
-	fmt.Print(line)
+	fmt.Fprintf(os.Stderr, "ci-changes: %s; tests: %s on %d Windows shards; Go gates: %v; mock: %v\n",
+		why, or(strings.Join(s.packages, " "), "none"), s.shards, s.goGates, s.mock)
+	lines := fmt.Sprintf("tests=%v\nmock=%v\npackages=%s\nmatrix=%s\n", s.tests(), s.mock, strings.Join(s.packages, " "), matrix)
+	fmt.Print(lines)
 	if out := os.Getenv("GITHUB_OUTPUT"); out != "" {
-		if err := appendFile(out, line); err != nil {
+		if err := appendFile(out, lines); err != nil {
 			fmt.Fprintln(os.Stderr, "ci-changes:", err)
 			return false
 		}
@@ -148,11 +110,15 @@ func ciMock() bool {
 	return runSteps("ci-mock", steps)
 }
 
-// ciTest is a native test matrix entry: the root module's tests with the race
-// detector, or with shard i/n the i-th of n parts of its top-level tests. The
-// parts take the sorted names in turn, so each test runs in exactly one part
-// and the slow Git tests spread out. The mock job tests the mock's module.
-func ciTest(shard string) bool {
+// ciTest is a native test matrix entry: the root module's tests of packages
+// (patterns, "./..." for all) with the race detector, or with shard i/n the
+// i-th of n parts of their top-level tests. The parts take the sorted names in
+// turn, so each test runs in exactly one part and the slow Git tests spread
+// out. The mock job tests the mock's module.
+func ciTest(shard string, packages []string) bool {
+	if len(packages) == 0 {
+		packages = []string{"./..."}
+	}
 	index, total, err := parseShard(shard)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ci-test:", err)
@@ -161,7 +127,7 @@ func ciTest(shard string) bool {
 	args := []string{"test", "-race", "-count=1"}
 	if total > 1 {
 		// -race here too, so the listing builds the binaries the run reuses.
-		list := exec.Command("go", "test", "-race", "-list", ".", "./...")
+		list := exec.Command("go", append([]string{"test", "-race", "-list", "."}, packages...)...)
 		list.Stderr = os.Stderr
 		out, err := list.Output()
 		if err != nil {
@@ -176,10 +142,10 @@ func ciTest(shard string) bool {
 		}
 		args = append(args, "-run", "^("+strings.Join(part, "|")+")$")
 	}
-	c := exec.Command("go", append(args, "./...")...)
+	c := exec.Command("go", append(args, packages...)...)
 	c.Stdout, c.Stderr = os.Stdout, os.Stderr
 	if err := c.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "ci-test: ./...:", err)
+		fmt.Fprintf(os.Stderr, "ci-test: %s: %v\n", strings.Join(packages, " "), err)
 		return false
 	}
 	return true
