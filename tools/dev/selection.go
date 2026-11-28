@@ -17,6 +17,7 @@ const windowsShards = 3
 // coverage contract in docs/operations/development.md#path-filter defines it.
 type selection struct {
 	packages []string
+	oses     []string // the GOOS the matrix tests on, in runner order
 	shards   int
 	goGates  bool
 	mock     bool
@@ -24,7 +25,7 @@ type selection struct {
 
 // everything is the fail-open selection: all tests, all gates.
 func everything() selection {
-	return selection{packages: []string{"./..."}, shards: windowsShards, goGates: true, mock: true}
+	return selection{packages: []string{"./..."}, oses: allOSes(), shards: windowsShards, goGates: true, mock: true}
 }
 
 func (s selection) tests() bool { return len(s.packages) > 0 }
@@ -32,16 +33,27 @@ func (s selection) tests() bool { return len(s.packages) > 0 }
 // selectFor maps changed files to a selection. pkgDirs are the root module's
 // package directories relative to the root, "." for the root package. A file
 // nobody classified selects everything, so a new kind of file runs all of CI
-// until it is listed here.
-func selectFor(files []string, pkgDirs []string) selection {
+// until it is listed here. versions reads a file at the base and the head to
+// narrow the OSes; nil tests on every OS.
+func selectFor(files []string, pkgDirs []string, versions fileVersions) selection {
 	var s selection
 	pkgs := map[string]bool{}
+	oses := map[string]bool{}
 	all := false
 	for _, f := range files {
 		c := classify(f, pkgDirs)
 		all = all || c.all
 		for _, p := range c.packages {
 			pkgs[p] = true
+		}
+		if c.all || len(c.packages) > 0 {
+			fileOSes := allOSes()
+			if versions != nil && narrowsOSes(f) {
+				fileOSes = goFileOSes(f, versions)
+			}
+			for _, goos := range fileOSes {
+				oses[goos] = true
+			}
 		}
 		s.shards = max(s.shards, c.shards)
 		s.goGates = s.goGates || c.goGates
@@ -59,7 +71,12 @@ func selectFor(files []string, pkgDirs []string) selection {
 		}
 		slices.Sort(s.packages)
 	}
-	if !s.tests() {
+	for _, goos := range allOSes() {
+		if oses[goos] {
+			s.oses = append(s.oses, goos)
+		}
+	}
+	if !s.tests() || !oses["windows"] {
 		s.shards = 0
 	}
 	return s
@@ -153,14 +170,24 @@ type matrixEntry struct {
 	Shard string `json:"shard"`
 }
 
-// matrix lists the test jobs: macOS and Ubuntu once each, Windows in shards.
+// matrix lists the test jobs on the selected OSes: macOS and Ubuntu once
+// each, Windows in shards.
 func (s selection) matrix() []matrixEntry {
+	entries := []matrixEntry{}
 	if !s.tests() {
-		return []matrixEntry{}
+		return entries
 	}
-	entries := []matrixEntry{{"macos-latest", "1/1"}, {"ubuntu-latest", "1/1"}}
-	for i := 1; i <= s.shards; i++ {
-		entries = append(entries, matrixEntry{"windows-latest", fmt.Sprintf("%d/%d", i, s.shards)})
+	for _, r := range runners {
+		if !slices.Contains(s.oses, r.goos) {
+			continue
+		}
+		if r.goos != "windows" {
+			entries = append(entries, matrixEntry{r.label, "1/1"})
+			continue
+		}
+		for i := 1; i <= s.shards; i++ {
+			entries = append(entries, matrixEntry{r.label, fmt.Sprintf("%d/%d", i, s.shards)})
+		}
 	}
 	return entries
 }
