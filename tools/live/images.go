@@ -242,6 +242,17 @@ func (e *env) image(action string, args []string, stdout io.Writer) error {
 		if err := stage(dir, files); err != nil {
 			return err
 		}
+	case "verify":
+		ref := img.remote() + "@" + args[1]
+		if !digestPattern.MatchString(args[1]) {
+			return fmt.Errorf("invalid digest %q; use sha256:<64 hex>", args[1])
+		}
+		if err := cmd("", nil, "docker", "pull", "--platform", imagePlatform, ref); err != nil {
+			return fmt.Errorf("pull %s: %w", ref, err)
+		}
+		if _, err := verifyDigest(img, key, args[1]); err != nil {
+			return fmt.Errorf("%s: %w", ref, err)
+		}
 	default:
 		return errors.New("unknown image action " + action)
 	}

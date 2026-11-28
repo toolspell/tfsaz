@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
@@ -258,4 +259,39 @@ func countCalls(calls []string, call string) int {
 		}
 	}
 	return n
+}
+
+func TestImageVerifyCommand(t *testing.T) {
+	keys := testbedKeys(t)
+	img, _ := lookupImage("mock")
+	for _, tc := range []struct {
+		name     string
+		attested bool
+		label    string
+		wantErr  string
+	}{
+		{"verified", true, keys["mock"], ""},
+		{"provenance fails", false, keys["mock"], "provenance check failed"},
+		{"wrong key label", true, strings.Repeat("0", 64), "want platform and key label"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newFakeHost(t)
+			ref := h.publish(img, keys["mock"], tc.label)
+			h.gh.verified["oci://"+ref] = tc.attested
+			digest := strings.TrimPrefix(ref, img.remote()+"@")
+			var out bytes.Buffer
+			err := newImageEnv(t).image("verify", []string{"mock", digest}, &out)
+			if tc.wantErr == "" {
+				if err != nil || strings.TrimSpace(out.String()) != keys["mock"] {
+					t.Fatalf("err %v, output %q; want the key", err, out.String())
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tc.wantErr) || out.Len() != 0 {
+				t.Fatalf("err %v, output %q; want %q", err, out.String(), tc.wantErr)
+			}
+			if !slices.Contains(h.calls, "docker pull --platform linux/arm64 "+ref) {
+				t.Errorf("missing pull by digest in %q", h.calls)
+			}
+			assertNoCalls(t, h.calls, "docker image rm", "docker build")
+		})
+	}
 }

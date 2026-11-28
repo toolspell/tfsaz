@@ -54,9 +54,10 @@ var liveCommands = []commandHelp{
 	{"vm start", "NAME", "", "Boot a stopped clone and print its updated details as JSON."},
 	{"vm down", "NAME", "", "Stop and delete a clone and its router peer. Accepts legacy clone names."},
 	{"vm list", "", "[-json]", "List this instance's clones and shared legacy clones with their status."},
-	{"image", "", "<action>", "Compute test bed image keys and stage build contexts. IMAGE is mock or router."},
+	{"image", "", "<action>", "Compute test bed image keys, stage build contexts and verify published images. IMAGE is mock or router."},
 	{"image key", "IMAGE", "", "Print the image's input key: SHA-256 over its build parameters and the files of its build context."},
 	{"image context", "IMAGE DIR", "", "Copy the image's build context into DIR, which must be new or empty, and print its input key."},
+	{"image verify", "IMAGE DIGEST", "", "Pull ghcr.io/toolspell/tfsaz-live-IMAGE@DIGEST and check its provenance, platform and key label against this checkout's input key, then print the key. Needs gh 2.102.0 or newer, signed in."},
 	{"clean", "", "", "Delete this instance's clones and router peers, leaving its services and slot in place."},
 	{"status", "", "", "Show shared base VMs, this instance's services and clones, and orphaned slots."},
 }

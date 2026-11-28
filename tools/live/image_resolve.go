@@ -175,7 +175,17 @@ func verifyPulled(img testbedImage, key, pullOutput string) (string, error) {
 	if m == nil {
 		return "", errors.New("docker pull printed no digest")
 	}
-	ref := img.remote() + "@" + m[1]
+	return verifyDigest(img, key, m[1])
+}
+
+// verifyDigest is check 4 of the trust contract for a pulled digest: its
+// provenance names this repository's image workflow on main, and the image
+// is for linux/arm64 with the key label.
+func verifyDigest(img testbedImage, key, digest string) (string, error) {
+	if !digestPattern.MatchString(digest) {
+		return "", fmt.Errorf("invalid digest %q", digest)
+	}
+	ref := img.remote() + "@" + digest
 	if _, err := output(nil, "gh", "attestation", "verify", "oci://"+ref, "--hostname", imageGitHubHost,
 		"--repo", imageRepository, "--signer-workflow", imageSignerWorkflow, "--source-ref", imageSourceRef); err != nil {
 		return "", fmt.Errorf("provenance check failed: %w", err)

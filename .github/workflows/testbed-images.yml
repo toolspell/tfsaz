@@ -1,11 +1,15 @@
 # Builds the live-test bed's mock and router images on pull requests and in the merge queue, without
 # pushing, so a change that breaks an image fails before main publishes it. An image whose input key
-# (go run ./tools/live image key) is unchanged since the change base is skipped. The one job,
-# Test bed images, also reports success when it skips, so a ruleset can require it.
-# docs/operations/development.md#github-workflows describes it.
+# (go run ./tools/live image key) is unchanged since the change base is skipped. The build job,
+# Test bed images, also reports success when it skips, so a ruleset can require it. A push to main
+# publishes each image to ghcr.io under its key tag, with a provenance attestation that
+# tools/live verifies before it runs the image. docs/operations/development.md#github-workflows
+# describes it.
 name: Test bed images
 
 on:
+  push:
+    branches: [main]
   pull_request:
   merge_group:
 
@@ -18,6 +22,7 @@ concurrency:
 jobs:
   build:
     name: Test bed images
+    if: github.event_name != 'push'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     permissions:
@@ -73,3 +78,113 @@ jobs:
             fi
             echo "$image: built for input key $key (base ${base_key:-none})" | tee -a "$GITHUB_STEP_SUMMARY"
           done
+
+  publish:
+    name: Publish ${{ matrix.image }}
+    if: github.event_name == 'push' && github.repository == 'toolspell/tfsaz'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [mock, router]
+    # One publish per image at a time; a running publish is never cancelled, so a key tag or latest
+    # is never left half set.
+    concurrency:
+      group: testbed-images-publish-${{ matrix.image }}
+      cancel-in-progress: false
+    env:
+      IMAGE: ${{ matrix.image }}
+      REPO: ghcr.io/toolspell/tfsaz-live-${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go build -o "$RUNNER_TEMP/live" ./tools/live
+      # Only the steps that need the token get it: gh attestation verify, run by image verify, reads
+      # attestations through the API.
+      - name: Sign in to ghcr.io
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      # A key tag is reused only if its digest passes the same check tools/live runs before it uses
+      # an image; otherwise the image is built again and the tag moves to the new digest.
+      - name: Reuse a verified key tag
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          key=$("$RUNNER_TEMP/live" image key "$IMAGE")
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          if digest=$(docker buildx imagetools inspect "$REPO:in-$key" --format '{{.Manifest.Digest}}' 2>/dev/null); then
+            if "$RUNNER_TEMP/live" image verify "$IMAGE" "$digest"; then
+              echo "digest=$digest" >> "$GITHUB_OUTPUT"
+              echo "$IMAGE: reused $REPO@$digest for input key $key" | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::warning::$REPO:in-$key fails verification; building it again"
+          fi
+      # The default docker driver cannot push by digest on the runner's image store; BuildKit is
+      # pinned by digest. --provenance=false keeps the image a single linux/arm64 manifest, the one
+      # digest that is attested, verified and run.
+      - name: Build and push by digest
+        id: build
+        if: steps.reuse.outputs.digest == ''
+        env:
+          KEY: ${{ steps.reuse.outputs.key }}
+        run: |
+          docker buildx create --name publish --driver docker-container --use --bootstrap \
+            --driver-opt image=moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c
+          context="$RUNNER_TEMP/context"
+          key=$("$RUNNER_TEMP/live" image context "$IMAGE" "$context")
+          if [ "$key" != "$KEY" ]; then
+            echo "::error::input key changed during the run: $KEY, then $key"
+            exit 1
+          fi
+          docker buildx build --platform linux/arm64 --provenance=false --sbom=false \
+            --build-arg "TFSAZ_LIVE_INPUTS=$key" \
+            --output "type=image,name=$REPO,push-by-digest=true,name-canonical=true,push=true" \
+            --metadata-file "$RUNNER_TEMP/metadata.json" "$context"
+          digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/metadata.json")
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Attest provenance
+        if: steps.build.outcome == 'success'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.REPO }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+      - name: Verify the new digest
+        if: steps.build.outcome == 'success'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: '"$RUNNER_TEMP/live" image verify "$IMAGE" "$DIGEST"'
+      # latest is for humans only. It moves only while this run's commit is still the head of main
+      # at the check, so an older run that finishes late never moves it backward; a push right after
+      # the check can leave it one commit behind until the next run. --prefer-index=false keeps the
+      # tags on the attested manifest instead of wrapping it in a new index with another digest.
+      - name: Set the key tag and latest
+        env:
+          KEY: ${{ steps.reuse.outputs.key }}
+          DIGEST: ${{ steps.reuse.outputs.digest || steps.build.outputs.digest }}
+        run: |
+          docker buildx imagetools create --prefer-index=false --tag "$REPO:in-$KEY" "$REPO@$DIGEST"
+          head=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/main | cut -f1)
+          if [ "$head" = "$GITHUB_SHA" ]; then
+            docker buildx imagetools create --prefer-index=false --tag "$REPO:latest" "$REPO@$DIGEST"
+            echo "$IMAGE: $REPO:in-$KEY and latest point to $DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "$IMAGE: $REPO:in-$KEY points to $DIGEST; latest kept, main moved on to $head" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Sign out of ghcr.io
+        if: always()
+        run: docker logout ghcr.io

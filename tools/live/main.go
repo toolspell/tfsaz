@@ -121,7 +121,7 @@ func ciEnvironment() string {
 
 func ciReadOnly(call liveInvocation) bool {
 	switch call.path {
-	case "status", "services status", "mock ca", "mock requests", "vm list", "vm vnc", "image key", "image context":
+	case "status", "services status", "mock ca", "mock requests", "vm list", "vm vnc", "image key", "image context", "image verify":
 		return true
 	case "doctor":
 		return !call.install && !call.yes

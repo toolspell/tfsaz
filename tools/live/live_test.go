@@ -93,6 +93,7 @@ func TestCIGuard(t *testing.T) {
 				{"clean", true},
 				{"image key mock", false},
 				{"image context router DIR", false},
+				{"image verify mock sha256:0", false},
 				{"vm future-command", false},
 			} {
 				t.Run(tc.command, func(t *testing.T) {
