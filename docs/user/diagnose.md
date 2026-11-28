@@ -22,6 +22,7 @@ A failed check produces a nonzero exit, including with JSON output.
 | `credential store locked or unavailable` or `profile ID has no PAT` | The OS keyring of the user that runs T3. See [OS keyring requirements](configure.md#os-keyring-requirements). |
 | Git over SSH stalls on Windows | Use the OpenSSH bundled with Git for Windows and check a native `git ls-remote` first. See [Set up a checkout](checkout-setup.md). |
 | A Node client rejects the collection certificate | See [Node clients and TLS](routing.md#node-clients-and-tls). |
+| `route verify-node` reports `Node TLS connection timed out` or `Node did not finish the TLS check within 30s` | See [Node clients and TLS](routing.md#node-clients-and-tls). |
 | A browser shows a certificate error for an alias | See [browser routing troubleshooting](browser-routing.md#troubleshooting). |
 
 ## Help and tracing
