@@ -21,9 +21,9 @@ Collections work at both `/DefaultCollection` and `/tfs/DefaultCollection`. REST
 
 On every start the mock generates a fresh CA and TLS leaf for `devops.mock.test`. The TLS private keys stay in memory. The mock writes the public CA certificate as `ca.pem` in the instance's `mock-keys/` directory. It also generates SSH keys and writes `client_ed25519`, `client_ed25519.pub` and `known_hosts` there. SSH accepts only that client key.
 
-State lives in memory and in bare repositories inside the container. A restart starts from the seed with new keys and an empty journal. See the [request journal commands](../../docs/operations/live-tests.md#request-journal).
+State lives in memory and in bare repositories inside the container. A restart starts from the seed with new keys and an empty journal, so clones need the new CA and SSH files again. See the [request journal commands](../../docs/operations/live-tests.md#request-journal).
 
-For a native run, build the mock from this directory. Set `MOCK_HTTP_ADDR`, `MOCK_HTTPS_ADDR`, `MOCK_HTTPS_ALT_ADDR`, `MOCK_LLM_ADDR`, `MOCK_SSH_ADDR` and `MOCK_ADMIN_ADDR` to loopback addresses with free ports. Set `MOCK_SSH_PORT` to the SSH port advertised in clone URLs, `MOCK_DATA` to a temporary data directory and `MOCK_KEYS_DIR` to an existing temporary directory for the keys and CA. A native run requires `MOCK_PAT`. Set it to the value clients will use. Stop the process and remove the temporary directories when done.
+For a native run, build the mock from this directory. Set `MOCK_HTTP_ADDR`, `MOCK_HTTPS_ADDR`, `MOCK_HTTPS_ALT_ADDR`, `MOCK_LLM_ADDR`, `MOCK_SSH_ADDR` and `MOCK_ADMIN_ADDR` to loopback addresses with free ports. Set `MOCK_SSH_PORT` to the SSH port advertised in clone URLs; behind port mappings, set `MOCK_PUBLISHED_HTTP_PORT`, `MOCK_PUBLISHED_HTTPS_PORT` and `MOCK_PUBLISHED_SSH_PORT` to the published ports, so a request on a published port gets the published SSH port in clone URLs. Set `MOCK_DATA` to a temporary data directory and `MOCK_KEYS_DIR` to an existing temporary directory for the keys and CA. A native run requires `MOCK_PAT`. Set it to the value clients will use. Stop the process and remove the temporary directories when done.
 
 ## Seed
 
@@ -35,15 +35,15 @@ All names are invented. The PAT belongs to `MOCK\tester` (Test User). The other 
 | `DefaultCollection` | `Platform` | `infra` | 6, 7 | 5 |
 | `Second Collection` | `Demo Project` | `api`, `docs site` | 1, 2 | 1, 2 |
 
-- PRs cover active, draft, completed (squash merged) and abandoned, with two or three reviewers each and every vote: approved, approved with suggestions, waiting, rejected and no vote, some required.
+- PRs cover active, draft, completed (squash merged) and abandoned, with one to three reviewers each and every vote: approved, approved with suggestions, waiting, rejected and no vote, some required.
 - Checks are policy evaluations: pipelines (`API CI`, `Web CI`, `Infra CI`, `Demo CI`, `Docs build`), a `code-coverage` status and a minimum-reviewers policy, in the states `approved`, `running`, `queued` and `rejected`.
 - Work items link to PRs and have comments and tags.
 
-IDs are derived from names, and seeded commits have fixed dates, so IDs and commit IDs are the same on every start.
+GUIDs are derived from names, PR and work item IDs follow the seed order, and seeded commits have fixed dates, so all IDs and commit IDs are the same on every start.
 
 ## Text generator
 
-T3's "Create PR", and a commit with a blank message, always ask a model for text. T3 can use an OpenAI-compatible text generator, so the mock fakes one and no real model is involved. It listens on plain HTTP at `http://llm.mock.test/v1` and serves `POST /v1/chat/completions` and `GET /v1/models`; any other request gets 404. It accepts any or no `Authorization` header, answers a body that is not JSON with 400 in OpenAI's error shape, and journals every request like the rest of the mock.
+T3's "Create PR", and a commit with a blank message, always ask a model for text; a test of these needs the text generator. Reading PRs and work items and committing with a typed message do not. T3's agent threads need a model too, and no fake agent exists for them yet. T3 can use an OpenAI-compatible text generator, so the mock fakes one and no real model is involved. It listens on plain HTTP at `http://llm.mock.test/v1` and serves `POST /v1/chat/completions` and `GET /v1/models`; any other request gets 404. It accepts any or no `Authorization` header, answers a body that is not JSON with 400 in OpenAI's error shape, and journals every request like the rest of the mock.
 
 Every completion has the same content, one JSON object with every key T3's prompts ask for, so each prompt finds its own:
 
@@ -63,6 +63,10 @@ A test points T3 at it by writing T3's own user configuration before T3 starts; 
   "textGenerationModelSelection": {"instanceId": "live-test", "model": "live-test"}
 }
 ```
+
+## Checks
+
+The mock is a Go module of its own. `go run ./tools/dev check` and `ready` cover it like the root module, and so does CI: [Checks](../../docs/operations/development.md#checks).
 
 ## Examples
 
