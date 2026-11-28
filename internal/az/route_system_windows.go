@@ -641,3 +641,4 @@ func routeSystemLeafNames(der []byte) []string {
 	}
 	return leaf.DNSNames
 }
+// FAST A4 verification
