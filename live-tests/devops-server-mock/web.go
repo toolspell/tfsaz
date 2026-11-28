@@ -25,7 +25,7 @@ func (s *server) gitPath(q *req) {
 	tail := "/" + strings.Join(rest, "/")
 	switch {
 	case tail == "/info/refs" || tail == "/git-upload-pack" || tail == "/git-receive-pack":
-		if s.authorized(q.w, q.r) {
+		if s.authorized(q) {
 			s.serveGitHTTP(q.w, q.r, rp, tail)
 		}
 	case len(rest) == 0:

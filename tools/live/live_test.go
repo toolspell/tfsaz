@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/binary"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -126,6 +129,31 @@ func TestLoadVMStaysInRuns(t *testing.T) {
 	}
 	if info, err := e.loadVM("tfsaz-ubuntu-/../.."); err == nil {
 		t.Fatalf("loadVM read %+v outside runs", info)
+	}
+}
+
+func TestMockRequestsVMFilter(t *testing.T) {
+	e := &env{home: t.TempDir()}
+	info := vmInfo{Name: "tfsaz-ubuntu-a", IP: "192.0.2.1", BedAddress: "172.30.53.129"}
+	if err := os.MkdirAll(e.runDir(info.Name), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.saveVM(info); err != nil {
+		t.Fatal(err)
+	}
+	admin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/requests" || r.URL.Query().Get("ip") != info.BedAddress {
+			t.Errorf("journal request = %s %s; want GET /requests?ip=%s", r.Method, r.URL.RequestURI(), info.BedAddress)
+		}
+		_, _ = w.Write([]byte("[]\n"))
+	}))
+	defer admin.Close()
+	var out bytes.Buffer
+	if err := e.mockRequests(admin.URL+"/requests", info.Name, true, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "[]\n" {
+		t.Errorf("journal output = %q; want an empty JSON array", got)
 	}
 }
 

@@ -199,7 +199,7 @@ func (s *server) repoForSSHPath(path string) *repo {
 	if unescaped, err := url.PathUnescape(path); err == nil {
 		path = unescaped
 	}
-	parts := strings.Split(strings.Trim(path, "/"), "/")
+	_, parts := splitCollectionPath(path)
 	if len(parts) != 4 || !strings.EqualFold(parts[2], "_git") {
 		return nil
 	}
