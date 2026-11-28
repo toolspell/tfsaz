@@ -25,6 +25,10 @@ env:
   # was built on, so a group of several PRs counts all their files; a push compares against the
   # previous head of main. Empty on a manual run, which runs the tests.
   BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
+  # Only a push to main saves caches; pull requests and merge queue groups restore main's. A branch's
+  # own caches would count against the 10 GB limit and evict main's, and only that branch could
+  # restore them.
+  SAVE_CACHE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
 jobs:
   changes:
@@ -57,19 +61,44 @@ jobs:
           # gitleaks reads the whole history, including commits made without the hook.
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      - id: go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           # govulncheck judges the standard library of the Go it runs on: the go.mod minimum that
           # every build uses at least.
           go-version-file: go.mod
-          # The build cache keeps the compiled tools, which are most of a cold run.
-          cache-dependency-path: |
-            go.sum
-            live-tests/devops-server-mock/go.sum
-            tools/*/go.sum
+          # Restored and saved below, so only main saves.
+          cache: false
+      # The build cache keeps the compiled tools, which are most of a cold run.
+      - id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.go.outputs.GOCACHE }}
+            ${{ steps.go.outputs.GOMODCACHE }}
+          key: go-checks-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum', 'live-tests/devops-server-mock/go.sum', 'tools/*/go.sum') }}
+          restore-keys: go-checks-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
+      - id: lint-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/golangci-lint
+          key: golangci-lint-${{ steps.go.outputs.go-version }}-${{ hashFiles('.golangci.yml', 'go.sum', 'live-tests/devops-server-mock/go.sum', 'tools/golangci-lint/go.sum') }}
+          restore-keys: golangci-lint-${{ steps.go.outputs.go-version }}-
       # vet, golangci-lint, govulncheck and deadcode run once per GOOS (darwin, linux, windows) in
       # the root module and in the live-test mock's module.
       - run: go run ./tools/dev ci-checks
+      - if: env.SAVE_CACHE == 'true' && steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.go.outputs.GOCACHE }}
+            ${{ steps.go.outputs.GOMODCACHE }}
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
+      - if: env.SAVE_CACHE == 'true' && steps.lint-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/golangci-lint
+          key: ${{ steps.lint-cache.outputs.cache-primary-key }}
 
   test:
     needs: changes
@@ -94,10 +123,28 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      - id: go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.go.outputs.GOCACHE }}
+            ${{ steps.go.outputs.GOMODCACHE }}
+          key: go-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum', 'live-tests/devops-server-mock/go.sum') }}
+          restore-keys: go-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
       - run: go run ./tools/dev ci-test -shard ${{ matrix.shard }}
+      # The Windows shards share one key; the first to finish saves it.
+      - if: env.SAVE_CACHE == 'true' && steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.go.outputs.GOCACHE }}
+            ${{ steps.go.outputs.GOMODCACHE }}
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
   check:
     name: Check
