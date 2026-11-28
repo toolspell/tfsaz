@@ -400,15 +400,22 @@ func TestNoOSNarrowingUnderAct(t *testing.T) {
 }
 
 func TestGoSymlinkSelectsEveryOS(t *testing.T) {
-	f := newGitFixture(t)
-	f.commit(map[string]string{"internal/az/a_linux.go": goSrc("")})
-	if err := os.Symlink("a_linux.go", filepath.Join(f.dir, "internal", "az", "a_darwin.go")); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
-	}
-	base := f.commit(nil)
-	f.commit(map[string]string{"internal/az/a_linux.go": goSrc("") + "\nfunc f() {}\n"})
-	got, _ := changeSelection(base, func() ([]string, error) { return testPkgDirs, nil })
-	if !slices.Equal(got.oses, allRunners) {
-		t.Errorf("OSes %q, want every OS: a_darwin.go links to the changed a_linux.go", got.oses)
+	for _, tc := range []struct{ name, link, target string }{
+		{"same package", "internal/az/a_darwin.go", "a_linux.go"},
+		{"other package", "tools/live/a_darwin.go", "../../internal/az/a_linux.go"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newGitFixture(t)
+			f.commit(map[string]string{"internal/az/a_linux.go": goSrc(""), "tools/live/main.go": "package main\n"})
+			if err := os.Symlink(tc.target, filepath.Join(f.dir, filepath.FromSlash(tc.link))); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			base := f.commit(nil)
+			f.commit(map[string]string{"internal/az/a_linux.go": goSrc("") + "\nfunc f() {}\n"})
+			got, _ := changeSelection(base, func() ([]string, error) { return testPkgDirs, nil })
+			if !slices.Equal(got.oses, allRunners) {
+				t.Errorf("OSes %q, want every OS: %s links to the changed a_linux.go", got.oses, tc.link)
+			}
+		})
 	}
 }
