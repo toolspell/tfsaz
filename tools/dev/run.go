@@ -16,6 +16,11 @@ import (
 // from any host, so a change to a _windows.go file is checked on macOS too.
 var targets = []string{"darwin", "linux", "windows"}
 
+// codeModules are the Go modules with code: the root and the live-test
+// mock, which has a module of its own. vet, lint, govulncheck, deadcode and the
+// tests run in each. The tool modules under tools/ hold only tool pins.
+var codeModules = []string{".", "live-tests/devops-server-mock"}
+
 // tools are the pinned check tools, each in its module directory under tools/.
 var tools = []string{"golangci-lint", "govulncheck", "deadcode", "actionlint", "gitleaks"}
 
@@ -36,11 +41,12 @@ type step struct {
 }
 
 func cmd(name string, args ...string) func(*bytes.Buffer) error {
-	return func(out *bytes.Buffer) error { return runInto(out, nil, name, args...) }
+	return func(out *bytes.Buffer) error { return runInto(out, "", nil, name, args...) }
 }
 
-func runInto(out *bytes.Buffer, env []string, name string, args ...string) error {
+func runInto(out *bytes.Buffer, dir string, env []string, name string, args ...string) error {
 	c := exec.Command(name, args...)
+	c.Dir = dir
 	c.Stdout, c.Stderr = out, out
 	if env != nil {
 		c.Env = append(os.Environ(), env...)
@@ -68,10 +74,12 @@ func toolModfile(name string) string {
 }
 
 func tool(name string, args ...string) func(*bytes.Buffer) error {
-	return toolFor("", name, args...)
+	return toolFor("", "", name, args...)
 }
 
-func toolFor(goos, name string, args ...string) func(*bytes.Buffer) error {
+// toolFor runs a pinned tool in dir ("" or "." for the root) for goos ("" for
+// the host).
+func toolFor(dir, goos, name string, args ...string) func(*bytes.Buffer) error {
 	return func(out *bytes.Buffer) error {
 		path, err := toolPath(name)
 		if err != nil {
@@ -81,20 +89,27 @@ func toolFor(goos, name string, args ...string) func(*bytes.Buffer) error {
 		if goos != "" {
 			env = []string{"GOOS=" + goos}
 		}
-		return runInto(out, env, path, args...)
+		return runInto(out, dir, env, path, args...)
 	}
 }
 
-// eachTarget runs one step body per supported system, one after another, so
-// parallel golangci-lint runs do not wait on each other's lock.
-func eachTarget(body func(goos string) func(*bytes.Buffer) error) func(*bytes.Buffer) error {
+// eachTarget runs one step body per code module and supported system, one
+// after another, so parallel golangci-lint runs do not wait on each other's
+// lock.
+func eachTarget(body func(dir, goos string) func(*bytes.Buffer) error) func(*bytes.Buffer) error {
 	return func(out *bytes.Buffer) error {
 		var failed []string
-		for _, goos := range targets {
-			fmt.Fprintf(out, "-- GOOS=%s\n", goos)
-			if err := body(goos)(out); err != nil {
-				fmt.Fprintf(out, "%v\n", err)
-				failed = append(failed, goos)
+		for _, m := range codeModules {
+			for _, goos := range targets {
+				name := goos
+				if m != "." {
+					name = m + " " + goos
+				}
+				fmt.Fprintf(out, "-- %s\n", name)
+				if err := body(m, goos)(out); err != nil {
+					fmt.Fprintf(out, "%v\n", err)
+					failed = append(failed, name)
+				}
 			}
 		}
 		if len(failed) > 0 {
@@ -104,9 +119,9 @@ func eachTarget(body func(goos string) func(*bytes.Buffer) error) func(*bytes.Bu
 	}
 }
 
-func goEnv(goos string, args ...string) func(*bytes.Buffer) error {
+func goEnv(dir, goos string, args ...string) func(*bytes.Buffer) error {
 	return func(out *bytes.Buffer) error {
-		return runInto(out, []string{"GOOS=" + goos}, "go", args...)
+		return runInto(out, dir, []string{"GOOS=" + goos}, "go", args...)
 	}
 }
 

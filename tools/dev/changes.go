@@ -75,11 +75,12 @@ func stagedFiles() ([]string, error) {
 
 // A plan is what the fast check runs for a set of changed files.
 type plan struct {
-	goFiles   []string // changed Go files that still exist, for gofmt
-	goChanged bool     // root module Go code, go.mod, go.sum or lint config changed
-	modules   []string // modules whose go mod tidy state may have changed
-	packages  []string // root module packages to test
-	workflows bool     // a workflow file changed
+	goFiles     []string // changed Go files that still exist, for gofmt
+	goChanged   bool     // code module Go code, go.mod, go.sum or lint config changed
+	modules     []string // modules whose go mod tidy state may have changed
+	packages    []string // root module packages to test
+	moduleTests []string // other code modules to test
+	workflows   bool     // a workflow file changed
 }
 
 // planFor maps changed files to checks. pkgDirs are the root module's package
@@ -93,9 +94,20 @@ func planFor(files []string, exists func(string) bool, pkgDirs []string) plan {
 	}
 	allPkgs := false
 	mods := map[string]bool{}
+	tested := map[string]bool{}
 	for _, f := range files {
 		if mod := toolModule(f); mod != "" {
 			mods[mod] = true
+			continue
+		}
+		if mod := codeModule(f); mod != "" {
+			mods[mod], tested[mod] = true, true
+			if strings.HasSuffix(f, ".go") || f == mod+"/go.mod" || f == mod+"/go.sum" {
+				p.goChanged = true
+			}
+			if strings.HasSuffix(f, ".go") && exists(f) {
+				p.goFiles = append(p.goFiles, f)
+			}
 			continue
 		}
 		switch {
@@ -133,7 +145,22 @@ func planFor(files []string, exists func(string) bool, pkgDirs []string) plan {
 		p.modules = append(p.modules, m)
 	}
 	slices.Sort(p.modules)
+	for m := range tested {
+		p.moduleTests = append(p.moduleTests, m)
+	}
+	slices.Sort(p.moduleTests)
 	return p
+}
+
+// codeModule returns the code module other than the root that a file belongs
+// to, if any.
+func codeModule(file string) string {
+	for _, m := range codeModules {
+		if m != "." && strings.HasPrefix(file, m+"/") {
+			return m
+		}
+	}
+	return ""
 }
 
 // toolModule returns the tool module directory a file belongs to, if any.

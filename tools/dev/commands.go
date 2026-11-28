@@ -25,14 +25,14 @@ func gitleaksArgs(verbose bool) []string {
 // lint fails on any golangci-lint finding in the tree. A deliberate exception
 // is a rule in .golangci.yml or a //nolint, each with its reason.
 func lint() step {
-	return step{name: "golangci-lint", run: eachTarget(func(goos string) func(*bytes.Buffer) error {
-		return toolFor(goos, "golangci-lint", "run", "--allow-parallel-runners", "--max-issues-per-linter=0", "--max-same-issues=0", "./...")
+	return step{name: "golangci-lint", run: eachTarget(func(dir, goos string) func(*bytes.Buffer) error {
+		return toolFor(dir, goos, "golangci-lint", "run", "--allow-parallel-runners", "--max-issues-per-linter=0", "--max-same-issues=0", "./...")
 	})}
 }
 
 func vet() step {
-	return step{name: "go vet", run: eachTarget(func(goos string) func(*bytes.Buffer) error {
-		return goEnv(goos, "vet", "./...")
+	return step{name: "go vet", run: eachTarget(func(dir, goos string) func(*bytes.Buffer) error {
+		return goEnv(dir, goos, "vet", "./...")
 	})}
 }
 
@@ -120,6 +120,9 @@ func check(base string) bool {
 		gitleaksChanges(mergeBase+"..HEAD", !onBase, true),
 		step{name: "go test " + strings.Join(p.packages, " "), run: cmd("go", append([]string{"test", "-count=1"}, p.packages...)...)},
 	)
+	for _, m := range p.moduleTests {
+		steps = append(steps, step{name: "go test " + modulePattern(m), run: cmd("go", "-C", m, "test", "-count=1", "./...")})
+	}
 	fmt.Printf("check: %d changed files since %s (%s).\n", len(files), base, short(mergeBase))
 	return runSteps("check", steps)
 }
@@ -131,14 +134,26 @@ func ready() bool {
 		return false
 	}
 	test := []string{"test", "-count=1"}
-	testName := "go test -race ./..."
-	if ok, why := raceSupported(); ok {
+	ok, why := raceSupported()
+	if ok {
 		test = append(test, "-race")
-	} else {
-		testName = "go test ./... (no -race: " + why + ")"
 	}
-	steps = append(steps, step{name: testName, run: cmd("go", append(test, "./...")...)})
+	for _, m := range codeModules {
+		name := "go test -race " + modulePattern(m)
+		if !ok {
+			name = "go test " + modulePattern(m) + " (no -race: " + why + ")"
+		}
+		steps = append(steps, step{name: name, run: cmd("go", append([]string{"-C", m}, append(test, "./...")...)...)})
+	}
 	return runSteps("ready", steps)
+}
+
+// modulePattern names a code module's packages in step names.
+func modulePattern(m string) string {
+	if m == "." {
+		return "./..."
+	}
+	return "./" + m + "/..."
 }
 
 // treeSteps are the whole-tree checks that ready and ci-checks share.
@@ -148,7 +163,7 @@ func treeSteps(ci bool) ([]step, error) {
 		return nil, err
 	}
 	goFiles = slices.DeleteFunc(goFiles, func(f string) bool { return !fileExists(f) })
-	modules := []string{"."}
+	modules := slices.Clone(codeModules)
 	for _, name := range toolModules() {
 		modules = append(modules, "tools/"+name)
 	}
@@ -157,12 +172,12 @@ func treeSteps(ci bool) ([]step, error) {
 		vet(),
 		actionlint(),
 		gitleaksChanges("", true, !ci),
-		{name: "govulncheck", run: eachTarget(func(goos string) func(*bytes.Buffer) error {
-			return toolFor(goos, "govulncheck", "./...")
+		{name: "govulncheck", run: eachTarget(func(dir, goos string) func(*bytes.Buffer) error {
+			return toolFor(dir, goos, "govulncheck", "./...")
 		})},
 		lint(),
-		{name: "deadcode", report: true, run: eachTarget(func(goos string) func(*bytes.Buffer) error {
-			return toolFor(goos, "deadcode", "./...")
+		{name: "deadcode", report: true, run: eachTarget(func(dir, goos string) func(*bytes.Buffer) error {
+			return toolFor(dir, goos, "deadcode", "./...")
 		})},
 	}
 	return append(steps, tidy(modules)...), nil
@@ -204,7 +219,9 @@ func setup(buildTools bool) bool {
 		return true
 	}
 	ok := run("git", "config", "core.hooksPath", ".githooks")
-	ok = run("go", "mod", "download") && ok
+	for _, m := range codeModules {
+		ok = run("go", "-C", m, "mod", "download") && ok
+	}
 	for _, name := range tools {
 		ok = run("go", "-C", "tools/"+name, "mod", "download") && ok
 	}

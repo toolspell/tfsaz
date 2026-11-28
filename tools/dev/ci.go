@@ -109,16 +109,18 @@ func ciChecks() bool {
 }
 
 // ciTest is a native test matrix entry: every test with the race detector, or
-// with shard i/n the i-th of n parts of the top-level tests. The parts take the
-// sorted names in turn, so each test runs in exactly one part and the slow Git
-// tests spread out.
+// with shard i/n the i-th of n parts of the root module's top-level tests. The
+// parts take the sorted names in turn, so each test runs in exactly one part
+// and the slow Git tests spread out. The other code modules' tests take
+// seconds and run whole in the first part.
 func ciTest(shard string) bool {
 	index, total, err := parseShard(shard)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ci-test:", err)
 		return false
 	}
-	args := []string{"test", "-race", "-count=1"}
+	race := []string{"test", "-race", "-count=1"}
+	root := slices.Clone(race)
 	if total > 1 {
 		// -race here too, so the listing builds the binaries the run reuses.
 		list := exec.Command("go", "test", "-race", "-list", ".", "./...")
@@ -132,17 +134,30 @@ func ciTest(shard string) bool {
 		part := shardTests(names, index, total)
 		fmt.Fprintf(os.Stderr, "ci-test: shard %d/%d runs %d of %d tests\n", index, total, len(part), len(names))
 		if len(part) == 0 {
-			return true
+			root = nil
+		} else {
+			root = append(root, "-run", "^("+strings.Join(part, "|")+")$")
 		}
-		args = append(args, "-run", "^("+strings.Join(part, "|")+")$")
 	}
-	c := exec.Command("go", append(args, "./...")...)
-	c.Stdout, c.Stderr = os.Stdout, os.Stderr
-	if err := c.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "ci-test:", err)
-		return false
+	ok := true
+	for _, m := range codeModules {
+		args := race
+		if m == "." {
+			args = root
+		} else if index != 1 {
+			args = nil
+		}
+		if args == nil {
+			continue
+		}
+		c := exec.Command("go", append([]string{"-C", m}, append(args, "./...")...)...)
+		c.Stdout, c.Stderr = os.Stdout, os.Stderr
+		if err := c.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "ci-test: %s: %v\n", modulePattern(m), err)
+			ok = false
+		}
 	}
-	return true
+	return ok
 }
 
 func parseShard(shard string) (int, int, error) {

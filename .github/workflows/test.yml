@@ -65,8 +65,10 @@ jobs:
           # The build cache keeps the compiled tools, which are most of a cold run.
           cache-dependency-path: |
             go.sum
+            live-tests/devops-server-mock/go.sum
             tools/*/go.sum
-      # vet, golangci-lint, govulncheck and deadcode run once per GOOS (darwin, linux, windows).
+      # vet, golangci-lint, govulncheck and deadcode run once per GOOS (darwin, linux, windows) in
+      # the root module and in the live-test mock's module.
       - run: go run ./tools/dev ci-checks
 
   test:
