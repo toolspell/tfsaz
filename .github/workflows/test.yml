@@ -169,7 +169,9 @@ jobs:
             ${{ steps.go.outputs.GOMODCACHE }}
           key: go-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}
           restore-keys: go-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
+      # bash on every runner: Windows would run PowerShell, which does not expand "$SHARD".
       - run: go run ./tools/dev ci-test -shard "$SHARD" -packages "$PACKAGES"
+        shell: bash
         env:
           SHARD: ${{ matrix.shard }}
           PACKAGES: ${{ needs.changes.outputs.packages }}

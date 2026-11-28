@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -77,8 +79,21 @@ func TestChangeSelectionFailsOpen(t *testing.T) {
 		{"all-zero SHA of a first push", func(*gitFixture) string { return strings.Repeat("0", 40) }, staticPkgDirs, "no base commit", false},
 		{"SHA not in the clone", func(*gitFixture) string { return missing }, staticPkgDirs, "base " + missing + " is not in this clone", false},
 		{"ref that does not resolve", func(*gitFixture) string { return "no-such-branch" }, staticPkgDirs, "base no-such-branch is not in this clone", false},
-		{"no changed files", func(f *gitFixture) string { return f.commit(nil) }, staticPkgDirs, "no changed files", false},
+		{"no changed files", func(f *gitFixture) string {
+			before := f.git("rev-parse", "HEAD")
+			f.commit(nil)
+			return before
+		}, staticPkgDirs, "no changed files", false},
 		{"base equals HEAD", func(f *gitFixture) string { return f.git("rev-parse", "HEAD") }, staticPkgDirs, "no changed files", false},
+		{"diff fails", func(f *gitFixture) string {
+			f.commit(map[string]string{"docs/a.md": "a\n"})
+			// The base commit resolves, but its tree is gone, so git diff fails.
+			tree := f.git("rev-parse", f.base+"^{tree}")
+			if err := os.Remove(filepath.Join(f.dir, ".git", "objects", tree[:2], tree[2:])); err != nil {
+				f.t.Fatal(err)
+			}
+			return f.base
+		}, staticPkgDirs, "", false},
 		{"package list fails", func(f *gitFixture) string {
 			f.commit(map[string]string{"docs/a.md": "a\n"})
 			return f.base
@@ -96,7 +111,9 @@ func TestChangeSelectionFailsOpen(t *testing.T) {
 			if !reflect.DeepEqual(got, everything()) {
 				t.Errorf("got %+v, want everything", got)
 			}
-			if why != tc.reason {
+			if tc.reason == "" && strings.HasPrefix(why, "git diff ") {
+				// Git's message varies by version.
+			} else if why != tc.reason {
 				t.Errorf("reason %q, want %q", why, tc.reason)
 			}
 			if called != tc.called {
