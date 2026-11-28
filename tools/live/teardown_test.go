@@ -135,7 +135,7 @@ func checkInstanceCleanAndDown(t *testing.T) {
 	t.Cleanup(func() { output, cmd = oldOutput, oldCmd })
 	downs := 0
 	cmd = func(_ string, _ []string, bin string, args ...string) error {
-		if bin != "docker" || !slices.Equal(args, e.composeArgs([]string{"down", "--remove-orphans", "--rmi", "local"})) {
+		if bin != "docker" || !slices.Equal(args, e.composeArgs([]string{"down", "--remove-orphans"})) {
 			t.Fatalf("unexpected command: %s %q", bin, args)
 		}
 		downs++
@@ -259,7 +259,7 @@ func checkOrphanedInstances(t *testing.T) {
 				if slices.Equal(args[5:], []string{"ps", "--format", "  {{.Service}}\t{{.State}}"}) {
 					return nil
 				}
-				if bin != "docker" || !slices.Equal(args[5:], []string{"down", "--remove-orphans", "--rmi", "local"}) {
+				if bin != "docker" || !slices.Equal(args[5:], []string{"down", "--remove-orphans"}) {
 					t.Fatalf("unexpected command: %s %q", bin, args)
 				}
 				downProjects = append(downProjects, args[2])

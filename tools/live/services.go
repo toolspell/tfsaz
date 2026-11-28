@@ -15,15 +15,23 @@ func (e *env) composeArgs(args []string) []string {
 	return append([]string{"compose", "-p", e.project(), "-f", filepath.Join(e.bed, "compose.yaml")}, args...)
 }
 
+// compose runs Compose with the image variables' defaults: only starting
+// services resolves images (composeWithImages).
 func (e *env) compose(args ...string) error {
+	return e.composeWithImages(defaultImages(), args...)
+}
+
+func (e *env) composeWithImages(images []string, args ...string) error {
 	if e.network == nil {
 		return fmt.Errorf("instance %s has no slot; run go run ./tools/live up", e.instance)
 	}
-	return cmd(e.bed, e.network.composeEnv(e.project(), e.instancePath()), "docker", e.composeArgs(args)...)
+	return cmd(e.bed, append(e.network.composeEnv(e.project(), e.instancePath()), images...), "docker", e.composeArgs(args)...)
 }
 
+// composeDown keeps the images: they are shared by input key, not owned by
+// the instance.
 func (e *env) composeDown() error {
-	if err := e.compose("down", "--remove-orphans", "--rmi", "local"); err != nil {
+	if err := e.compose("down", "--remove-orphans"); err != nil {
 		return fmt.Errorf("stop %s: %w; check the Compose output and retry", e.project(), err)
 	}
 	return nil
@@ -33,7 +41,7 @@ func (e *env) serviceRunning(service string) (bool, error) {
 	if e.network == nil {
 		return false, nil
 	}
-	out, err := output(e.network.composeEnv(e.project(), e.instancePath()), "docker", e.composeArgs(
+	out, err := output(append(e.network.composeEnv(e.project(), e.instancePath()), defaultImages()...), "docker", e.composeArgs(
 		[]string{"ps", "--status", "running", "-q", service})...)
 	return out != "", err
 }
@@ -47,7 +55,7 @@ func (e *env) servicesStatusJSON(w io.Writer) error {
 		StateHome string    `json:"stateHome"`
 	}{Instance: e.instance, Running: []string{}, StateHome: e.home}
 	if e.network != nil {
-		out, err := output(e.network.composeEnv(e.project(), e.instancePath()), "docker", e.composeArgs(
+		out, err := output(append(e.network.composeEnv(e.project(), e.instancePath()), defaultImages()...), "docker", e.composeArgs(
 			[]string{"ps", "--status", "running", "--services"})...)
 		if err != nil {
 			return err
@@ -100,8 +108,12 @@ func (e *env) services(action string) error {
 		if err := e.prepareBed(); err != nil {
 			return err
 		}
+		images, err := e.resolveImages()
+		if err != nil {
+			return err
+		}
 		step("starting %s on %s", e.project(), e.network.subnet)
-		if err := e.compose("up", "-d", "--build", "--wait", "--wait-timeout", "60"); err != nil {
+		if err := e.composeWithImages(images, "up", "-d", "--no-build", "--wait", "--wait-timeout", "60"); err != nil {
 			return fmt.Errorf("start %s: %w; check the Compose output, then retry up or run down to release the slot", e.project(), err)
 		}
 		return e.waitMock()
