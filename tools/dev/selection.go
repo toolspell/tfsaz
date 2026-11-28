@@ -48,7 +48,7 @@ func selectFor(files []string, pkgDirs []string, versions fileVersions) selectio
 		}
 		if c.all || len(c.packages) > 0 {
 			fileOSes := allOSes()
-			if versions != nil && narrowsOSes(f) {
+			if versions != nil && c.narrow {
 				fileOSes = goFileOSes(f, versions)
 			}
 			for _, goos := range fileOSes {
@@ -89,6 +89,7 @@ type class struct {
 	shards   int
 	goGates  bool
 	mock     bool
+	narrow   bool // a root module Go file whose build constraints pick the OSes
 }
 
 func classify(f string, pkgDirs []string) class {
@@ -126,9 +127,10 @@ func classify(f string, pkgDirs []string) class {
 		return full
 	case strings.HasPrefix(f, "internal/"), f == "go.sum",
 		!strings.Contains(f, "/") && strings.HasSuffix(f, ".go"):
+		full.narrow = strings.HasSuffix(f, ".go")
 		return full
 	case strings.HasPrefix(packageOf(f, pkgDirs), "tools/"), strings.HasPrefix(f, "live-tests/harness/"):
-		return class{packages: []string{".", "./tools/...", "./live-tests/harness/..."}, shards: 1, goGates: true}
+		return class{packages: []string{".", "./tools/...", "./live-tests/harness/..."}, shards: 1, goGates: true, narrow: strings.HasSuffix(f, ".go")}
 	case strings.HasPrefix(f, "live-tests/"):
 		return class{packages: []string{".", "./tools/live"}, shards: 1}
 	}

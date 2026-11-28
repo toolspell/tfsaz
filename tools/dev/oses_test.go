@@ -7,7 +7,8 @@ import (
 )
 
 // osCase is a change between two commits of a fixture package and the OSes
-// the test matrix must run on for it. An empty content deletes a file.
+// the test matrix must run on for it. A head content of deleted removes a
+// file.
 type osCase struct {
 	name string
 	base map[string]string
@@ -30,7 +31,7 @@ func osSelection(t *testing.T, tc osCase) selection {
 		if content != tc.base[name] {
 			files = append(files, name)
 		}
-		if content == "" {
+		if content == deleted {
 			delete(head, name)
 		} else {
 			head[name] = content
@@ -43,7 +44,7 @@ func osSelection(t *testing.T, tc osCase) selection {
 	versions := func(file string) ([]byte, bool, []byte, bool, error) {
 		b, bOK := tc.base[file]
 		h, hOK := head[file]
-		return []byte(b), bOK && b != "", []byte(h), hOK, nil
+		return []byte(b), bOK, []byte(h), hOK, nil
 	}
 	return selectFor(files, testPkgDirs, versions)
 }
@@ -108,7 +109,7 @@ func deleteCase(name, file, constraint string, oses []string, why string) osCase
 	return osCase{
 		name: name,
 		base: map[string]string{file: goSrc(constraint)},
-		head: map[string]string{file: ""},
+		head: map[string]string{file: deleted},
 		oses: oses,
 		why:  why,
 	}
@@ -199,8 +200,8 @@ func init() {
 			name: "tag change to custom tag",
 			base: map[string]string{az + "a.go": goSrc("windows")},
 			head: map[string]string{az + "a.go": goSrc("tfsaztest")},
-			oses: windowsOnly,
-			why:  "the base builds it for windows; the head builds nowhere and adds nothing, the base side still counts",
+			oses: allRunners,
+			why:  "the tests build a helper with -tags tfsaztest on every OS, so a custom tag selects all",
 		},
 		osCase{
 			name: "file that does not parse",
@@ -241,6 +242,25 @@ func init() {
 		editCase("tools/live windows file", "tools/live/x_windows.go", "", windowsOnly, "tools/live is a root module package, so its suffix narrows"),
 		editCase("tools/dev windows file", "tools/dev/x_windows.go", "", allRunners, "Go files under tools/dev select every OS"),
 		editCase("mock module windows file", mockModule+"/x_windows.go", "", allRunners, "the mock module is a separate module and selects every OS"),
+		editCase("workflow directory Go file", ".github/workflows/helper_windows.go", "", allRunners, "the workflow row runs everything on every OS"),
+		editCase("race tag", az+"a.go", "linux || race", allRunners, "ci-test builds with -race on every OS, so race is an unmodeled tag"),
+		editCase("tfsaztest tag", az+"a.go", "linux || tfsaztest", allRunners, "the tests build a helper with -tags tfsaztest on every OS"),
+		editCase("architecture feature tag", az+"a.go", "windows || arm64.v8.0", allRunners, "feature tags depend on the target toolchain, so they select every OS"),
+		editCase("Go version tag", az+"a.go", "linux && go1.26", allRunners, "release tags are unmodeled"),
+		osCase{
+			name: "legacy +build line",
+			base: map[string]string{az + "a.go": "// +build linux\n\npackage az\n"},
+			head: map[string]string{az + "a.go": "// +build linux\n\npackage az\n\nfunc f() {}\n"},
+			oses: linuxOnly,
+			why:  "go/build still reads +build lines; linux is a modeled tag",
+		},
+		osCase{
+			name: "file emptied",
+			base: map[string]string{az + "a.go": goSrc("linux")},
+			head: map[string]string{az + "a.go": ""},
+			oses: allRunners,
+			why:  "an empty file is present but not Go, so it selects every OS instead of reading as a deletion",
+		},
 	)
 }
 
@@ -316,12 +336,43 @@ func TestGoFileOSes(t *testing.T) {
 	}
 }
 
+// gitOSCases need git: a rename reads one side missing on each path, and an
+// embedding package makes its files test data.
+var gitOSCases = []osCase{
+	{
+		name: "rename moves a file between OSes",
+		base: map[string]string{"internal/az/a_windows.go": goSrc("")},
+		head: map[string]string{"internal/az/a_windows.go": deleted, "internal/az/a_darwin.go": goSrc("")},
+		oses: []string{"darwin", "windows"},
+		why:  "the diff lists both paths; each exists on one side only",
+	},
+	{
+		name: "file in an embedding package",
+		base: map[string]string{"internal/az/a_windows.go": goSrc(""), "internal/az/embed.go": "package az\n\nimport _ \"embed\"\n\n//go:embed a_windows.go\nvar src string\n"},
+		head: map[string]string{"internal/az/a_windows.go": goSrc("") + "\nfunc f() {}\n"},
+		oses: allRunners,
+		why:  "a package that embeds files may read a Go file as data on every OS",
+	},
+}
+
 func TestGoFileOSesThroughGit(t *testing.T) {
-	for _, tc := range osCases[:2] {
+	for _, tc := range append(slices.Clone(osCases[:2]), gitOSCases...) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := gitOSSelection(t, tc); !slices.Equal(got.oses, tc.oses) {
 				t.Errorf("OSes %q, want %q (%s)", got.oses, tc.oses, tc.why)
 			}
 		})
+	}
+}
+
+func TestNoOSNarrowingUnderAct(t *testing.T) {
+	tc := osCases[0]
+	f := newGitFixture(t)
+	t.Setenv("ACT", "true")
+	base := f.commit(tc.base)
+	f.commit(tc.head)
+	got, _ := changeSelection(base, func() ([]string, error) { return testPkgDirs, nil })
+	if !slices.Equal(got.oses, allRunners) || !slices.Contains(got.matrix(), matrixEntry{"ubuntu-latest", "1/1"}) {
+		t.Errorf("under act: OSes %q, matrix %v; want every OS, so ci-local keeps its Ubuntu entry", got.oses, got.matrix())
 	}
 }
