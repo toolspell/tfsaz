@@ -177,12 +177,30 @@ func appendFile(name, text string) error {
 
 // ciChecks is the CI checks job: the whole-tree gates and reports of ready
 // for the root module, without the tests (the matrix runs those) but with the
-// repo checks. The mock job covers the mock's module.
-func ciChecks() bool {
-	steps, err := treeSteps([]string{"."}, true)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "ci-checks:", err)
-		return false
+// repo checks. The mock job covers the mock's module. When no Go input
+// changed since base, only the repo checks, gitleaks and actionlint run, plus
+// govulncheck on a push, so a new advisory still fails main.
+func ciChecks(base string, push bool) bool {
+	s, why := changeSelection(base, func() ([]string, error) {
+		root, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		return packageDirs(root)
+	})
+	fmt.Fprintf(os.Stderr, "ci-checks: %s; Go gates: %v\n", why, s.goGates)
+	var steps []step
+	if s.goGates {
+		var err error
+		if steps, err = treeSteps([]string{"."}, true); err != nil {
+			fmt.Fprintln(os.Stderr, "ci-checks:", err)
+			return false
+		}
+	} else {
+		steps = []step{actionlint(), gitleaksChanges("", true, false)}
+		if push {
+			steps = append(steps, govulncheck([]string{"."}))
+		}
 	}
 	steps = append(steps, step{name: "repo checks", run: cmd("go", "test", "-count=1", "-run", repoChecksRun, ".")})
 	return runSteps("ci-checks", steps)
