@@ -56,7 +56,7 @@ flowchart TB
     clients["Clones<br/>Ubuntu, macOS, Windows"]
     router["Router .2<br/>WireGuard; DNS resolver for the VMs,<br/>logs every query"]
     mock["Mock .10<br/>devops.mock.test: REST, Git<br/>llm.mock.test: text generator"]
-    dns["DNS sinkhole .53<br/>answers mock.test names"]
+    dns["DNS sinkhole .53<br/>answers mock.test names,<br/>logs the queries it gets"]
     clients -- "WireGuard tunnel" --> router
     router --> mock
     router -- "mock.test names" --> dns
@@ -64,7 +64,7 @@ flowchart TB
   internet["Internet"]
   host -- "SSH through the hypervisor's NAT" --> clients
   host -- "request journal" --> mock
-  router -- "other names and traffic,<br/>Docker NAT, for now" --> internet
+  router -- "other names via Docker's resolver,<br/>traffic via Docker NAT, for now" --> internet
   classDef instance fill:#713f12,stroke:#facc15,color:#fff
   classDef bed fill:#4c1d95,stroke:#a78bfa,color:#fff
   class clients instance
