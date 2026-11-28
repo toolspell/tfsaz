@@ -121,7 +121,9 @@ func TestNoEmDashInMarkdown(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git unavailable")
 	}
-	out, err := exec.CommandContext(t.Context(), "git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.md").Output()
+	// .agents/skills/gh-stack is a vendored third-party skill; it stays verbatim
+	// so gh skill update keeps working.
+	out, err := exec.CommandContext(t.Context(), "git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.md", ":(exclude).agents/skills/gh-stack/").Output()
 	if err != nil {
 		t.Fatalf("git ls-files: %v", err)
 	}
