@@ -24,3 +24,4 @@ iptables -A FORWARD -i wg0 -d "${MOCK_IP:?}" -p tcp --dport 19090 -j REJECT
 iptables -t nat -A POSTROUTING -s "${VM_SUBNET:?}" ! -d "${BED_SUBNET:?}" -o eth0 -j MASQUERADE
 
 exec dnsmasq --keep-in-foreground --conf-file=/etc/router/dnsmasq.conf --server="/mock.test/${DNS_IP:?}"
+# Throwaway test comment for FAST D3.
