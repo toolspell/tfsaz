@@ -1,6 +1,6 @@
 # What works in T3
 
-This page lists which T3 Code features work with TFSaz at T3 revision `c478fde9fe`, the revision of the stock Azure DevOps adapter TFSaz follows. The `az` commands behind them are listed in [Azure CLI compatibility](az-compatibility.md#commands-t3-calls).
+This page lists which T3 Code features work with TFSaz at the revision `c478fde9fe` of T3's stock Azure DevOps adapter, which TFSaz follows and which is unchanged up to the reference pin `v0.1.13-nightly.20261125.5258`. The `az` commands behind them are listed in [Azure CLI compatibility](az-compatibility.md#commands-t3-calls).
 
 | Feature | What works or is missing |
 | --- | --- |

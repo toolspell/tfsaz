@@ -2,7 +2,7 @@
 
 ## Commands T3 calls
 
-These are the `az` calls used by the stock T3 adapter at revision `c478fde9fe`. Use the `tfsaz` executable directly for manual calls, or `az` with the `az` shim first on PATH.
+These are the `az` calls used by the stock T3 adapter at revision `c478fde9fe`, which is unchanged up to the reference pin `v0.1.13-nightly.20261125.5258`. Use the `tfsaz` executable directly for manual calls, or `az` with the `az` shim first on PATH.
 
 | Command | Behavior |
 | --- | --- |

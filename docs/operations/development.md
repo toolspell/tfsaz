@@ -39,6 +39,7 @@ Pick a new mechanical guard by what it reads: a pattern inside one Go file belon
 | `TestNoEmDashInMarkdown` (`repo_checks_test.go`) | No em dash (U+2014) in any markdown file Git tracks or would track; reports `file:line`. |
 | `TestAgentContextBudget` (`repo_checks_test.go`) | `.agents/context-budget.json` equals the measured bytes of AGENTS.md, CLAUDE.md and the skills' frontmatter, which load in every agent session. CRLF counts as LF. |
 | `TestNaming` (`naming_test.go`) | The names in [Naming](../internals/naming.md#the-naming-check) in every text file Git tracks or would track, except `docs/verification/`. A deliberate exception carries `naming-allow: <reason>`. |
+| `TestT3PinInDocs` (`repo_checks_test.go`) | The `t3code` tag in `tools/syncrepos/main.go` appears in README.md, `docs/internals/t3-compatibility.md`, `docs/user/t3-features.md` and `docs/user/az-compatibility.md`, so a pin bump cannot leave a page naming the old one. |
 | `TestAgentFileLines` (`repo_checks_test.go`) | AGENTS.md, CLAUDE.md and every markdown file under `.agents/` stay at 300 lines or fewer. |
 
 ### Lint

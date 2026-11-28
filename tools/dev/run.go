@@ -30,8 +30,8 @@ func toolModules() []string { return append(slices.Clone(tools), "act") }
 
 // repoChecksRun selects the root-package tests that check the whole
 // repository: doc links and anchors, em dashes in markdown, pinned actions,
-// the agent context budget, agent file length and naming.
-const repoChecksRun = "TestDocLinks|TestNoEmDashInMarkdown|TestPinnedActions|TestAgentContextBudget|TestAgentFileLines|TestNaming"
+// the agent context budget, agent file length, naming and the T3 pin in docs.
+const repoChecksRun = "TestDocLinks|TestNoEmDashInMarkdown|TestPinnedActions|TestAgentContextBudget|TestAgentFileLines|TestNaming|TestT3PinInDocs"
 
 // A step is one check. A gate fails the command; a report only prints.
 type step struct {
