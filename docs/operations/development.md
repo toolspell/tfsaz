@@ -160,7 +160,17 @@ The filter is a job, not `paths-ignore` on the trigger: a workflow that does not
 
 ### Caching
 
-`actions/setup-go` saves the module and build caches. Checks keys them on `go.sum`, the mock's `go.sum` and `tools/*/go.sum`, so the compiled tools, most of a cold run, come from the build cache. The test jobs key on `go.sum` per runner. Changes builds only the standard-library `tools/dev` and caches nothing.
+| Cache | Job | Key |
+| --- | --- | --- |
+| Go module and build cache (`go-checks-...`) | Checks | `go.sum`, the mock's `go.sum` and `tools/*/go.sum`, so the compiled tools, most of a cold run, come from the build cache |
+| Go module and build cache (`go-test-...`) | test, per OS | `go.sum` and the mock's `go.sum` |
+| golangci-lint analysis cache (`golangci-lint-...`, `~/.cache/golangci-lint`) | Checks | `.golangci.yml`, both `go.sum` files and the golangci-lint pin in `tools/golangci-lint/go.sum` |
+
+- Every key also holds the Go version, and the Go caches the runner's OS and architecture. A run without an exact match restores the newest entry with the same prefix.
+- Only a push to `main` saves, and only when its key was not there yet. Pull requests and merge queue groups restore `main`'s entries and save none: a branch's own entries would count against the repository's 10 GB and evict `main`'s, and no other branch could restore them. The workflow splits `actions/cache/restore` and `actions/cache/save` for this; `actions/setup-go` runs with `cache: false`.
+- Changes builds only the standard-library `tools/dev` and caches nothing.
+- CodeQL's default setup keeps its own caches. It analyzes Go and Actions only, without JavaScript/TypeScript (set on 2026-11-28).
+- To clear a stale or broken entry, list them with `gh cache list` and delete one with `gh cache delete <key or id>`; the next push to `main` saves it again.
 
 ### Secrets found in CI
 
