@@ -1,3 +1,8 @@
+// Package harness runs the live tests in disposable VM clones against the
+// Azure DevOps Server mock.
+//
+// deadcode-allow: a test library; only _test.go files call it, which deadcode
+// does not analyze.
 package harness
 
 import (
