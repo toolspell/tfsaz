@@ -299,6 +299,8 @@ These tests change real OS state and skip unless their variable is set. Run them
 | `TFSAZ_LIVE_LAUNCHD=1` (macOS) | Loads the generated LaunchAgents into the real GUI session on a free high port, from a temporary directory, then unloads them. `443` uses the production port. It changes no trust, hosts or LaunchAgents directory. |
 | `TFSAZ_LIVE_TASK_SCHEDULER=1` (Windows) | Registers a real scheduled task in an interactive test session and removes it. |
 
+Tests that need a whole disposable machine run in the live-test VMs against the Azure DevOps Server mock: [Live tests](live-tests.md).
+
 ## Test data and records
 
 - Rules for fixtures, live gates and test PATs: [Testing](../internals/testing.md#fixtures-and-live-tests).

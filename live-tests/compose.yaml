@@ -1,0 +1,59 @@
+# The live-test bed: the Azure DevOps Server mock, the DNS sinkhole and the
+# router that connects VMs. Start it with `go run ./tools/live services up`;
+# the router's state lives in ./.state, which the tool links outside the repo.
+name: tfsaz-live
+
+services:
+  devops-server-mock:
+    build: ./devops-server-mock
+    environment:
+      MOCK_PAT: ${MOCK_PAT:-mock-pat}
+    volumes:
+      # The mock writes a fresh SSH client key and known_hosts here on start.
+      - ./devops-server-mock/keys:/keys
+    # Loopback only: VMs reach the mock through the router, and nobody else
+    # on the network should change its state.
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:2222:2222"
+    dns: 172.30.53.53
+    networks:
+      bed:
+        ipv4_address: 172.30.53.10
+
+  dns:
+    image: coredns/coredns:1.12.1
+    command: ["-conf", "/etc/coredns/Corefile"]
+    volumes:
+      - ./dns/Corefile:/etc/coredns/Corefile:ro
+    networks:
+      bed:
+        ipv4_address: 172.30.53.53
+
+  router:
+    build: ./router
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      net.ipv4.conf.all.proxy_arp: "1"
+    environment:
+      BED_SUBNET: 172.30.53.0/24
+      VM_SUBNET: 172.30.53.128/25
+    volumes:
+      - ./.state/router:/state
+    ports:
+      - "51820:51820/udp"
+    networks:
+      bed:
+        ipv4_address: 172.30.53.2
+
+networks:
+  bed:
+    ipam:
+      config:
+        # Containers get addresses from the lower half; VMs joined through
+        # the router use the upper half.
+        - subnet: 172.30.53.0/24
+          ip_range: 172.30.53.0/25
+          gateway: 172.30.53.1

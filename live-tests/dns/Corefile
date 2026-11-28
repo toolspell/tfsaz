@@ -9,14 +9,13 @@ visualstudio.com dev.azure.com {
     }
 }
 
-# The mock's hostname: an IPv4 address and no other records. MOCK_ADDRESS
-# is the mock's address on the compose network, or for VM clients the
-# host address where its ports are published.
+# The mock's hostname: its address on the compose network and no other
+# records. VMs reach that address through the router.
 devops.mock.test {
     log
     template IN A {
         match ^devops[.]mock[.]test[.]$
-        answer "{{ .Name }} 60 IN A {$MOCK_ADDRESS}"
+        answer "{{ .Name }} 60 IN A 172.30.53.10"
         fallthrough
     }
     template ANY ANY {

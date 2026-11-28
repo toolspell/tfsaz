@@ -23,3 +23,6 @@ Thumbs.db
 
 # Reference checkouts synced by go run ./tools/syncrepos
 /.reference-apps/
+
+# Live-test state outside the repository (go run ./tools/live)
+/live-tests/.state
