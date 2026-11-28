@@ -1,0 +1,33 @@
+---
+name: live-tests
+description: Verify changes to system integration, routing, setup or restore, browser or link handling, or commands T3 calls end to end in disposable VMs.
+---
+
+# Live tests
+
+Use live tests when a change needs evidence from a real client OS or stock T3 Code. For docs and pure logic covered by unit tests, use the normal developer checks. Run the VM suite on an authorized Apple Silicon Mac outside GitHub CI and `ci-local`. The VMs and Docker network depend on the host.
+
+## Choose guests
+
+Use the diff and the behavior it changes to choose platforms:
+
+| Changed code | Guest |
+| --- | --- |
+| `*_darwin.go` | `macos` |
+| `*_windows.go` | `windows` |
+| `*_linux.go` | `ubuntu` |
+| Shared code | Each guest whose behavior changes |
+
+Run only the relevant cases. Read [Live tests](../../../docs/operations/live-tests.md) for host setup, the mock, guest commands, and troubleshooting.
+
+## Run a case
+
+From the repository root, prefix each command below with `go run ./tools/live`. On a host with the base already built:
+
+1. Run `services up`, then `vm up OS`. Take `NAME` from the JSON output.
+2. For T3 cases, run `vm t3 install NAME` and `vm t3 start NAME`. Follow the [Playwright steps](../../../docs/operations/live-tests.md#drive-t3-with-playwright) to drive the UI.
+3. Run the case with `vm run NAME -- CMD...`. Use `-json` for scripted checks or `-gui` for commands that need the desktop session. Target the Azure DevOps Server mock.
+4. Inspect traffic with `mock requests -vm NAME`. Capture UI evidence with `vm screenshot NAME FILE` when relevant.
+5. Stop your forwards, then run `vm down NAME` and `services down` when the bed is no longer needed. On a shared host, leave other runs and the services they use alone.
+
+Follow the [runbook's agent instructions](../../../docs/operations/live-tests.md#for-agents) for retained clones, cleanup, and dated verification records.

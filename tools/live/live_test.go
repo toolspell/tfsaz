@@ -24,6 +24,89 @@ import (
 	"unicode/utf16"
 )
 
+func TestCIGuard(t *testing.T) {
+	t.Setenv("GIT_DIR", filepath.Join(t.TempDir(), "missing"))
+	for _, name := range []string{"CI", "GITHUB_ACTIONS"} {
+		t.Setenv(name, "")
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, env := range []struct{ name, value string }{
+		{"CI", "true"},
+		{"GITHUB_ACTIONS", ""},
+		{},
+	} {
+		name := env.name
+		if name == "" {
+			name = "local"
+		}
+		t.Run(name, func(t *testing.T) {
+			if env.name != "" {
+				t.Setenv(env.name, env.value)
+			}
+			for _, tc := range []struct {
+				command string
+				blocked bool
+			}{
+				{"help", false},
+				{"status", false},
+				{"doctor", false},
+				{"doctor -install=false -yes=false", false},
+				{"doctor --install", true},
+				{"doctor -yes=true", true},
+				{"services status", false},
+				{"services up", true},
+				{"services down", true},
+				{"mock ca", false},
+				{"mock requests -json", false},
+				{"mock reset", true},
+				{"base build ubuntu", true},
+				{"base update macos", true},
+				{"base rm windows", true},
+				{"vm list -json", false},
+				{"vm vnc NAME", false},
+				{"vm up ubuntu", true},
+				{"vm ssh NAME", true},
+				{"vm run NAME -- uname", true},
+				{"vm push NAME LOCAL REMOTE", true},
+				{"vm pull NAME REMOTE LOCAL", true},
+				{"vm screenshot NAME FILE", true},
+				{"vm forward NAME 9222", true},
+				{"vm t3 install NAME", true},
+				{"vm t3 start NAME", true},
+				{"vm stop NAME", true},
+				{"vm start NAME", true},
+				{"vm down NAME", true},
+				{"setup ubuntu", true},
+				{"verify macos", true},
+				{"clean", true},
+				{"vm future-command", true},
+			} {
+				t.Run(tc.command, func(t *testing.T) {
+					args := strings.Fields(tc.command)
+					err := run(args[0], args[1:])
+					switch {
+					case tc.blocked && env.name != "":
+						want := "live test changes are disabled when " + env.name + " is set"
+						if err == nil || err.Error() != want {
+							t.Fatalf("got %v, want %q", err, want)
+						}
+					case args[0] == "help":
+						if err != nil {
+							t.Fatal(err)
+						}
+					default:
+						if err == nil || err.Error() != "run from inside the TFSaz repository" {
+							t.Fatalf("got %v, want repository lookup to fail", err)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestFreeAddress(t *testing.T) {
 	addr := netip.MustParseAddr
 	all := make(map[netip.Addr]bool)

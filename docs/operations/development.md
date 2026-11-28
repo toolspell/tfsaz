@@ -23,6 +23,8 @@
 
 Tests use temporary Git repositories, loopback HTTP/TLS servers and a test credential store. The rules for writing them are in [Testing](../internals/testing.md).
 
+For VM verification of changes that depend on the client OS or T3, use the [live-tests skill](../../.agents/skills/live-tests/SKILL.md) on a live-test host.
+
 ### Repo checks
 
 Go tests in the root package that read the whole tree. Every `go test` of `.` runs them, so `check` and CI do too, and the hook runs them as `go test -count=1 -run '<repoChecksRun>' .` (the list is in `tools/dev/run.go`). They always check everything: renaming a heading breaks links in other files.
