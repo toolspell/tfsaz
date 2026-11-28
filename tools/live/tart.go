@@ -20,51 +20,16 @@ func (t tart) env() []string { return []string{"TART_HOME=" + t.home} }
 
 func (t tart) run(args ...string) (string, error) { return output(t.env(), "tart", args...) }
 
-type tartVM struct {
-	Name    string
-	State   string
-	Running bool
-	Size    float64
-}
-
-func (t tart) list() ([]tartVM, error) {
+func (t tart) list() ([]vmEntry, error) {
 	out, err := t.run("list", "--source", "local", "--format", "json")
 	if err != nil {
 		return nil, err
 	}
-	var vms []tartVM
+	var vms []vmEntry
 	if err := json.Unmarshal([]byte(out), &vms); err != nil {
 		return nil, fmt.Errorf("read tart list: %w", err)
 	}
 	return vms, nil
-}
-
-func (t tart) exists(name string) (bool, error) {
-	vms, err := t.list()
-	if err != nil {
-		return false, err
-	}
-	for _, vm := range vms {
-		if vm.Name == name {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// clones lists the clones of o's base.
-func (t tart) clones(o osDef) ([]string, error) {
-	vms, err := t.list()
-	if err != nil {
-		return nil, err
-	}
-	var names []string
-	for _, vm := range vms {
-		if o.isClone(vm.Name) {
-			names = append(names, vm.Name)
-		}
-	}
-	return names, nil
 }
 
 // macosSlot refuses to start another macOS VM when two run already:
@@ -107,8 +72,19 @@ func (t tart) start(name, logFile string) error {
 	return c.Process.Release()
 }
 
-func (t tart) ip(name string, wait time.Duration) (string, error) {
-	return t.run("ip", name, "--wait", strconv.Itoa(int(wait.Seconds())))
+func (t tart) address(name string, wait time.Duration) (string, int, error) {
+	ip, err := t.run("ip", name, "--wait", strconv.Itoa(int(wait.Seconds())))
+	return ip, 0, err
+}
+
+func (t tart) clone(base, name string) error {
+	_, err := t.run("clone", base, name)
+	return err
+}
+
+func (t tart) rename(from, to string) error {
+	_, err := t.run("rename", from, to)
+	return err
 }
 
 // stop stops a running VM and waits until Tart reports it stopped.
@@ -120,31 +96,9 @@ func (t tart) stop(name string) error {
 	return nil
 }
 
-// waitStopped waits for a VM that shuts itself down; it never stops it.
-func (t tart) waitStopped(name string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		vms, err := t.list()
-		if err != nil {
-			return err
-		}
-		running := false
-		for _, vm := range vms {
-			if vm.Name == name && vm.Running {
-				running = true
-			}
-		}
-		if !running {
-			return nil
-		}
-		time.Sleep(2 * time.Second)
-	}
-	return fmt.Errorf("%s still runs %s after its shutdown began", name, timeout)
-}
-
 // remove stops and deletes a VM; a VM that does not exist is not an error.
 func (t tart) remove(name string) error {
-	ok, err := t.exists(name)
+	ok, err := vms{t}.exists(name)
 	if err != nil || !ok {
 		return err
 	}

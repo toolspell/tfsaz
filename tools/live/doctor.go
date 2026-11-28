@@ -27,6 +27,8 @@ var tools = []tool{
 		brew: []string{"install", "openai/tools/tart"}, trust: []string{"openai/tools/tart", "openai/tools/softnet"}},
 	{name: "packer", bin: "packer", version: []string{"packer", "--version"}, min: "1.11.0",
 		brew: []string{"install", "hashicorp/tap/packer"}},
+	{name: "qemu", bin: "qemu-system-aarch64", version: []string{"qemu-system-aarch64", "--version"}, min: "9.0.0",
+		brew: []string{"install", "qemu"}},
 	{name: "docker", bin: "docker", version: []string{"docker", "version", "--format", "{{.Server.Version}}"},
 		brew: []string{"install", "--cask", "orbstack"}, fix: "start OrbStack, or another Docker engine"},
 	{name: "docker compose", bin: "docker", version: []string{"docker", "compose", "version", "--short"}, min: "2.20.0",

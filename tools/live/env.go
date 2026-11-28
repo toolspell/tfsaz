@@ -72,30 +72,25 @@ func requireMac() error {
 	return nil
 }
 
-// osDef describes one guest OS. Only ready ones have a base definition in
-// live-tests/vms/<name>; the others are planned with the provider shown.
+// osDef describes one guest OS; its base definition is in live-tests/vms/<name>.
 type osDef struct {
 	name     string
-	provider string
-	ready    bool
+	provider string // tart or qemu
 	user     string
 	guest    guest
 	macos    int // for a macOS guest: its major version, which the host needs at least
 }
 
 var oses = []osDef{
-	{name: "ubuntu", provider: "tart", ready: true, user: "tester", guest: ubuntuGuest},
-	{name: "macos", provider: "tart", ready: true, user: "admin", guest: macosGuest, macos: 27},
-	{name: "windows", provider: "qemu"},
+	{name: "ubuntu", provider: "tart", user: "tester", guest: ubuntuGuest},
+	{name: "macos", provider: "tart", user: "admin", guest: macosGuest, macos: 27},
+	{name: "windows", provider: "qemu", user: "tester", guest: windowsGuest},
 }
 
 func lookupOS(name string) (osDef, error) {
 	for _, o := range oses {
 		if o.name != name {
 			continue
-		}
-		if !o.ready {
-			return o, fmt.Errorf("%s VMs (%s) are not set up yet", name, o.provider)
 		}
 		if o.macos > 0 {
 			// Virtualization.framework runs no macOS guest newer than its host.
@@ -107,7 +102,7 @@ func lookupOS(name string) (osDef, error) {
 		}
 		return o, nil
 	}
-	return osDef{}, fmt.Errorf("unknown OS %q; use ubuntu or macos", name)
+	return osDef{}, fmt.Errorf("unknown OS %q; use ubuntu, macos or windows", name)
 }
 
 const prefix = "tfsaz-"
@@ -125,7 +120,7 @@ func (o osDef) isClone(name string) bool {
 // osOfVM returns the OS of a clone name such as tfsaz-ubuntu-a1b2c3.
 func osOfVM(name string) (osDef, bool) {
 	for _, o := range oses {
-		if o.ready && o.isClone(name) {
+		if o.isClone(name) {
 			return o, true
 		}
 	}

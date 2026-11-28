@@ -17,20 +17,20 @@ var (
 	lastVMAddr    = netip.MustParseAddr("172.30.53.254")
 )
 
-// wgConfig is the VM's tunnel: all traffic goes to the router, except the
-// tunnel itself and the VM's own NAT network, so SSH from the host keeps
-// working. lines set the private key, which stays in the VM in a file wg
-// genkey wrote there, and DNS through the router's resolver.
-func wgConfig(address netip.Addr, routerKey, endpoint, lines string) string {
+// wgConfig is the VM's tunnel: all IPv4 traffic goes to the router, except
+// the tunnel itself and the VM's own NAT network, so SSH from the host keeps
+// working. The guest's lines set the private key, which never leaves the VM,
+// and DNS through the router's resolver.
+func wgConfig(address netip.Addr, routerKey, endpoint string, g guest) string {
 	return fmt.Sprintf(`[Interface]
 Address = %s/32
 %s
 [Peer]
 PublicKey = %s
 Endpoint = %s:51820
-AllowedIPs = 0.0.0.0/0
+AllowedIPs = %s
 PersistentKeepalive = 25
-`, address, lines, routerKey, endpoint)
+`, address, g.wgLines, routerKey, endpoint, g.allowedIPs)
 }
 
 // freeAddress picks the first VM address no saved peer uses.

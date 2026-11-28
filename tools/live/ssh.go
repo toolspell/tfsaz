@@ -3,19 +3,25 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 // sshTarget is one VM login. Host keys are new in every clone, so each run
 // keeps its own known_hosts file and accepts the first key it sees.
 type sshTarget struct {
 	user, host, key, knownHosts string
+	port                        int  // 0 is 22
+	powershell                  bool // the tool's commands are PowerShell 7, not sh
 }
 
 func (t sshTarget) args(command ...string) []string {
@@ -23,18 +29,26 @@ func (t sshTarget) args(command ...string) []string {
 		"-i", t.key, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
 		"-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=" + t.knownHosts,
 		"-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR",
-		t.user + "@" + t.host,
+		// A guest that restarts or shuts down may never close the session.
+		"-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3",
 	}
-	return append(args, command...)
+	if t.port != 0 {
+		args = append(args, "-p", strconv.Itoa(t.port))
+	}
+	return append(append(args, t.user+"@"+t.host), command...)
 }
 
-// run executes a remote shell command; stdin may be nil.
+// run executes one of the tool's commands in the VM; stdin may be nil.
 func (t sshTarget) run(stdin io.Reader, command string) (string, error) {
 	return t.runContext(context.Background(), stdin, command)
 }
 
 func (t sshTarget) runContext(ctx context.Context, stdin io.Reader, command string) (string, error) {
-	c := exec.CommandContext(ctx, "ssh", t.args(command)...)
+	remote := command
+	if t.powershell {
+		remote = encodePowerShell(command)
+	}
+	c := exec.CommandContext(ctx, "ssh", t.args(remote)...)
 	c.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	c.Stdout, c.Stderr = &stdout, &stderr
@@ -51,7 +65,7 @@ func (t sshTarget) wait(timeout time.Duration) error {
 		// ConnectTimeout bounds only the connection; a guest that stalls
 		// after it must not hold the attempt past the deadline.
 		ctx, cancel := context.WithDeadline(context.Background(), deadline)
-		_, err := t.runContext(ctx, nil, "true")
+		_, err := t.runContext(ctx, nil, "exit 0")
 		cancel()
 		if err == nil {
 			return nil
@@ -87,4 +101,18 @@ func newSSHKey(path, comment string) error {
 	}
 	_, err := output(nil, "ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", comment, "-f", path)
 	return err
+}
+
+// encodePowerShell wraps a PowerShell script so that no shell on the way
+// changes its quotes: Windows' OpenSSH hands the command line to its default
+// shell, which splits and strips double quotes. Without -OutputFormat Text,
+// an encoded command writes its errors as CLIXML.
+func encodePowerShell(script string) string {
+	script = "$ProgressPreference = 'SilentlyContinue'; $ErrorActionPreference = 'Stop'\n" + script
+	units := utf16.Encode([]rune(script))
+	raw := make([]byte, 2*len(units))
+	for i, u := range units {
+		binary.LittleEndian.PutUint16(raw[2*i:], u)
+	}
+	return "pwsh -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand " + base64.StdEncoding.EncodeToString(raw)
 }

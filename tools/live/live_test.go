@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/binary"
 	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf16"
 )
 
 func TestFreeAddress(t *testing.T) {
@@ -62,7 +65,8 @@ func TestCloneNames(t *testing.T) {
 		{"tfsaz-ubuntu-a/b", false},
 		{"tfsaz-macos-a1b2c3", true},
 		{"tfsaz-macos-base", false},
-		{"tfsaz-windows-x", false}, // not set up yet
+		{"tfsaz-windows-x", true},
+		{"tfsaz-windows-build", false},
 		{"ubuntu-a1b2c3", false},
 	} {
 		if _, got := osOfVM(tc.name); got != tc.clone {
@@ -73,18 +77,19 @@ func TestCloneNames(t *testing.T) {
 
 func TestWGConfig(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		guest guest
-		dns   string
+		name                 string
+		guest                guest
+		key, dns, allowedIPs string
 	}{
-		{"ubuntu", ubuntuGuest, "resolvectl dns %i 172.30.53.2"},
-		{"macos", macosGuest, "DNS = 172.30.53.2"},
+		{"ubuntu", ubuntuGuest, "private-key /etc/wireguard/private.key", "resolvectl dns %i 172.30.53.2", "0.0.0.0/0"},
+		{"macos", macosGuest, "private-key /etc/wireguard/private.key", "DNS = 172.30.53.2", "0.0.0.0/0"},
+		{"windows", windowsGuest, "PrivateKey = __PRIVATE_KEY__", "DNS = 172.30.53.2", "0.0.0.0/1, 128.0.0.0/1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			config := wgConfig(netip.MustParseAddr("172.30.53.129"), "ROUTER", "192.168.64.1", tc.guest.wgLines)
+			config := wgConfig(netip.MustParseAddr("172.30.53.129"), "ROUTER", "192.168.64.1", tc.guest)
 			for _, want := range []string{
-				"private-key /etc/wireguard/private.key", "Address = 172.30.53.129/32", tc.dns,
-				"PublicKey = ROUTER", "Endpoint = 192.168.64.1:51820", "AllowedIPs = 0.0.0.0/0",
+				tc.key, "Address = 172.30.53.129/32", tc.dns,
+				"PublicKey = ROUTER", "Endpoint = 192.168.64.1:51820", "AllowedIPs = " + tc.allowedIPs + "\n",
 			} {
 				if !strings.Contains(config, want) {
 					t.Errorf("config misses %q:\n%s", want, config)
@@ -121,5 +126,24 @@ func TestLoadVMStaysInRuns(t *testing.T) {
 	}
 	if info, err := e.loadVM("tfsaz-ubuntu-/../.."); err == nil {
 		t.Fatalf("loadVM read %+v outside runs", info)
+	}
+}
+
+func TestEncodePowerShell(t *testing.T) {
+	command := encodePowerShell(`Write-Output "ä 'b'"`)
+	b64, ok := strings.CutPrefix(command, "pwsh -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand ")
+	if !ok {
+		t.Fatalf("command = %q", command)
+	}
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil || len(raw)%2 != 0 {
+		t.Fatalf("decode: %v, %d bytes", err, len(raw))
+	}
+	units := make([]uint16, len(raw)/2)
+	for i := range units {
+		units[i] = binary.LittleEndian.Uint16(raw[2*i:])
+	}
+	if got := string(utf16.Decode(units)); !strings.HasSuffix(got, "\nWrite-Output \"ä 'b'\"") {
+		t.Errorf("script = %q", got)
 	}
 }
