@@ -156,6 +156,13 @@ func TestImageContextRejectsSymlinks(t *testing.T) {
 	if _, err := linked.readContext(bed); err == nil || !strings.Contains(err.Error(), "not a directory") {
 		t.Errorf("symlinked image directory: err %v, want a refusal", err)
 	}
+	linkedBed := filepath.Join(t.TempDir(), "live-tests")
+	if err := os.Symlink(bed, linkedBed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := img.readContext(linkedBed); err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Errorf("symlinked live-tests directory: err %v, want a refusal", err)
+	}
 
 	target := filepath.Join(bed, "target")
 	if err := os.Mkdir(target, 0o755); err != nil {

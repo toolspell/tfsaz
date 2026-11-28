@@ -68,12 +68,14 @@ type contextFile struct {
 // symlink cannot pull a file from outside the directory into the image.
 func (img testbedImage) readContext(bed string) ([]contextFile, error) {
 	dir := filepath.Join(bed, img.dir)
-	info, err := os.Lstat(dir)
-	if err != nil {
-		return nil, fmt.Errorf("image %s: %w", img.name, err)
-	}
-	if !info.IsDir() {
-		return nil, fmt.Errorf("image %s: %s is not a directory", img.name, dir)
+	var info os.FileInfo
+	for _, d := range []string{bed, dir} {
+		var err error
+		if info, err = os.Lstat(d); err != nil {
+			return nil, fmt.Errorf("image %s: %w", img.name, err)
+		} else if !info.IsDir() {
+			return nil, fmt.Errorf("image %s: %s is not a directory", img.name, d)
+		}
 	}
 	// Reads go through a root on the directory, so no path can resolve
 	// outside it while the files are read, and the root must be the
