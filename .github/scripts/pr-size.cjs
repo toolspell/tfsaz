@@ -152,13 +152,20 @@ function measure(baseSha, headSha) {
 }
 
 /** Parses Measure's result file; throws unless every field has the expected type and range. */
+// Error messages stay fixed: the runner would read workflow commands in echoed artifact text.
 function parseResult(text) {
-  const result = JSON.parse(text);
+  let result;
+  try {
+    result = JSON.parse(text);
+  } catch {
+    throw new Error("result is not valid JSON");
+  }
   if (typeof result !== "object" || result === null || Array.isArray(result)) {
     throw new Error("result is not an object");
   }
-  const keys = Object.keys(result).sort();
-  if (keys.join() !== RESULT_KEYS.join()) throw new Error(`result keys are ${keys.join(", ")}`);
+  if (Object.keys(result).sort().join() !== RESULT_KEYS.join()) {
+    throw new Error("result has missing or unexpected keys");
+  }
   const valid =
     Number.isSafeInteger(result.pr) &&
     result.pr > 0 &&
@@ -177,13 +184,14 @@ function parseResult(text) {
 
 function readResult(file) {
   const { size } = fs.statSync(file);
-  if (size > RESULT_MAX_BYTES) throw new Error(`result file has ${size} bytes`);
+  if (size > RESULT_MAX_BYTES) throw new Error("result file is too large");
   return parseResult(fs.readFileSync(file, "utf8"));
 }
 
 /**
- * The PR the result belongs to, or null when the run's PR is not exactly the result's.
+ * The PR the result names, or null when it is not one of the run's PRs.
  * workflow_run lists same-repository PRs only; a fork PR is looked up by its head branch.
+ * Several PRs can share the run's head; apply then binds the result by its base too.
  */
 async function findPullRequest(github, context, run, result) {
   const listed = run.pull_requests ?? [];
@@ -207,23 +215,28 @@ async function apply({ github, context, core, file }) {
   const run = context.payload.workflow_run;
   const result = readResult(file);
   if (result.headSha !== run.head_sha || result.headRepository !== run.head_repository?.full_name) {
-    throw new Error(`result for ${result.headRepository}@${result.headSha} is not from this run`);
+    throw new Error("result head is not the run's head");
   }
   const number = await findPullRequest(github, context, run, result);
   if (number === null) {
     core.notice(`Skipped: run ${run.id} does not belong to exactly PR #${result.pr}.`);
     return;
   }
-  // Fetched fresh, so a result for a head that a newer push replaced is never applied.
+  // Fetched fresh, so a result for a head or base that changed since Measure is never applied.
+  // The numbers depend only on base and head, so a PR that matches both gets correct numbers
+  // whichever of its sibling PRs' runs measured them. A push between this read and the writes
+  // starts a newer run, which writes after it.
   const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: number });
   const repository = `${context.repo.owner}/${context.repo.repo}`;
   if (
     pr.state !== "open" ||
     pr.head.sha !== result.headSha ||
+    pr.head.ref !== run.head_branch ||
     pr.head.repo?.full_name !== result.headRepository ||
+    pr.base.sha !== result.baseSha ||
     pr.base.repo.full_name !== repository
   ) {
-    core.notice(`Skipped: PR #${number} is closed or its head is no longer ${result.headSha}.`);
+    core.notice(`Skipped: PR #${number} is closed or its head or base changed since Measure.`);
     return;
   }
   const next = sizeLabel(result.changedLines);

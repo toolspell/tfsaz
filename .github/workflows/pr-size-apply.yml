@@ -13,11 +13,8 @@ on:
 
 permissions: {}
 
-# A newer push's result supersedes an older one still applying; apply also skips a result whose
-# head is no longer the PR's.
-concurrency:
-  group: pr-size-apply-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: true
+# No concurrency group: runs can complete out of push order, so a late, stale run could cancel the
+# current one. Each run instead writes only when the PR's head and base are still what it measured.
 
 jobs:
   apply:
