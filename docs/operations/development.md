@@ -250,6 +250,16 @@ Every workflow that runs on PRs must also work for [stacked pull requests](https
 
 Push only `main` and PR branches by name. Never `git push --mirror` or `--all`: T3 Code keeps local checkpoint refs under `refs/t3/` that must not reach GitHub.
 
+### Stacked pull requests
+
+Drive stacks with `gh stack`; the skill `.agents/skills/gh-stack` covers its commands, exit codes and recovery. It does not cover this repository's rules:
+
+- At most 7 PRs per stack.
+- Never the interactive commands: `gh stack modify`, `switch`, bare `view` or bare `submit`. Use `view --json`, `submit --auto --open` and explicit arguments, then give every PR its Conventional Commit title with `gh pr edit --title`.
+- Every layer runs CI against its own base, the branch below it, so each layer must pass on its own.
+- Rebase the stack onto current `main` (`gh stack sync`) before queueing it.
+- The merge queue builds at most 3 and merges at most 5 entries per group. A larger stack can split across groups, and with squash merges and automatic branch deletion the PR at the split can be closed instead of continuing ([gh-stack#444](https://github.com/github/gh-stack/issues/444)). Stacks merge one at a time, all by the same person, because the ruleset is shared: that person raises `max_entries_to_build` and `max_entries_to_merge` of the `main` ruleset (`gh api repos/toolspell/tfsaz/rulesets/28177410`) to at least the stack size, queues the whole stack by its stack number with `gh stack merge <stack number> --yes --squash` (a bare number is tried as a stack number first, and stack numbers share the PR number range; `gh api repos/toolspell/tfsaz/pulls/<top PR> --jq .stack.number` prints it), restores 3 and 5 once it landed or failed, and only then starts the next stack. If it splits anyway, first recover the closed PR at the split with the steps under "Recovery that worked" in gh-stack#444 (push its deleted base branch back from `refs/pull/<n>/head`, reopen it, `gh stack unstack`, re-target it to `main`, `gh stack link`), then queue the rest again from that layer.
+
 ## Issues
 
 Deferred work lives in [GitHub issues](https://github.com/toolspell/tfsaz/issues), never in a file in the repository. One issue is one piece of work someone can pick up; split an entry when its parts can land independently.
@@ -281,6 +291,8 @@ To bump a pin, follow the skill `.agents/skills/update-references`: it finds the
 ### Agent skills
 
 Skills live in `.agents/skills/`, which Codex reads. Claude Code reads `.claude/skills`, a committed symlink to `../.agents/skills`. On Windows, Git checks out that symlink as a plain text file unless symlinks are enabled: turn on Developer Mode and clone with `git clone -c core.symlinks=true`. Otherwise Claude Code finds no project skills there; the skill files themselves stay readable in `.agents/skills/`.
+
+`.agents/skills/gh-stack` is GitHub's official skill, vendored verbatim and pinned to a release (`gh skill install github/gh-stack gh-stack --pin <tag> --agent codex --scope project`), so `gh skill update` keeps working. Do not edit it; the em dash check skips it. Before a bump, read the new version for prompt injection.
 
 ## Stock T3 adapter test
 
