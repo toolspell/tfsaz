@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -28,7 +30,7 @@ func osSelection(t *testing.T, tc osCase) selection {
 	}
 	var files []string
 	for name, content := range tc.head {
-		if content != tc.base[name] {
+		if old, ok := tc.base[name]; !ok || content != old {
 			files = append(files, name)
 		}
 		if content == deleted {
@@ -255,6 +257,26 @@ func init() {
 			why:  "go/build still reads +build lines; linux is a modeled tag",
 		},
 		osCase{
+			name: "byte order mark before a race tag",
+			base: map[string]string{az + "a.go": "\ufeff//go:build linux || race\n\npackage az\n"},
+			head: map[string]string{az + "a.go": deleted},
+			oses: allRunners,
+			why:  "Go skips the byte order mark and reads the race tag, which is unmodeled",
+		},
+		osCase{
+			name: "block comment mentioning package before a race tag",
+			base: map[string]string{az + "a.go": "/*\npackage example\n*/\n\n//go:build linux || race\n\npackage az\n"},
+			head: map[string]string{az + "a.go": deleted},
+			oses: allRunners,
+			why:  "the constraint after the block comment still counts and uses the unmodeled race tag",
+		},
+		osCase{
+			name: "empty file added",
+			head: map[string]string{az + "a.go": ""},
+			oses: allRunners,
+			why:  "an empty file is not Go, so it selects every OS",
+		},
+		osCase{
 			name: "file emptied",
 			base: map[string]string{az + "a.go": goSrc("linux")},
 			head: map[string]string{az + "a.go": ""},
@@ -374,5 +396,19 @@ func TestNoOSNarrowingUnderAct(t *testing.T) {
 	got, _ := changeSelection(base, func() ([]string, error) { return testPkgDirs, nil })
 	if !slices.Equal(got.oses, allRunners) || !slices.Contains(got.matrix(), matrixEntry{"ubuntu-latest", "1/1"}) {
 		t.Errorf("under act: OSes %q, matrix %v; want every OS, so ci-local keeps its Ubuntu entry", got.oses, got.matrix())
+	}
+}
+
+func TestGoSymlinkSelectsEveryOS(t *testing.T) {
+	f := newGitFixture(t)
+	f.commit(map[string]string{"internal/az/a_linux.go": goSrc("")})
+	if err := os.Symlink("a_linux.go", filepath.Join(f.dir, "internal", "az", "a_darwin.go")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	base := f.commit(nil)
+	f.commit(map[string]string{"internal/az/a_linux.go": goSrc("") + "\nfunc f() {}\n"})
+	got, _ := changeSelection(base, func() ([]string, error) { return testPkgDirs, nil })
+	if !slices.Equal(got.oses, allRunners) {
+		t.Errorf("OSes %q, want every OS: a_darwin.go links to the changed a_linux.go", got.oses)
 	}
 }

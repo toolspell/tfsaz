@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"go/build"
 	"go/build/constraint"
+	"go/parser"
+	"go/token"
 	"io"
 	"path"
-	"strings"
 )
 
 // A runner is one test matrix OS with the system and architecture Go builds
@@ -87,23 +88,28 @@ func goFileOSes(file string, versions fileVersions) []string {
 	return oses
 }
 
-// onlyNarrowTags reports whether every build constraint line in a Go file's
-// header parses and uses only narrowTags.
+// onlyNarrowTags reports whether the file parses as Go and every build
+// constraint comment before its package clause uses only narrowTags. Go's
+// parser finds the header comments, so a byte order mark or a block comment
+// cannot hide a constraint; taking every line comment there is a superset of
+// what go/build reads.
 func onlyNarrowTags(src []byte) bool {
-	for _, line := range strings.Split(string(src), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "package ") {
+	f, err := parser.ParseFile(token.NewFileSet(), "", src, parser.PackageClauseOnly|parser.ParseComments)
+	if err != nil {
+		return false
+	}
+	for _, group := range f.Comments {
+		if group.Pos() > f.Package {
 			break
 		}
-		if !constraint.IsGoBuild(line) && !constraint.IsPlusBuild(line) {
-			continue
-		}
-		expr, err := constraint.Parse(line)
-		if err != nil {
-			return false
-		}
-		if !narrowExpr(expr) {
-			return false
+		for _, c := range group.List {
+			if !constraint.IsGoBuild(c.Text) && !constraint.IsPlusBuild(c.Text) {
+				continue
+			}
+			expr, err := constraint.Parse(c.Text)
+			if err != nil || !narrowExpr(expr) {
+				return false
+			}
 		}
 	}
 	return true
