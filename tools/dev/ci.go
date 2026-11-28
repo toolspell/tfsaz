@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -48,12 +49,50 @@ func changeSelection(base string, pkgDirs func() ([]string, error)) (selection, 
 	if err != nil {
 		return everything(), err.Error()
 	}
-	return selectFor(files, dirs, gitVersions(sha)), fmt.Sprintf("%d changed files since %s", len(files), short(sha))
+	return selectFor(files, dirs, osVersions(sha)), fmt.Sprintf("%d changed files since %s", len(files), short(sha))
 }
 
-// gitVersions reads files at base and at HEAD from the clone.
+// osVersions is what narrows the test matrix OSes: the files at base and
+// HEAD, or nil under act, which runs only the Ubuntu entry
+// (ci-local), so a change for another OS still tests there.
+func osVersions(base string) fileVersions {
+	if os.Getenv("ACT") != "" {
+		return nil
+	}
+	return gitVersions(base)
+}
+
+// gitVersions reads files at base and at HEAD from the clone. A file in a
+// directory whose Go files embed files on either side is test data there, so
+// it reads as an error and selects every OS.
 func gitVersions(base string) fileVersions {
+	var embedDirs []string
+	embedErr := error(nil)
+	for _, rev := range []string{base, "HEAD"} {
+		raw, err := exec.Command("git", "grep", "-l", "-z", "--fixed-strings", "//go:embed", rev, "--", "*.go").Output()
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 1 {
+			continue // no match
+		}
+		if err != nil {
+			embedErr = fmt.Errorf("git grep //go:embed %s: %v", rev, err)
+			break
+		}
+		for _, f := range strings.Split(string(raw), "\x00") {
+			if _, name, ok := strings.Cut(f, ":"); ok {
+				embedDirs = append(embedDirs, path.Dir(name))
+			}
+		}
+	}
 	return func(file string) ([]byte, bool, []byte, bool, error) {
+		if embedErr != nil {
+			return nil, false, nil, false, embedErr
+		}
+		for _, dir := range embedDirs {
+			if dir == "." || strings.HasPrefix(file, dir+"/") {
+				return nil, false, nil, false, fmt.Errorf("%s: %s embeds files", file, dir)
+			}
+		}
 		b, bOK, err := gitBlob(base, file)
 		if err != nil {
 			return nil, false, nil, false, err
@@ -63,16 +102,21 @@ func gitVersions(base string) fileVersions {
 	}
 }
 
-// gitBlob returns a file's content at rev, or ok false when rev lacks it.
+// gitBlob returns a file's content at rev, or ok false when rev's tree has no
+// such entry. A blob that cannot be read is an error, not a deletion.
 func gitBlob(rev, file string) ([]byte, bool, error) {
-	if _, err := git("cat-file", "-e", rev+":"+file); err != nil {
-		if _, err := git("rev-parse", "--verify", "--quiet", rev+"^{commit}"); err != nil {
-			return nil, false, err
-		}
+	entry, err := git("ls-tree", "-z", rev, "--", file)
+	if err != nil {
+		return nil, false, err
+	}
+	if entry == "" {
 		return nil, false, nil
 	}
 	out, err := git("cat-file", "blob", rev+":"+file)
-	return []byte(out), err == nil, err
+	if err != nil {
+		return nil, false, err
+	}
+	return []byte(out), true, nil
 }
 
 // ciChanges writes the Changes job's outputs: tests and mock (true|false),
