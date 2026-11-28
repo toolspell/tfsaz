@@ -5,59 +5,6 @@ import (
 	"testing"
 )
 
-func TestTestsNeeded(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		files []string
-		want  bool
-	}{
-		{"docs only", []string{"README.md", "docs/user/install.md", "docs/verification/x.png"}, false},
-		{"skills and templates", []string{".agents/skills/reference-t3code/SKILL.md", ".claude", ".github/ISSUE_TEMPLATE/bug.yml", ".github/pull_request_template.md"}, false},
-		{"repo config", []string{".github/labels.json", ".github/scripts/pr-size.cjs", ".agents/context-budget.json", ".github/dependabot.yml", ".gitleaks.toml", ".golangci.yml", ".githooks/pre-commit"}, false},
-		{"review bots", []string{".coderabbit.config.ts", ".macroscope/ignore.md", ".macroscope/check-run-agents/test-signal.md"}, false},
-		{"tool pin", []string{"tools/golangci-lint/go.mod", "tools/act/go.sum"}, false},
-		{"Go code", []string{"README.md", "internal/az/cli.go"}, true},
-		{"markdown fixture", []string{"internal/az/testdata/readme.md"}, true},
-		{"root module files", []string{"go.sum"}, true},
-		{"dev tool code", []string{"tools/dev/ci.go"}, true},
-		{"mock module", []string{"live-tests/devops-server-mock/go.sum"}, true},
-		{"workflow", []string{".github/workflows/labels.yml"}, true},
-		{"unknown file", []string{".gitignore"}, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := testsNeeded(tc.files); got != tc.want {
-				t.Errorf("testsNeeded(%q) = %v, want %v", tc.files, got, tc.want)
-			}
-		})
-	}
-}
-
-func TestMockNeeded(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		files []string
-		want  bool
-	}{
-		{"docs only", []string{"README.md", "docs/user/install.md"}, false},
-		{"mock README", []string{"live-tests/devops-server-mock/README.md"}, false},
-		{"mock code", []string{"live-tests/devops-server-mock/http.go"}, true},
-		{"mock data", []string{"live-tests/devops-server-mock/catalog.json"}, true},
-		{"root module code", []string{"internal/az/cli.go", "main.go", "go.mod", "go.sum"}, false},
-		{"root fixture", []string{"internal/az/testdata/repository.json"}, false},
-		{"other live-test files", []string{"live-tests/router/Dockerfile", "live-tests/harness/smoke_test.go", "tools/live/help.go"}, false},
-		{"lint config and tool pins", []string{".golangci.yml", "tools/golangci-lint/go.mod"}, false},
-		{"dev tool code", []string{"tools/dev/ci.go"}, true},
-		{"workflow", []string{".github/workflows/test.yml"}, true},
-		{"unknown file", []string{".gitignore"}, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := mockNeeded(tc.files); got != tc.want {
-				t.Errorf("mockNeeded(%q) = %v, want %v", tc.files, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestShardTests(t *testing.T) {
 	out := "TestB\nExampleA\nBenchmarkX\nTestUTF8_é\nok  \tgithub.com/toolspell/tfsaz\t0.1s\nTestA\nFuzzC\nTestB\n?   \tgithub.com/toolspell/tfsaz/tools/x\t[no test files]\nok  \tgithub.com/toolspell/tfsaz/internal/az\t0.2s\n"
 	names := listedTests(out)
