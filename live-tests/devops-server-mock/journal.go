@@ -209,3 +209,5 @@ func (w *journalResponse) Write(p []byte) (int, error) {
 	}
 	return w.ResponseWriter.Write(p)
 }
+
+// FAST A2 verification
