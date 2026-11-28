@@ -18,7 +18,7 @@
 
 - The code modules are the root module and the live-test mock in `live-tests/devops-server-mock`, which has a `go.mod` of its own. "The whole tree" covers both: vet, lint, govulncheck, deadcode and the tests run in each. The tool modules under `tools/` get only `go mod tidy -diff`. The list is `codeModules` in `tools/dev/run.go`.
 - `check -base <ref>` compares against another ref. On `main` itself `check` sees only uncommitted changes; `-base HEAD~1` checks the last commit.
-- Vet, lint and govulncheck type-check each system from any host, so a `_windows.go` change is checked on macOS too. Tests run only for the host; CI covers the other two.
+- Vet, lint and govulncheck type-check each system from any host, so a `_windows.go` change is checked on macOS too. Tests run only for the host; CI runs the root module's tests on all three and the mock module's on Ubuntu only.
 - govulncheck needs network access and judges the standard library of the Go that runs it: an outdated local Go fails `ready` until you update it.
 - Without cgo or a C compiler, `ready` runs the tests without `-race` and says so in the step name.
 
