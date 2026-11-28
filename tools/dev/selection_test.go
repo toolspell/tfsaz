@@ -121,7 +121,7 @@ func (tc selectionCase) check(t *testing.T, got selection) {
 
 func TestSelectFor(t *testing.T) {
 	for _, tc := range selectionCases {
-		t.Run(tc.name, func(t *testing.T) { tc.check(t, selectFor(tc.files, testPkgDirs)) })
+		t.Run(tc.name, func(t *testing.T) { tc.check(t, selectFor(tc.files, testPkgDirs, nil)) })
 	}
 }
 

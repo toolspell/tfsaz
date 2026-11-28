@@ -163,6 +163,7 @@ The workflow also passes the base to `ci-checks`, which ignores it: every gate t
 | Anything else, such as `.gitignore`, a new kind of file, or a file under `tools/` outside every package | `./...` | 3 | runs |
 
 - The root package `.` always runs with the matrix: its tests include the repo checks that read the whole tree, and `internal/az` tests build it.
+- Inside the selected packages, the matrix runs only on the OSes a change compiles for. A changed Go file of the root module (outside `tools/dev/`) selects an OS when Go's own build-constraint evaluation (`go/build`, cgo on, the runner's architecture) includes it for that GOOS on either side of the diff, the base or the head. That covers added, edited and deleted files and moved build tags: `route_windows.go` runs only Windows, deleting a `_darwin.go` file runs macOS, a shared file runs all three. Every other file that selects tests, fixtures and non-Go files included, selects all three OSes, and so does a Go file no runner builds, such as one behind a custom tag, or one whose `//go:build` line Go cannot read, unless its name suffix already limits it to one OS. The rules are `goFileOSes` in `tools/dev/oses.go`.
 - Without a base, when the diff fails or lists no files: everything runs and the log says why.
 - Merge queue groups and pushes to `main` run Mock on every change, so a lint config or tool pin change is checked there.
 - The rules are `classify` in `tools/dev/selection.go`, and `TestSelectFor` has one case per row. Code under a new path, or a path that goes away, needs a row there and here.

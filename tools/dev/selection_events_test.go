@@ -140,7 +140,7 @@ func TestMatrix(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := selectFor(tc.files, testPkgDirs).matrix()
+			got := selectFor(tc.files, testPkgDirs, nil).matrix()
 			if !slices.Equal(got, tc.want) {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
