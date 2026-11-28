@@ -17,6 +17,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 const usage = `usage: go run ./tools/dev <command>
@@ -30,11 +31,12 @@ const usage = `usage: go run ./tools/dev <command>
                       run .github/workflows/test.yml with act in Docker
 
 CI workflow steps:
-  ci-changes -base <rev>  print tests=true|false and mock=true|false: whether the native
-                          test matrix and the mock job must run
+  ci-changes -base <rev>  print what CI runs for the change: tests and mock (true|false),
+                          packages and the test matrix (JSON)
   ci-checks               whole-tree gates and reports
   ci-mock                 the live-test mock module's tests, gates and reports
-  ci-test [-shard i/n]    the race tests, or the i-th of n parts of them
+  ci-test [-shard i/n] [-packages "<patterns>"]
+                          the race tests, or the i-th of n parts of them
 `
 
 func main() {
@@ -89,8 +91,9 @@ func main() {
 		ok = ciMock()
 	case "ci-test":
 		shard := flags.String("shard", "1/1", "run the i-th of n parts of the tests")
+		packages := flags.String("packages", "./...", "space-separated root module packages to test")
 		_ = flags.Parse(os.Args[2:])
-		ok = ciTest(*shard)
+		ok = ciTest(*shard, strings.Fields(*packages))
 	case "ci-local":
 		base := flags.String("base", "main", "simulate a push of the changes since the merge base with this ref")
 		context := flags.String("context", "", "docker context to run the containers in")

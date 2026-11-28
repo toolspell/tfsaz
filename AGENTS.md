@@ -99,6 +99,7 @@ TFSAZ_T3_ROOT=/absolute/path/to/t3code go test -count=1 -run TestStockT3Adapter 
 - While iterating, run focused tests (`go test -count=1 ./internal/az -run 'TestName'`). The pre-commit hook is a quick check of the staged content; it does not replace `check`. What each command runs, and where a new lint rule or repo check goes: [Development](docs/operations/development.md#checks).
 - When a change touches a command T3 calls, run `TestStockT3Adapter` (the last line; needs a full T3 source tree with dependencies installed, which the sparse `.reference-apps/t3code` is not). Without one, say in the handoff that it did not run.
 - Before you fix a bug, or write or review a test, read [Testing](docs/internals/testing.md), the one home of the test rules.
+- When you add code under a new path or a path becomes obsolete, update the CI path and package rules in `tools/dev` ([Path filter](docs/operations/development.md#path-filter)).
 
 ## Pull requests
 
