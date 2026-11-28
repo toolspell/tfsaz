@@ -30,11 +30,8 @@ const socket = tls.connect({
   rejectUnauthorized: true,
   checkServerIdentity: (_, certificate) => tls.checkServerIdentity(servername || host, certificate),
 });
-const deadline = setTimeout(() => {
-  process.exitCode = 13;
-  socket.destroy();
-}, Number(timeout));
-socket.once('close', () => clearTimeout(deadline));
+// Exit instead of destroying the socket: a pending DNS lookup would keep Node running.
+setTimeout(() => process.exit(13), Number(timeout)).unref();
 socket.once('secureConnect', () => {
   process.exitCode = socket.authorized ? 0 : 10;
   if (socket.authorized) process.stdout.write('verified\n');
@@ -83,8 +80,10 @@ func verifyRouteNode(ctx context.Context, cfg config, out io.Writer) error {
 // longer than the handshake itself.
 var nodeTLSTimeout = 10 * time.Second
 
+const nodeStartupTimeout = 20 * time.Second
+
 func checkNodeTLS(ctx context.Context, node, host, port string) error {
-	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	probeCtx, cancel := context.WithTimeout(ctx, nodeStartupTimeout+nodeTLSTimeout)
 	defer cancel()
 	output, err := exec.CommandContext(probeCtx, node, "-e", routeNodeProbe, "--", host, port, strconv.FormatInt(nodeTLSTimeout.Milliseconds(), 10)).Output()
 	if err == nil {
@@ -97,7 +96,7 @@ func checkNodeTLS(ctx context.Context, node, host, port string) error {
 		return ctx.Err()
 	}
 	if probeCtx.Err() != nil {
-		return errors.New("Node did not finish the TLS check within 30 seconds; check the runtime and its startup options")
+		return fmt.Errorf("Node did not finish the TLS check within %s; check the runtime and its startup options", nodeStartupTimeout+nodeTLSTimeout)
 	}
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
