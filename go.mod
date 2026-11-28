@@ -17,3 +17,5 @@ require (
 	golang.org/x/exp v0.0.0-20230314191032-db074128a8ec // indirect
 	golang.org/x/text v0.44.0 // indirect
 )
+
+// FAST A3 verification
