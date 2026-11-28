@@ -35,11 +35,13 @@ jobs:
           sparse-checkout: .github/scripts
           persist-credentials: false
 
+      # Never extracted: a zip under this name stays one file and fails the size or JSON check.
       - name: Download result
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: pr-size
+          name: pr-size.json
           path: ${{ runner.temp }}/pr-size
+          skip-decompress: true
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 

@@ -189,26 +189,28 @@ function readResult(file) {
 }
 
 /**
- * The PR the result names, or null when it is not one of the run's PRs.
- * workflow_run lists same-repository PRs only; a fork PR is looked up by its head branch.
- * Several PRs can share the run's head; apply then binds the result by its base too.
+ * The PR the result names, or null unless it is the run's only PR. workflow_run lists
+ * same-repository PRs only; a fork PR is looked up by its head branch, closed ones included, so
+ * closing one of two PRs on the same head never leaves the other as the only match.
  */
 async function findPullRequest(github, context, run, result) {
-  const listed = run.pull_requests ?? [];
-  if (listed.length > 0) return listed.some((pr) => pr.number === result.pr) ? result.pr : null;
-  const owner = run.head_repository?.owner?.login;
-  if (!owner || !run.head_branch) return null;
-  const { data } = await github.rest.pulls.list({
-    ...context.repo,
-    state: "open",
-    head: `${owner}:${run.head_branch}`,
-    per_page: 100,
-  });
-  const open = data.filter(
-    (pr) =>
-      pr.head.sha === run.head_sha && pr.head.repo?.full_name === run.head_repository.full_name,
-  );
-  return open.length === 1 && open[0].number === result.pr ? result.pr : null;
+  const repositoryId = context.payload.repository.id;
+  let candidates = (run.pull_requests ?? []).filter((pr) => pr.base?.repo?.id === repositoryId);
+  if (candidates.length === 0) {
+    const owner = run.head_repository?.owner?.login;
+    if (!owner || !run.head_branch) return null;
+    const pulls = await github.paginate(github.rest.pulls.list, {
+      ...context.repo,
+      state: "all",
+      head: `${owner}:${run.head_branch}`,
+      per_page: 100,
+    });
+    candidates = pulls.filter(
+      (pr) =>
+        pr.head.sha === run.head_sha && pr.head.repo?.full_name === run.head_repository.full_name,
+    );
+  }
+  return candidates.length === 1 && candidates[0].number === result.pr ? result.pr : null;
 }
 
 async function apply({ github, context, core, file }) {
@@ -219,13 +221,12 @@ async function apply({ github, context, core, file }) {
   }
   const number = await findPullRequest(github, context, run, result);
   if (number === null) {
-    core.notice(`Skipped: run ${run.id} does not belong to exactly PR #${result.pr}.`);
+    core.notice(`Skipped: PR #${result.pr} is not the only PR of run ${run.id}.`);
     return;
   }
   // Fetched fresh, so a result for a head or base that changed since Measure is never applied.
-  // The numbers depend only on base and head, so a PR that matches both gets correct numbers
-  // whichever of its sibling PRs' runs measured them. A push between this read and the writes
-  // starts a newer run, which writes after it.
+  // A push between this read and the writes starts a newer Measure and Apply, which normally
+  // write after this run.
   const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: number });
   const repository = `${context.repo.owner}/${context.repo.repo}`;
   if (

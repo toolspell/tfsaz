@@ -45,10 +45,11 @@ jobs:
           RESULT_FILE: ${{ runner.temp }}/pr-size.json
         run: node .github/scripts/pr-size.cjs
 
+      # Unarchived, so Apply never extracts a zip; the artifact is named pr-size.json.
       - name: Upload result
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: pr-size
           path: ${{ runner.temp }}/pr-size.json
+          archive: false
           if-no-files-found: error
           retention-days: 1
