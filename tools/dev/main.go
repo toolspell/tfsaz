@@ -33,7 +33,8 @@ const usage = `usage: go run ./tools/dev <command>
 CI workflow steps:
   ci-changes -base <rev>  print what CI runs for the change: tests and mock (true|false),
                           packages and the test matrix (JSON)
-  ci-checks               whole-tree gates and reports
+  ci-checks -base <rev>   whole-tree gates and reports; without a Go change since rev
+                          only the repo checks, gitleaks and actionlint
   ci-mock                 the live-test mock module's tests, gates and reports
   ci-test [-shard i/n] [-packages "<patterns>"]
                           the race tests, or the i-th of n parts of them
@@ -84,8 +85,9 @@ func main() {
 		_ = flags.Parse(os.Args[2:])
 		ok = ciChanges(*base)
 	case "ci-checks":
+		base := flags.String("base", "", "the commit before the change; empty runs every gate")
 		_ = flags.Parse(os.Args[2:])
-		ok = ciChecks()
+		ok = ciChecks(*base, os.Getenv("GITHUB_EVENT_NAME") == "push")
 	case "ci-mock":
 		_ = flags.Parse(os.Args[2:])
 		ok = ciMock()
